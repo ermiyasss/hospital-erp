@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediTrack · Hospital ERP</title>
+    <link rel="stylesheet" href="css/variables.css"/>
+    <link rel="stylesheet" href="css/common.css"/>
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <span class="brand-text">Medi<span>Track</span></span>
+        </div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li class="nav-item active" data-target="pages/default.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Dashboard</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/patients.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Patients</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/queue.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Queue</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/appointments.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Appointments</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/laboratory.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><path d="M12 2v8M12 10l-4 4h8l-4-4z"/><path d="M8 14v6a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-6"/></svg><span>Laboratory</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/pharmacy.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><path d="M12 2v6M12 8l-4 4h8l-4-4z"/><path d="M8 12v6a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-6"/></svg><span>Pharmacy</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/billing.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="14" rx="2" ry="2"/><line x1="6" y1="2" x2="6" y2="6"/><line x1="18" y1="2" x2="18" y2="6"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="12" y1="10" x2="12" y2="18"/></svg><span>Billing</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/staff.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Staff</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/reports.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/><rect x="17" y="4" width="4" height="17" rx="1"/></svg><span>Reports</span></a>
+                </li>
+                <li class="nav-item" data-target="pages/settings.html">
+                    <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg><span>Settings</span></a>
+                </li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-mini">
+                <div class="user-mini-avatar">SC</div>
+                <div class="user-mini-info">
+                    <span class="user-mini-name">Dr. Sarah Chen</span>
+                    <span class="user-mini-role">Administrator</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle sidebar">
+                    <svg viewBox="0 0 24 24" width="24" height="24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
+                <span class="topbar-title" id="pageTitle">Dashboard</span>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-time">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="liveTime">--:-- --</span>
+                </div>
+                <div class="topbar-role">
+                    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <span>Administrator</span>
+                </div>
+                <div class="topbar-profile">
+                    <div class="avatar">SC</div>
+                    <div class="profile-dropdown">
+                        <span class="profile-name">Dr. Sarah Chen</span>
+                        <span class="profile-role">Administrator</span>
+                    </div>
+                    <span class="profile-chevron">
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </span>
+                </div>
+            </div>
+        </header>
+        
+        <iframe id="content-frame" src="pages/default.html" class="content-frame"></iframe>
+    </main>
+
+    <script src="js/common.js"></script>
+</body>
+</html>

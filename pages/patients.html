@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patients</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/patients.css">
+</head>
+<body>
+    <div class="patients-page">
+        <div class="patients-header">
+            <div>
+                <h2>Patients Management</h2>
+                <p class="subtitle">View, filter, and manage patient records</p>
+            </div>
+            <button class="btn-primary" id="addPatientBtn">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                Add Patient
+            </button>
+        </div>
+
+        <div class="patients-toolbar">
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="patientSearch" placeholder="Search by name or tracking ID...">
+            </div>
+            <div class="filters-wrapper">
+                <div class="custom-select" id="filterUrgencyWrapper">
+                    <div class="cs-toggle" data-value="">
+                        <span class="cs-text">All Urgencies</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option" data-value="">All Urgencies</li>
+                        <li class="cs-option" data-value="High">High</li>
+                        <li class="cs-option" data-value="Medium">Medium</li>
+                        <li class="cs-option" data-value="Low">Low</li>
+                    </ul>
+                </div>
+
+                <div class="custom-select" id="sortOrderWrapper">
+                    <div class="cs-toggle" data-value="default">
+                        <span class="cs-text">Sort By: Default</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option" data-value="default">Default</li>
+                        <li class="cs-option" data-value="age_asc">Age (Young to Old)</li>
+                        <li class="cs-option" data-value="age_desc">Age (Old to Young)</li>
+                        <li class="cs-option" data-value="alpha_asc">Name (A-Z)</li>
+                        <li class="cs-option" data-value="alpha_desc">Name (Z-A)</li>
+                        <li class="cs-option" data-value="reg_desc">Newest Registered</li>
+                        <li class="cs-option" data-value="reg_asc">Oldest Registered</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table class="patients-table">
+                <thead>
+                    <tr>
+                        <th>Tracking ID</th>
+                        <th>Name</th>
+                        <th>Age</th>
+                        <th>Phone</th>
+                        <th>Urgency</th>
+                        <th>Status</th>
+                        <th>Description</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="patientsTableBody"></tbody>
+            </table>
+            <div id="noPatients" class="no-data" style="display: none;">No patients found.</div>
+        </div>
+    </div>
+
+    <!-- ADD PATIENT MODAL -->
+    <div class="modal-overlay" id="patientModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Add New Patient</h3>
+                <button class="modal-close" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" id="inputName" placeholder="e.g. John Doe">
+                        <span class="form-error" id="errName"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Age *</label>
+                        <input type="number" id="inputAge" placeholder="e.g. 34">
+                        <span class="form-error" id="errAge"></span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone (Ethiopian)</label>
+                        <input type="tel" id="inputPhone" placeholder="09XX XXX XXX">
+                        <span class="form-error" id="errPhone"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Weight (kg)</label>
+                        <input type="number" id="inputWeight" placeholder="e.g. 70">
+                    </div>
+                    <div class="form-group">
+                        <label>Height (cm)</label>
+                        <input type="number" id="inputHeight" placeholder="e.g. 175">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Urgency</label>
+                        <div class="custom-select" id="inputUrgencyWrapper">
+                            <div class="cs-toggle" data-value="Medium">
+                                <span class="cs-text">Medium</span>
+                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <ul class="cs-menu">
+                                <li class="cs-option" data-value="High">High</li>
+                                <li class="cs-option" data-value="Medium">Medium</li>
+                                <li class="cs-option" data-value="Low">Low</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <div class="custom-select" id="inputStatusWrapper">
+                            <div class="cs-toggle" data-value="Pending">
+                                <span class="cs-text">Pending</span>
+                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <ul class="cs-menu">
+                                <li class="cs-option" data-value="Pending">Pending</li>
+                                <li class="cs-option" data-value="In Treatment">In Treatment</li>
+                                <li class="cs-option" data-value="Finished">Finished</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description *</label>
+                    <textarea id="inputDesc" rows="3" placeholder="Brief description of condition..."></textarea>
+                    <span class="form-error" id="errDesc"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelModalBtn">Cancel</button>
+                <button class="btn-primary" id="savePatientBtn">Save Patient</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Confirm Deletion</h3>
+                <button class="modal-close" id="closeConfirmBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmText" style="color: var(--text-dark); font-size: 14px;">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
+                <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/patients.js"></script>
+</body>
+</html>
