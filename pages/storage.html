@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Medical Storage & Archive</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/storage.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+</head>
+<body>
+    <div class="storage-page">
+        <!-- HEADER -->
+        <div class="storage-header">
+            <div>
+                <h2>Hospital Medical Storage & Patient Archive</h2>
+                <p class="subtitle">Permanent record of all patients treated and discharged since hospital opening</p>
+            </div>
+            <div class="storage-actions-head">
+                <button type="button" class="btn-secondary" id="exportCsvBtn">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Export CSV</span>
+                </button>
+                <button type="button" class="btn-primary" id="exportExcelBtn">
+                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+                    <span>Export Excel (.xlsx)</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- STATS BAR -->
+        <div class="storage-stats-bar">
+            <div class="stat-box">
+                <span class="slabel">Total Treated Patients</span>
+                <strong class="sval" id="totalArchivedCount">0</strong>
+            </div>
+            <div class="stat-box">
+                <span class="slabel">Urgent Cases Treated</span>
+                <strong class="sval" id="urgentArchivedCount" style="color:var(--primary-red);">0</strong>
+            </div>
+            <div class="stat-box">
+                <span class="slabel">Non-Urgent Cases Treated</span>
+                <strong class="sval" id="nonUrgentArchivedCount">0</strong>
+            </div>
+        </div>
+
+        <!-- TOOLBAR -->
+        <div class="storage-toolbar">
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="storageSearch" placeholder="Search archive by patient name, tracking ID, phone number...">
+                <button id="clearSearchBtn" class="clear-search-btn" style="display:none;">&times;</button>
+            </div>
+
+            <div class="filters-wrapper">
+                <div class="custom-select" id="filterUrgencyWrapper">
+                    <div class="cs-toggle" data-value="">
+                        <span class="cs-text">All Urgencies</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="">All Urgencies</li>
+                        <li class="cs-option" data-value="Urgent">Urgent</li>
+                        <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
+                    </ul>
+                </div>
+
+                <div class="custom-select" id="sortWrapper">
+                    <div class="cs-toggle" data-value="date_desc">
+                        <span class="cs-text">Sort: Newest First</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="date_desc">Newest First</li>
+                        <li class="cs-option" data-value="date_asc">Oldest First</li>
+                        <li class="cs-option" data-value="name_asc">Name (A-Z)</li>
+                        <li class="cs-option" data-value="name_desc">Name (Z-A)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ARCHIVED CARDS GRID -->
+        <div class="storage-card-grid" id="storageCardGrid">
+            <!-- Populated dynamically -->
+        </div>
+
+        <div id="noStorageData" class="no-data" style="display: none;">
+            No treated patient records found matching criteria in the storage archive.
+        </div>
+    </div>
+
+    <!-- PATIENT ARCHIVE DETAILS MODAL -->
+    <div class="modal-overlay" id="archiveDetailModal">
+        <div class="modal-box archive-detail-box">
+            <div class="modal-header">
+                <div>
+                    <h3 id="archiveModalTitle">Archived Patient Record</h3>
+                    <p class="modal-subtitle">Full medical history and treatment summary</p>
+                </div>
+                <button class="modal-close" id="closeArchiveModalBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="archiveModalBody">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="closeArchiveModalBtn2">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/notifications.js"></script>
+    <script src="../js/storage.js"></script>
+</body>
+</html>

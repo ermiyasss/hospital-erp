@@ -3,27 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patients</title>
+    <title>Patients Registry</title>
     <link rel="stylesheet" href="../css/variables.css">
     <link rel="stylesheet" href="../css/patients.css">
+    <link rel="stylesheet" href="../css/notifications.css">
 </head>
 <body>
     <div class="patients-page">
         <div class="patients-header">
             <div>
-                <h2>Patients Management</h2>
-                <p class="subtitle">View, filter, and manage patient records</p>
+                <h2>Patients Registry</h2>
+                <p class="subtitle">Record demographics, vital signs, urgency classification, and medical conditions</p>
             </div>
             <button class="btn-primary" id="addPatientBtn">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                Add Patient
+                <span>Add Patient</span>
             </button>
         </div>
 
         <div class="patients-toolbar">
             <div class="search-wrapper">
                 <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="patientSearch" placeholder="Search by name or tracking ID...">
+                <input type="text" id="patientSearch" placeholder="Search by patient name, phone, or tracking ID...">
             </div>
             <div class="filters-wrapper">
                 <div class="custom-select" id="filterUrgencyWrapper">
@@ -32,20 +33,19 @@
                         <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                     <ul class="cs-menu">
-                        <li class="cs-option" data-value="">All Urgencies</li>
-                        <li class="cs-option" data-value="High">High</li>
-                        <li class="cs-option" data-value="Medium">Medium</li>
-                        <li class="cs-option" data-value="Low">Low</li>
+                        <li class="cs-option selected" data-value="">All Urgencies</li>
+                        <li class="cs-option" data-value="Urgent">Urgent</li>
+                        <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
                     </ul>
                 </div>
 
                 <div class="custom-select" id="sortOrderWrapper">
                     <div class="cs-toggle" data-value="default">
-                        <span class="cs-text">Sort By: Default</span>
+                        <span class="cs-text">Sort: Default</span>
                         <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                     <ul class="cs-menu">
-                        <li class="cs-option" data-value="default">Default</li>
+                        <li class="cs-option selected" data-value="default">Default</li>
                         <li class="cs-option" data-value="age_asc">Age (Young to Old)</li>
                         <li class="cs-option" data-value="age_desc">Age (Old to Young)</li>
                         <li class="cs-option" data-value="alpha_asc">Name (A-Z)</li>
@@ -57,32 +57,21 @@
             </div>
         </div>
 
-        <div class="table-container">
-            <table class="patients-table">
-                <thead>
-                    <tr>
-                        <th>Tracking ID</th>
-                        <th>Name</th>
-                        <th>Age</th>
-                        <th>Phone</th>
-                        <th>Urgency</th>
-                        <th>Status</th>
-                        <th>Description</th>
-                        <th>Registered</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="patientsTableBody"></tbody>
-            </table>
-            <div id="noPatients" class="no-data" style="display: none;">No patients found.</div>
+        <!-- Card Grid (replaces table) -->
+        <div class="patients-card-grid" id="patientsCardGrid">
+            <!-- Populated dynamically -->
         </div>
+        <div id="noPatients" class="no-data" style="display: none;">No active patients found in registry.</div>
     </div>
 
     <!-- ADD PATIENT MODAL -->
     <div class="modal-overlay" id="patientModal">
         <div class="modal-box">
             <div class="modal-header">
-                <h3>Add New Patient</h3>
+                <div>
+                    <h3>Register New Patient</h3>
+                    <p class="modal-subtitle">Enter demographics, initial vital signs, and triage priority</p>
+                </div>
                 <button class="modal-close" id="closeModalBtn">&times;</button>
             </div>
             <div class="modal-body">
@@ -92,7 +81,7 @@
                         <input type="text" id="inputName" placeholder="e.g. John Doe">
                         <span class="form-error" id="errName"></span>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="max-width: 120px;">
                         <label>Age *</label>
                         <input type="number" id="inputAge" placeholder="e.g. 34">
                         <span class="form-error" id="errAge"></span>
@@ -101,8 +90,8 @@
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Phone (Ethiopian)</label>
-                        <input type="tel" id="inputPhone" placeholder="09XX XXX XXX">
+                        <label>Phone Number *</label>
+                        <input type="tel" id="inputPhone" inputmode="numeric" placeholder="09XX XXX XXX">
                         <span class="form-error" id="errPhone"></span>
                     </div>
                     <div class="form-group">
@@ -117,16 +106,28 @@
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Urgency</label>
+                        <label>Blood Pressure (mmHg)</label>
+                        <input type="text" id="inputBP" inputmode="numeric" placeholder="e.g. 120/80">
+                        <span class="form-hint">Systolic / Diastolic</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Heart Rate (bpm)</label>
+                        <input type="number" id="inputHR" placeholder="e.g. 72">
+                        <span class="form-hint">Beats per minute</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Triage Urgency *</label>
                         <div class="custom-select" id="inputUrgencyWrapper">
-                            <div class="cs-toggle" data-value="Medium">
-                                <span class="cs-text">Medium</span>
+                            <div class="cs-toggle" data-value="Non-Urgent">
+                                <span class="cs-text">Non-Urgent</span>
                                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                             <ul class="cs-menu">
-                                <li class="cs-option" data-value="High">High</li>
-                                <li class="cs-option" data-value="Medium">Medium</li>
-                                <li class="cs-option" data-value="Low">Low</li>
+                                <li class="cs-option" data-value="Urgent">Urgent</li>
+                                <li class="cs-option selected" data-value="Non-Urgent">Non-Urgent</li>
                             </ul>
                         </div>
                     </div>
@@ -138,44 +139,61 @@
                                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                             <ul class="cs-menu">
-                                <li class="cs-option" data-value="Pending">Pending</li>
+                                <li class="cs-option selected" data-value="Pending">Pending</li>
                                 <li class="cs-option" data-value="In Treatment">In Treatment</li>
-                                <li class="cs-option" data-value="Finished">Finished</li>
                             </ul>
                         </div>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Description *</label>
-                    <textarea id="inputDesc" rows="3" placeholder="Brief description of condition..."></textarea>
+                    <label>Chief Complaint / Description *</label>
+                    <textarea id="inputDesc" rows="3" placeholder="Describe symptoms, chief complaint, or reason for visit..."></textarea>
                     <span class="form-error" id="errDesc"></span>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-secondary" id="cancelModalBtn">Cancel</button>
-                <button class="btn-primary" id="savePatientBtn">Save Patient</button>
+                <button type="button" class="btn-secondary" id="cancelModalBtn">Cancel</button>
+                <button type="button" class="btn-primary" id="savePatientBtn">Save Patient Record</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW PATIENT DETAIL MODAL -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box detail-modal-box">
+            <div class="modal-header">
+                <h3 id="detailModalTitle">Patient Details</h3>
+                <button class="modal-close" id="closeDetailBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="detailModalBody">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="closeDetailBtn2">Close</button>
+                <button type="button" class="btn-danger" id="deleteFromDetailBtn">Delete Record</button>
             </div>
         </div>
     </div>
 
     <!-- DELETE CONFIRMATION MODAL -->
     <div class="modal-overlay" id="confirmModal">
-        <div class="modal-box" style="max-width: 400px;">
+        <div class="modal-box" style="max-width: 420px;">
             <div class="modal-header">
                 <h3>Confirm Deletion</h3>
                 <button class="modal-close" id="closeConfirmBtn">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="confirmText" style="color: var(--text-dark); font-size: 14px;">Are you sure?</p>
+                <p id="confirmText" style="color: var(--text-dark); font-size: 14px; margin: 0;">Are you sure you want to delete this patient record?</p>
             </div>
             <div class="modal-footer">
-                <button class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
-                <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
+                <button type="button" class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
+                <button type="button" class="btn-danger" id="confirmDeleteBtn">Delete Record</button>
             </div>
         </div>
     </div>
 
+    <script src="../js/notifications.js"></script>
     <script src="../js/patients.js"></script>
 </body>
 </html>

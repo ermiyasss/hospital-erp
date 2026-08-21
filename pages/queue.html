@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue Tracking</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/queue.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+</head>
+<body>
+    <div class="queue-page">
+        <div class="queue-header">
+            <div>
+                <h2>Patient Queue Tracking</h2>
+                <p class="subtitle">Real-time patient calling sequence for active and pending patients</p>
+            </div>
+            <div class="queue-summary-tag">
+                <span class="tag-label">Active Waiting:</span>
+                <strong class="tag-val" id="queueTotalCount">0</strong>
+            </div>
+        </div>
+
+        <div class="queue-toolbar">
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="queueSearch" placeholder="Search by Tracking ID, Name, or Phone...">
+                <button id="clearSearchBtn" class="clear-search-btn" style="display:none;">&times;</button>
+            </div>
+            <div class="filters-wrapper">
+                <div class="custom-select" id="filterUrgencyWrapper">
+                    <div class="cs-toggle" data-value="">
+                        <span class="cs-text">All Urgencies</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="">All Urgencies</li>
+                        <li class="cs-option" data-value="Urgent">Urgent</li>
+                        <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
+                    </ul>
+                </div>
+                <div class="custom-select order-select-highlight" id="queueOrderWrapper">
+                    <div class="cs-toggle" data-value="urgent_first">
+                        <span class="cs-text">Order: Urgent First</span>
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="urgent_first">Urgent First (Default)</li>
+                        <li class="cs-option" data-value="registry_order">Registry Order (FIFO)</li>
+                    </ul>
+                </div>
+                <button class="btn-icon-reset" id="resetFiltersBtn" title="Reset Filters">
+                    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="order-notice-bar" id="orderNoticeBar">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span id="orderNoticeText">Current Order: <strong>Urgent First</strong> (Urgent patients prioritized, then registration time).</span>
+        </div>
+
+        <!-- Card Grid (replaces table) -->
+        <div class="queue-card-grid" id="queueCardGrid">
+            <!-- Populated dynamically -->
+        </div>
+        <div id="noQueueData" class="no-data" style="display: none;">No active patients in queue matching criteria.</div>
+    </div>
+
+    <!-- QUEUE ORDER CHANGE WARNING MODAL -->
+    <div class="modal-overlay" id="orderWarningModal">
+        <div class="modal-box order-warning-box">
+            <div class="modal-header warning-header">
+                <div class="warning-title-wrap">
+                    <div class="warning-icon-badge">
+                        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <div>
+                        <h3>Confirm Queue Order Change</h3>
+                        <p class="modal-subtitle">Altering queue order affects patient calling sequence</p>
+                    </div>
+                </div>
+                <button class="modal-close" id="closeOrderWarningBtn">&times;</button>
+            </div>
+            <div class="modal-body warning-body">
+                <div class="warning-alert-card">
+                    <p><strong>Warning:</strong> You are about to change the active queue ordering rule to <strong id="newOrderModeText" style="color: var(--primary-red);">Registry Order</strong>.</p>
+                    <p>Changing the ordering policy re-sorts waiting patients in real-time.</p>
+                    <p style="margin-bottom: 0;">Are you sure you want to apply this change?</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="cancelOrderChangeBtn">Cancel</button>
+                <button type="button" class="btn-danger" id="confirmOrderChangeBtn">Yes, Change Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TICKET PRINT MODAL -->
+    <div class="modal-overlay" id="ticketModal">
+        <div class="modal-box ticket-modal-box">
+            <div class="modal-header">
+                <h3>Patient Queue Ticket</h3>
+                <button class="modal-close" id="closeTicketBtn">&times;</button>
+            </div>
+            <div class="modal-body ticket-modal-body">
+                <div class="ticket-paper" id="ticketPaper">
+                    <div class="ticket-header">
+                        <div class="ticket-logo"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="10"/></svg><span>Medi<span>Track</span> Hospital</span></div>
+                        <p class="ticket-sub">Patient Reception Voucher</p>
+                        <div class="ticket-divider"></div>
+                    </div>
+                    <div class="ticket-queue-pos-block"><span class="ticket-pos-label">QUEUE NUMBER</span><div class="ticket-pos-number" id="ticketQueueNumber">#01</div></div>
+                    <div class="ticket-token-block"><span class="ticket-token-label">TRACKING ID</span><div class="ticket-token-number" id="ticketTrackingId">TRK-10293847</div><span class="ticket-urgency-tag" id="ticketUrgencyTag">URGENCY: URGENT</span></div>
+                    <div class="ticket-meta-grid">
+                        <div class="meta-row"><span class="meta-key">Patient:</span><strong class="meta-val" id="ticketPatientName">John Doe</strong></div>
+                        <div class="meta-row"><span class="meta-key">Age:</span><span class="meta-val" id="ticketAge">34</span></div>
+                        <div class="meta-row"><span class="meta-key">Phone:</span><span class="meta-val" id="ticketPhone">0912 345 678</span></div>
+                        <div class="meta-row"><span class="meta-key">Status:</span><span class="meta-val" id="ticketStatus">Pending</span></div>
+                        <div class="meta-row"><span class="meta-key">Registered:</span><span class="meta-val" id="ticketRegistered">-</span></div>
+                        <div class="meta-row"><span class="meta-key">Description:</span><span class="meta-val" id="ticketDesc" style="text-align:right;max-width:160px;">-</span></div>
+                    </div>
+                    <div class="ticket-barcode-wrap">
+                        <svg class="ticket-barcode" viewBox="0 0 200 36" width="160" height="30"><rect x="10" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="16" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="22" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="30" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="35" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="42" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="47" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="56" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="62" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="67" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="74" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="82" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="87" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="93" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="102" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="107" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="114" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="120" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="128" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="133" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="140" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="149" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="154" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="162" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="168" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="173" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="180" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="189" y="0" width="2" height="36" fill="#1a1a1a"/></svg>
+                        <span class="barcode-num" id="ticketBarcodeText">TRK-10293847</span>
+                    </div>
+                    <div class="ticket-footer"><p>Please wait for your Tracking ID to be called.</p><p>MediTrack Hospital · Reception</p></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="closeTicketModalBtn">Close</button>
+                <button type="button" class="btn-primary" id="printTicketActionBtn"><svg viewBox="0 0 24 24" width="15" height="15"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print Slip</span></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/notifications.js"></script>
+    <script src="../js/queue.js"></script>
+</body>
+</html>

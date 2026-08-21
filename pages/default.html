@@ -6,46 +6,47 @@
     <title>Dashboard</title>
     <link rel="stylesheet" href="../css/variables.css">
     <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/notifications.css">
 </head>
 <body>
     <div class="dash-container">
         <div class="welcome-banner">
             <div>
                 <h1>Welcome back, Dr. Chen</h1>
-                <p>You have 14 appointments and 5 pending lab results today.</p>
+                <p>Real-time clinic dashboard synchronized with live patient queues and lab requests.</p>
             </div>
             <div class="banner-date">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <span>October 26, 2023</span>
+                <span id="dashBannerDate">Live Workstation</span>
             </div>
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card">
+            <div class="stat-card" id="cardTotalPatients" style="cursor: pointer;">
                 <div class="stat-icon bg-red"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
                 <div class="stat-info">
-                    <span class="stat-number">1,245</span>
+                    <span class="stat-number" id="statTotalPatients">4</span>
                     <span class="stat-label">Total Patients</span>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon bg-yellow"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+            <div class="stat-card" id="cardActiveQueue" style="cursor: pointer;">
+                <div class="stat-icon bg-yellow"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
                 <div class="stat-info">
-                    <span class="stat-number">14</span>
-                    <span class="stat-label">Appointments</span>
+                    <span class="stat-number" id="statActiveQueue">2</span>
+                    <span class="stat-label">In Queue</span>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon bg-green"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+            <div class="stat-card" id="cardInConsultation" style="cursor: pointer;">
+                <div class="stat-icon bg-green"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
                 <div class="stat-info">
-                    <span class="stat-number">8</span>
-                    <span class="stat-label">Admitted</span>
+                    <span class="stat-number" id="statInConsultation">1</span>
+                    <span class="stat-label">In Consultation</span>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon bg-blue"><svg viewBox="0 0 24 24"><path d="M12 2v8M12 10l-4 4h8l-4-4z"/><path d="M8 14v6a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-6"/></svg></div>
+            <div class="stat-card" id="cardPendingLabs" style="cursor: pointer;">
+                <div class="stat-icon bg-blue"><svg viewBox="0 0 24 24"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg></div>
                 <div class="stat-info">
-                    <span class="stat-number">5</span>
+                    <span class="stat-number" id="statPendingLabs">2</span>
                     <span class="stat-label">Pending Labs</span>
                 </div>
             </div>
@@ -54,57 +55,26 @@
         <div class="main-grid">
             <div class="card large-card">
                 <div class="card-header">
-                    <h3>Today's Patients</h3>
-                    <button class="btn-text">View All</button>
+                    <h3>Active Queue & Consultations</h3>
+                    <button class="btn-text" id="btnViewAllPatients">View Patients &rarr;</button>
                 </div>
-                <div class="list-group">
-                    <div class="list-item">
-                        <div class="list-avatar">JD</div>
-                        <div class="list-content">
-                            <span class="list-title">John Doe</span>
-                            <span class="list-subtitle">Severe chest pain</span>
-                        </div>
-                        <span class="badge status-treatment">10:30 AM</span>
-                    </div>
-                    <div class="list-item">
-                        <div class="list-avatar">AS</div>
-                        <div class="list-content">
-                            <span class="list-title">Alice Smith</span>
-                            <span class="list-subtitle">Fever and cough</span>
-                        </div>
-                        <span class="badge status-pending">11:15 AM</span>
-                    </div>
-                    <div class="list-item">
-                        <div class="list-avatar">BJ</div>
-                        <div class="list-content">
-                            <span class="list-title">Bob Johnson</span>
-                            <span class="list-subtitle">Checkup</span>
-                        </div>
-                        <span class="badge status-finished">12:00 PM</span>
-                    </div>
-                    <div class="list-item">
-                        <div class="list-avatar">CB</div>
-                        <div class="list-content">
-                            <span class="list-title">Charlie Brown</span>
-                            <span class="list-subtitle">Fractured arm</span>
-                        </div>
-                        <span class="badge status-pending">1:45 PM</span>
-                    </div>
+                <div class="list-group" id="dashPatientsList">
+                    <!-- Dynamic live patients -->
                 </div>
             </div>
 
             <div class="card">
                 <div class="card-header">
-                    <h3>Pinned Notes</h3>
+                    <h3>Pinned Clinical Notes</h3>
                 </div>
                 <div class="list-group">
                     <div class="note-item">
                         <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                        <p>Restock Amoxicillin in Pharmacy.</p>
+                        <p>Restock Amoxicillin 500mg capsules in Pharmacy.</p>
                     </div>
                     <div class="note-item">
-                        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                        <p>Generator maintenance at 3 PM.</p>
+                        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                        <p>Emergency generator load test at 3:00 PM today.</p>
                     </div>
                 </div>
             </div>
@@ -112,19 +82,87 @@
 
         <div class="card">
             <div class="card-header">
-                <h3>Announcements</h3>
+                <h3>Hospital Announcements</h3>
             </div>
             <div class="announcement-box">
-                <h4>System Maintenance</h4>
-                <p>The clinic ERP system will undergo scheduled maintenance this Friday from 2 AM to 4 AM. Please save your work.</p>
-                <span class="ann-time">Posted 2 hours ago</span>
-            </div>
-            <div class="announcement-box">
-                <h4>New MRI Machine</h4>
-                <p>The new MRI machine has been installed on the 3rd floor and is ready for use starting next Monday.</p>
-                <span class="ann-time">Posted Yesterday</span>
+                <h4>Cardiology Wing Expansion</h4>
+                <p>New digital ECG and Troponin rapid analyzers have been deployed to the 2nd floor laboratory.</p>
+                <span class="ann-time">Broadcasted Today</span>
             </div>
         </div>
     </div>
+
+    <script src="../js/notifications.js"></script>
+    <script>
+        function loadDashboardData() {
+            var pRaw = localStorage.getItem('clinic_patients_data');
+            var lRaw = localStorage.getItem('clinic_lab_requests');
+            var patients = pRaw ? JSON.parse(pRaw) : [];
+            var labs = lRaw ? JSON.parse(lRaw) : [];
+
+            var total = patients.length;
+            var inQueue = patients.filter(function(p) { return p.status === 'Pending'; }).length;
+            var inTreatment = patients.filter(function(p) { return p.status === 'In Treatment'; }).length;
+            var pendingLabs = labs.filter(function(l) { return l.status !== 'Completed'; }).length;
+
+            document.getElementById('statTotalPatients').textContent = total;
+            document.getElementById('statActiveQueue').textContent = inQueue;
+            document.getElementById('statInConsultation').textContent = inTreatment;
+            document.getElementById('statPendingLabs').textContent = pendingLabs;
+
+            var listContainer = document.getElementById('dashPatientsList');
+            if (listContainer) {
+                if (patients.length === 0) {
+                    listContainer.innerHTML = '<div style="padding:16px; color:var(--gray-muted); font-size:13px;">No patient records found.</div>';
+                } else {
+                    listContainer.innerHTML = patients.slice(0, 4).map(function(p) {
+                        var initials = p.name ? p.name.split(' ').map(function(n){return n[0];}).join('').toUpperCase() : 'PT';
+                        var badgeClass = p.status === 'In Treatment' ? 'status-treatment' : (p.status === 'Finished' ? 'status-finished' : 'status-pending');
+                        return '<div class="list-item" style="cursor:pointer;" onclick="selectPatientAndTrack(' + p.id + ')">' +
+                            '<div class="list-avatar">' + initials + '</div>' +
+                            '<div class="list-content">' +
+                                '<span class="list-title">' + p.name + ' (' + p.trackingId + ')</span>' +
+                                '<span class="list-subtitle">' + (p.description || 'Clinical Consultation') + '</span>' +
+                            '</div>' +
+                            '<span class="badge ' + badgeClass + '">' + p.status + '</span>' +
+                        '</div>';
+                    }).join('');
+                }
+            }
+        }
+
+        window.selectPatientAndTrack = function(id) {
+            sessionStorage.setItem('selected_tracking_patient_id', id);
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ action: 'navigate', target: 'pages/track.html', title: 'Tracking' }, '*');
+            } else {
+                window.location.href = 'track.html';
+            }
+        };
+
+        document.getElementById('btnViewAllPatients').addEventListener('click', function() {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ action: 'navigate', target: 'pages/patients.html', title: 'Patients' }, '*');
+            }
+        });
+        document.getElementById('cardActiveQueue').addEventListener('click', function() {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ action: 'navigate', target: 'pages/queue.html', title: 'Queue' }, '*');
+            }
+        });
+        document.getElementById('cardInConsultation').addEventListener('click', function() {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ action: 'navigate', target: 'pages/track.html', title: 'Tracking' }, '*');
+            }
+        });
+        document.getElementById('cardPendingLabs').addEventListener('click', function() {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ action: 'navigate', target: 'pages/laboratory.html', title: 'Laboratory' }, '*');
+            }
+        });
+
+        loadDashboardData();
+        window.addEventListener('storage', loadDashboardData);
+    </script>
 </body>
 </html>

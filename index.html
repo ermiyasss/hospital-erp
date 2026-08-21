@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hospital ERP - Login</title>
+    <title>MediTrack ERP - Login</title>
     <link rel="stylesheet" href="css/variables.css" />
     <link rel="stylesheet" href="css/login.css" />
     <link rel="stylesheet" href="css/common.css" />
+    <link rel="stylesheet" href="css/notifications.css" />
 </head>
 <body>
 
@@ -21,13 +22,13 @@
                         <circle cx="32" cy="32" r="24" stroke="var(--white)" stroke-width="3" fill="none" opacity="0.3" />
                     </svg>
                 </div>
-                <h1>Template <span>ERP</span></h1>
-                <p>Employee Portal</p>
+                <h1>Medi<span>Track</span></h1>
+                <p>Hospital Clinical ERP & Patient Management</p>
             </div>
 
-            <form>
+            <form id="loginForm">
                 <div class="form-group">
-                    <label for="employeeId">Employee ID</label>
+                    <label for="employeeId">Employee ID / Email</label>
                     <div class="input-wrap">
                         <span class="input-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -35,7 +36,7 @@
                                 <circle cx="12" cy="7" r="4" />
                             </svg>
                         </span>
-                        <input type="text" id="employeeId" placeholder="Enter your employee ID" required />
+                        <input type="text" id="employeeId" value="EMP-10492" placeholder="e.g. EMP-10492 or doctor@meditrack.org" required />
                     </div>
                 </div>
 
@@ -48,31 +49,79 @@
                                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
                         </span>
-                        <input type="password" id="password" placeholder="Enter your password" required />
+                        <input type="password" id="password" value="••••••••••••" placeholder="Enter your password" required />
                     </div>
                 </div>
 
                 <div class="form-options">
                     <label class="remember-me">
-                        <input type="checkbox" />
+                        <input type="checkbox" checked />
                         <span class="checkmark"></span>
-                        Keep me signed in on this device.
+                        Keep me signed in on this workstation.
                     </label>
                 </div>
 
-                <button type="submit" class="login-btn">Sign In</button>
+                <button type="submit" class="login-btn" id="loginSubmitBtn">Sign In to Workstation</button>
             </form>
 
             <div class="forgot-section">
                 <p>Can't access your account?</p>
-                <a href="#" class="notify-btn">Notify Admin</a>
+                <a href="#" class="notify-btn" id="notifyAdminBtn">Notify IT Administrator</a>
             </div>
 
             <div class="login-footer">
-                <p>Secure access · Hospital ERP v2.4</p>
+                <p>Secure HIPAA & HL7 Compliant Access · MediTrack ERP v2.4</p>
             </div>
         </div>
     </div>
 
+    <script src="js/notifications.js"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var empId = document.getElementById('employeeId').value.trim() || 'Dr. Sarah Chen';
+            sessionStorage.setItem('meditrack_logged_in', 'true');
+            sessionStorage.setItem('meditrack_user', empId);
+            
+            var btn = document.getElementById('loginSubmitBtn');
+            btn.textContent = 'Signing in...';
+            btn.disabled = true;
+
+            setTimeout(function() {
+                window.location.href = 'dashboard.html';
+            }, 300);
+        });
+
+        document.getElementById('notifyAdminBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            var empId = document.getElementById('employeeId').value.trim() || 'EMP-10492';
+            var empName = prompt('Enter your full name or staff ID for the password reset request:', empId);
+            if (!empName) return;
+
+            try {
+                var rawReqs = localStorage.getItem('clinic_admin_requests');
+                var reqs = rawReqs ? JSON.parse(rawReqs) : [];
+                reqs.unshift({
+                    id: Date.now(),
+                    name: empName,
+                    message: 'Password reset and workstation unlock requested for account: ' + empId,
+                    time: new Date().toISOString(),
+                    status: 'Pending'
+                });
+                localStorage.setItem('clinic_admin_requests', JSON.stringify(reqs));
+            } catch (err) {}
+
+            if (window.MediTrackNotify) {
+                window.MediTrackNotify.push(
+                    'Password Reset Request Sent',
+                    'Your password reset ticket for ' + empName + ' has been dispatched to the Administrator.',
+                    'info',
+                    'Admin'
+                );
+            } else {
+                alert('Your password reset ticket for ' + empName + ' has been dispatched to the Administrator.');
+            }
+        });
+    </script>
 </body>
 </html>
