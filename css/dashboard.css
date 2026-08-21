@@ -1,8 +1,20 @@
+html, body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     padding: 24px 28px 40px;
     background: var(--gray-light);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: var(--text-dark);
+    margin: 0;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100vh;
+    display: block;
     animation: pageFadeIn 0.4s ease;
 }
 
@@ -15,6 +27,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .welcome-banner {

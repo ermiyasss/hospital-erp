@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Consultation & Patient Tracking</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/track.css">
+</head>
+<body>
+    <div class="track-page">
+
+        <!-- ====================================================================
+             VIEW 1: ACTIVE PATIENTS DIRECTORY / CARDS GRID
+             ==================================================================== -->
+        <div class="track-view" id="trackGridView">
+            <!-- Header & Controls -->
+            <div class="track-header">
+                <div>
+                    <h2>Doctor Consultation & Patient Tracking</h2>
+                    <p class="subtitle">Select a patient to begin or resume consultation. You can order tests and return to treat others while awaiting results.</p>
+                </div>
+                <div class="track-stats-pills">
+                    <div class="stat-pill">
+                        <span class="stat-pill-label">Active Waiting:</span>
+                        <strong class="stat-pill-val" id="gridActiveCount">0</strong>
+                    </div>
+                    <div class="stat-pill lab-awaiting-pill">
+                        <span class="stat-pill-label">Awaiting Labs:</span>
+                        <strong class="stat-pill-val" id="gridAwaitingLabsCount">0</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="track-toolbar">
+                <div class="search-wrapper">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="trackSearch" placeholder="Search by patient name, tracking ID, or symptoms...">
+                </div>
+
+                <div class="filters-wrapper">
+                    <!-- Status Filter -->
+                    <div class="custom-select" id="filterClinicalStatusWrapper">
+                        <div class="cs-toggle" data-value="">
+                            <span class="cs-text">All Clinical Statuses</span>
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="">All Clinical Statuses</li>
+                            <li class="cs-option" data-value="In Treatment">In Consultation</li>
+                            <li class="cs-option" data-value="Awaiting Labs">Awaiting Lab Report</li>
+                            <li class="cs-option" data-value="Lab Ready">Lab Results Ready!</li>
+                            <li class="cs-option" data-value="Pending">Waiting in Queue</li>
+                        </ul>
+                    </div>
+
+                    <!-- Urgency Filter -->
+                    <div class="custom-select" id="filterTrackUrgencyWrapper">
+                        <div class="cs-toggle" data-value="">
+                            <span class="cs-text">All Urgencies</span>
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="">All Urgencies</li>
+                            <li class="cs-option" data-value="Urgent">Urgent / STAT</li>
+                            <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
+                        </ul>
+                    </div>
+
+                    <!-- Queue Sort Order -->
+                    <div class="custom-select" id="trackSortOrderWrapper">
+                        <div class="cs-toggle" data-value="urgent_first">
+                            <span class="cs-text">Sort: Urgent First</span>
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="urgent_first">Urgent First (Default)</li>
+                            <li class="cs-option" data-value="fifo">Registry Order (FIFO)</li>
+                            <li class="cs-option" data-value="name_asc">Patient Name (A-Z)</li>
+                            <li class="cs-option" data-value="longest_wait">Longest Wait Time</li>
+                        </ul>
+                    </div>
+
+                    <button class="btn-icon-reset" id="resetTrackFiltersBtn" title="Reset Filters">
+                        <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Patient Cards Grid -->
+            <div class="patient-card-grid" id="trackPatientCardGrid">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div class="no-patient-state" id="noTrackPatientsState" style="display: none;">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                <h3>No Active Patients Found</h3>
+                <p>All queue consultations have been concluded, or no patients match the filter criteria.</p>
+                <button type="button" class="btn-secondary" id="btnGoToQueueFromGrid" style="margin-top: 8px;">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>View Reception Queue</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ====================================================================
+             VIEW 2: INDIVIDUAL CONSULTATION WORKSPACE
+             ==================================================================== -->
+        <div class="track-view" id="trackWorkspaceView" style="display: none;">
+            <!-- Top Navigation Bar -->
+            <div class="workspace-top-bar">
+                <div class="ws-top-left">
+                    <button type="button" class="btn-secondary btn-back-to-grid" id="btnBackToGrid">
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                        <span>&larr; Back to Patients Directory / Queue</span>
+                    </button>
+                    <div class="ws-current-patient-tag">
+                        <span class="tag-sub">Active Consultation:</span>
+                        <strong class="tag-name" id="topbarPatientName">John Doe</strong>
+                        <span class="tag-tid" id="topbarPatientTid">TRK-10293847</span>
+                    </div>
+                </div>
+
+                <div class="ws-top-right">
+                    <!-- Switch Patient Quick Selector -->
+                    <div class="custom-select quick-patient-switcher" id="wsPatientSwitcher">
+                        <div class="cs-toggle" data-value="">
+                            <span class="cs-text">Switch Patient...</span>
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <ul class="cs-menu" id="wsPatientSwitcherMenu">
+                            <!-- Populated dynamically -->
+                        </ul>
+                    </div>
+
+                    <div class="header-queue-pos-indicator">
+                        <span class="qpos-label">Position:</span>
+                        <strong class="qpos-val" id="queueOrderBadge">#01 in Queue</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Workspace 2-Column Grid -->
+            <div class="track-workspace">
+                <!-- LEFT COLUMN: PATIENT PROFILE, VITALS & HISTORY -->
+                <div class="patient-profile-panel">
+                    <!-- Identity Card -->
+                    <div class="card profile-card">
+                        <div class="profile-header-row">
+                            <div class="profile-avatar" id="patientAvatar">JD</div>
+                            <div class="profile-main-meta">
+                                <div class="profile-name-row">
+                                    <h3 id="patientName">John Doe</h3>
+                                    <span class="tracking-id-pill" id="patientTrackingId">TRK-10293847</span>
+                                </div>
+                                <div class="profile-badges-row">
+                                    <span class="badge urgency-urgent" id="patientUrgencyBadge">Urgent</span>
+                                    <span class="badge status-treatment" id="patientStatusBadge">In Consultation</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="profile-details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Age</span>
+                                <strong class="detail-value" id="patientAge">34 yrs</strong>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Phone</span>
+                                <strong class="detail-value" id="patientPhone">0912 345 678</strong>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Registered</span>
+                                <strong class="detail-value" id="patientRegistered">Oct 24, 2023</strong>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">BMI</span>
+                                <strong class="detail-value" id="patientBMI">22.9 (Normal)</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vital Signs Card -->
+                    <div class="card vitals-card">
+                        <div class="card-title-bar">
+                            <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                            <h4>Vital Signs & Measurements</h4>
+                        </div>
+                        <div class="vitals-grid">
+                            <div class="vital-box">
+                                <span class="vital-label">Blood Pressure</span>
+                                <span class="vital-num" id="patientBP">135/88 <small>mmHg</small></span>
+                            </div>
+                            <div class="vital-box">
+                                <span class="vital-label">Heart Rate</span>
+                                <span class="vital-num" id="patientHR">82 <small>bpm</small></span>
+                            </div>
+                            <div class="vital-box">
+                                <span class="vital-label">Height</span>
+                                <span class="vital-num" id="patientHeight">175 <small>cm</small></span>
+                            </div>
+                            <div class="vital-box">
+                                <span class="vital-label">Weight</span>
+                                <span class="vital-num" id="patientWeight">70 <small>kg</small></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chief Complaint -->
+                    <div class="card complaint-card">
+                        <div class="card-title-bar">
+                            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            <h4>Chief Complaint & Symptoms</h4>
+                        </div>
+                        <div class="complaint-body" id="patientDescription">
+                            Severe acute chest pain radiating to left shoulder and arm. Undergoing evaluation.
+                        </div>
+                    </div>
+
+                    <!-- Consultation Timeline -->
+                    <div class="card timeline-card">
+                        <div class="card-title-bar">
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <h4>Consultation Timeline</h4>
+                        </div>
+                        <div class="timeline-track" id="patientTimeline">
+                            <div class="timeline-step step-done">
+                                <div class="step-dot"></div>
+                                <div class="step-content">
+                                    <span class="step-title">Patient Registered</span>
+                                    <span class="step-time" id="tlRegisteredTime">09:00 AM</span>
+                                </div>
+                            </div>
+                            <div class="timeline-step step-active" id="tlConsultationStep">
+                                <div class="step-dot"></div>
+                                <div class="step-content">
+                                    <span class="step-title">Physician Consultation</span>
+                                    <span class="step-time" id="tlConsultationTime">Active Workspace</span>
+                                </div>
+                            </div>
+                            <div class="timeline-step" id="tlFinishedStep">
+                                <div class="step-dot"></div>
+                                <div class="step-content">
+                                    <span class="step-title">Discharge / Archive</span>
+                                    <span class="step-time">Pending Conclusion</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: DOCTOR ACTIONS & ORDERS -->
+                <div class="doctor-workspace-panel">
+                    <div class="card workspace-card">
+                        <!-- Workspace Tabs -->
+                        <div class="workspace-tabs">
+                            <button type="button" class="tab-nav-btn active" data-tab="tabNotes">
+                                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                <span>Clinical Notes</span>
+                            </button>
+                            <button type="button" class="tab-nav-btn" data-tab="tabLabOrders">
+                                <svg viewBox="0 0 24 24"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg>
+                                <span>Lab Diagnostic Orders</span>
+                            </button>
+                            <button type="button" class="tab-nav-btn" data-tab="tabNurseOrders">
+                                <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                <span>Nursing Orders</span>
+                            </button>
+                            <button type="button" class="tab-nav-btn" data-tab="tabPharmacyOrders">
+                                <svg viewBox="0 0 24 24"><path d="M10.5 20.5l10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+                                <span>Prescriptions</span>
+                            </button>
+                        </div>
+
+                        <!-- TAB 1: CLINICAL NOTES -->
+                        <div class="tab-panel-content active" id="tabNotes">
+                            <div class="section-intro">
+                                <h4>Physician Examination & Clinical Diagnosis</h4>
+                                <p>Document physical examination findings, heart sounds, symptoms, and provisional diagnosis</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Provisional Diagnosis</label>
+                                <input type="text" id="inputDiagnosis" placeholder="e.g. Acute Coronary Syndrome / Costochondritis">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Clinical Notes & Physical Examination</label>
+                                <textarea id="inputClinicalNotes" rows="4" placeholder="Document physical examination findings, heart sounds, respiratory effort, treatment response, and diagnostic impressions..."></textarea>
+                            </div>
+
+                            <div class="form-actions-row">
+                                <button type="button" class="btn-primary" id="saveNoteBtn">
+                                    <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                    <span>Save Clinical Note</span>
+                                </button>
+                            </div>
+
+                            <!-- Previous Visit History from Storage Archive -->
+                            <div class="history-section" id="storageHistorySection" style="display: none;">
+                                <div class="history-section-header">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="#0284C7" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    <h5>Previous Visit Medical History (Matched by Phone Number)</h5>
+                                </div>
+                                <div class="history-list" id="storageHistoryList"></div>
+                            </div>
+
+                            <!-- Current Notes History Log -->
+                            <div class="history-section">
+                                <h5>Current Visit Clinical Notes</h5>
+                                <div class="history-list" id="clinicalNotesHistory"></div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: LAB DIAGNOSTIC ORDERS -->
+                        <div class="tab-panel-content" id="tabLabOrders">
+                            <div class="action-block">
+                                <div class="action-block-header">
+                                    <div class="action-icon-badge lab-badge">
+                                        <svg viewBox="0 0 24 24"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg>
+                                    </div>
+                                    <div>
+                                        <h4>Request Laboratory Diagnostic Tests</h4>
+                                        <p class="action-sub">You can dispatch tests to the lab and return to the patients directory to treat others while results are prepared</p>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Required Diagnostic Test(s) *</label>
+                                        <input type="text" id="inputLabTestName" placeholder="e.g. Complete Blood Count (CBC), Fasting Blood Glucose, Lipid Panel">
+                                    </div>
+                                    <div class="form-group" style="max-width: 140px;">
+                                        <label>Priority</label>
+                                        <div class="custom-select" id="labPriorityWrapper">
+                                            <div class="cs-toggle" data-value="Urgent">
+                                                <span class="cs-text">Urgent</span>
+                                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                                            </div>
+                                            <ul class="cs-menu">
+                                                <li class="cs-option selected" data-value="Urgent">Urgent</li>
+                                                <li class="cs-option" data-value="Routine">Routine</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Instructions to Lab Assistant *</label>
+                                    <textarea id="inputLabNote" rows="2" placeholder="e.g. Patient is fasting. Please expedite cardiac enzymes and CBC directly to doctor."></textarea>
+                                </div>
+
+                                <div class="form-actions-row">
+                                    <button type="button" class="btn-primary" id="sendLabOrderBtn">
+                                        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                        <span>Dispatch Request to Laboratory</span>
+                                    </button>
+                                </div>
+
+                                <!-- Dispatched Lab Orders List -->
+                                <div class="history-sub-section">
+                                    <h6>Dispatched Lab Orders & Results for this Patient</h6>
+                                    <div class="history-list" id="labOrdersHistory"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 3: NURSING ORDERS -->
+                        <div class="tab-panel-content" id="tabNurseOrders">
+                            <div class="action-block">
+                                <div class="action-block-header">
+                                    <div class="action-icon-badge nurse-badge">
+                                        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    </div>
+                                    <div>
+                                        <h4>Call Nurse & On-Duty Bedside Orders</h4>
+                                        <p class="action-sub">Dispatch instructions to the Nurse Station for vitals monitoring, IV infusion, or patient comfort</p>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Nursing Task / Order *</label>
+                                    <input type="text" id="inputNurseTask" placeholder="e.g. Administer 1g IV Paracetamol, Monitor BP every 15 minutes">
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Note / Remarks to Nurse *</label>
+                                    <textarea id="inputNurseNote" rows="2" placeholder="e.g. Infuse slowly over 15 mins. Notify doctor immediately if systolic BP drops below 100."></textarea>
+                                </div>
+
+                                <div class="form-actions-row">
+                                    <button type="button" class="btn-primary" id="sendNurseOrderBtn">
+                                        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                        <span>Dispatch Order to Nurse Station</span>
+                                    </button>
+                                </div>
+
+                                <div class="history-sub-section">
+                                    <h6>Dispatched Nursing Orders for this Patient</h6>
+                                    <div class="history-list" id="nurseOrdersHistory"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 4: PHARMACY PRESCRIPTIONS -->
+                        <div class="tab-panel-content" id="tabPharmacyOrders">
+                            <div class="action-block">
+                                <div class="action-block-header">
+                                    <div class="action-icon-badge rx-badge">
+                                        <svg viewBox="0 0 24 24"><path d="M10.5 20.5l10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+                                    </div>
+                                    <div>
+                                        <h4>Make Medication Prescription Order</h4>
+                                        <p class="action-sub">Prescribe medications and dosage instructions directly to the in-house pharmacy dispensary</p>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 2;">
+                                        <label>Medication / Drug Name *</label>
+                                        <input type="text" id="inputRxMedName" placeholder="e.g. Amoxicillin 500mg, Atorvastatin 20mg">
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label>Dosage *</label>
+                                        <input type="text" id="inputRxDosage" placeholder="e.g. 500mg, 1 tablet">
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Frequency</label>
+                                        <div class="custom-select" id="rxFreqWrapper">
+                                            <div class="cs-toggle" data-value="BID">
+                                                <span class="cs-text">BID (Twice Daily)</span>
+                                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                                            </div>
+                                            <ul class="cs-menu">
+                                                <li class="cs-option selected" data-value="BID">BID (Twice Daily)</li>
+                                                <li class="cs-option" data-value="TID">TID (Three times Daily)</li>
+                                                <li class="cs-option" data-value="QID">QID (Four times Daily)</li>
+                                                <li class="cs-option" data-value="QD">QD (Once Daily)</li>
+                                                <li class="cs-option" data-value="PRN">PRN (As Needed)</li>
+                                                <li class="cs-option" data-value="Stat">Stat (Immediately)</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Route</label>
+                                        <div class="custom-select" id="rxRouteWrapper">
+                                            <div class="cs-toggle" data-value="Oral">
+                                                <span class="cs-text">Oral (PO)</span>
+                                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                                            </div>
+                                            <ul class="cs-menu">
+                                                <li class="cs-option selected" data-value="Oral">Oral (PO)</li>
+                                                <li class="cs-option" data-value="IV">Intravenous (IV)</li>
+                                                <li class="cs-option" data-value="IM">Intramuscular (IM)</li>
+                                                <li class="cs-option" data-value="Topical">Topical</li>
+                                                <li class="cs-option" data-value="Inhalation">Inhalation</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Duration</label>
+                                        <input type="text" id="inputRxDuration" placeholder="e.g. 5 days, 1 month">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Special Instructions / Remarks</label>
+                                    <textarea id="inputRxInstructions" rows="2" placeholder="e.g. Take after meals with full glass of water. Avoid dairy products."></textarea>
+                                </div>
+
+                                <div class="form-actions-row">
+                                    <button type="button" class="btn-primary" id="sendPrescriptionBtn">
+                                        <svg viewBox="0 0 24 24"><path d="M10.5 20.5l10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+                                        <span>Dispatch Order to Pharmacy</span>
+                                    </button>
+                                </div>
+
+                                <div class="history-sub-section">
+                                    <h6>Dispatched Pharmacy Prescriptions for this Patient</h6>
+                                    <div class="history-list" id="prescriptionOrdersHistory"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CLINICAL STATUS ACTIONS BAR -->
+                    <div class="clinical-status-bar">
+                        <div class="status-bar-info">
+                            <span class="bar-label">Current Status:</span>
+                            <strong class="bar-current-status" id="barStatusText">In Consultation</strong>
+                        </div>
+                        <div class="status-bar-actions">
+                            <button type="button" class="btn-status-action btn-stat-finish" id="btnSetFinished">
+                                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                <span>Mark Finished & Archive</span>
+                            </button>
+                            <button type="button" class="btn-primary btn-next-patient" id="btnNextPatient">
+                                <span>Next Patient in Queue</span>
+                                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="../js/notifications.js"></script>
+    <script src="../js/track.js"></script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff & User Management - MediTrack ERP</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/staff.css">
+</head>
+<body>
+    <div class="staff-page">
+        <!-- Header -->
+        <div class="staff-header">
+            <div>
+                <h2>Staff & User Management</h2>
+                <p class="subtitle">Manage hospital personnel accounts, role assignments, security credentials, and password reset requests</p>
+            </div>
+            <button type="button" class="btn-primary" id="btnAddMember">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                <span>Add New Staff Member</span>
+            </button>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="staff-tabs-bar">
+            <button type="button" class="staff-tab-btn active" data-tab="directory">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Staff Directory</span>
+                <span class="staff-tab-count" id="tabDirectoryCount">0</span>
+            </button>
+            <button type="button" class="staff-tab-btn" data-tab="security">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>My Account & Security</span>
+            </button>
+            <button type="button" class="staff-tab-btn" data-tab="requests">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span>Password Reset Inbox</span>
+                <span class="staff-tab-count request-count" id="tabRequestsCount">0</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: STAFF DIRECTORY -->
+        <div class="staff-tab-panel active" id="panelDirectory">
+            <div class="staff-toolbar">
+                <div class="search-wrapper">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="staffSearch" placeholder="Search by name, username, email, or role...">
+                </div>
+                <div class="filters-wrapper">
+                    <div class="custom-select" id="filterRoleWrapper">
+                        <div class="cs-toggle" data-value="">
+                            <span class="cs-text">All Roles</span>
+                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="">All Roles</li>
+                            <li class="cs-option" data-value="Admin">Administrator</li>
+                            <li class="cs-option" data-value="Doctor">Doctor / Physician</li>
+                            <li class="cs-option" data-value="Nurse">Nurse</li>
+                            <li class="cs-option" data-value="Laboratory">Laboratory Technician</li>
+                            <li class="cs-option" data-value="Pharmacy">Pharmacist</li>
+                            <li class="cs-option" data-value="Registry">Registry / Reception</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="staff-card-grid" id="staffCardGrid">
+                <!-- Populated dynamically -->
+            </div>
+            <div id="noStaffData" class="no-data" style="display: none;">No staff members match the filter criteria.</div>
+        </div>
+
+        <!-- TAB 2: MY ACCOUNT & SECURITY -->
+        <div class="staff-tab-panel" id="panelSecurity">
+            <div class="security-section">
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="#B91C1C" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <div>
+                            <h3>Change Admin Password</h3>
+                            <p>Update your administrator login credentials for MediTrack ERP.</p>
+                        </div>
+                    </div>
+                    <div class="password-form">
+                        <div class="form-group">
+                            <label>Current Password</label>
+                            <input type="password" id="inputCurrentPw" placeholder="Enter current password">
+                        </div>
+                        <div class="form-group">
+                            <label>New Password</label>
+                            <input type="password" id="inputNewPw" placeholder="Enter new password (min 6 characters)">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirm New Password</label>
+                            <input type="password" id="inputConfirmPw" placeholder="Re-enter new password">
+                        </div>
+                        <div class="form-actions-row">
+                            <button type="button" class="btn-primary" id="btnChangePw">
+                                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <span>Update Password</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="#0284C7" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <div>
+                            <h3>My Profile</h3>
+                            <p>Currently logged in as the system administrator.</p>
+                        </div>
+                    </div>
+                    <div class="my-profile-grid">
+                        <div class="profile-field">
+                            <span class="pf-label">Full Name</span>
+                            <strong class="pf-value">Dr. Sarah Chen</strong>
+                        </div>
+                        <div class="profile-field">
+                            <span class="pf-label">Username</span>
+                            <strong class="pf-value">admin</strong>
+                        </div>
+                        <div class="profile-field">
+                            <span class="pf-label">Role</span>
+                            <strong class="pf-value" style="color:#B91C1C;">Administrator</strong>
+                        </div>
+                        <div class="profile-field">
+                            <span class="pf-label">Email</span>
+                            <strong class="pf-value">admin@meditrack.hospital</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: PASSWORD RESET REQUESTS INBOX -->
+        <div class="staff-tab-panel" id="panelRequests">
+            <div class="requests-list" id="requestsList">
+                <!-- Populated dynamically -->
+            </div>
+            <div id="noRequestsData" class="no-data" style="display: none;">No pending password reset requests from staff members.</div>
+        </div>
+    </div>
+
+    <!-- ====================================================================
+         ADD MEMBER MODAL
+         ==================================================================== -->
+    <div class="modal-overlay" id="addMemberModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h3>Add New Staff Member</h3>
+                    <p class="modal-subtitle">Register a new hospital employee with role-based ERP access</p>
+                </div>
+                <button class="modal-close" id="closeAddModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" id="inputStaffName" placeholder="e.g. Dr. Abebe Kebede">
+                    </div>
+                    <div class="form-group">
+                        <label>Username *</label>
+                        <input type="text" id="inputStaffUsername" placeholder="e.g. abebe.k">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email Address *</label>
+                        <input type="email" id="inputStaffEmail" placeholder="e.g. abebe@meditrack.hospital">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <input type="text" id="inputStaffPhone" placeholder="e.g. 0912 345 678">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Assigned Role *</label>
+                        <div class="custom-select" id="inputRoleWrapper">
+                            <div class="cs-toggle" data-value="Doctor">
+                                <span class="cs-text">Doctor / Physician</span>
+                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <ul class="cs-menu">
+                                <li class="cs-option" data-value="Admin">Administrator</li>
+                                <li class="cs-option selected" data-value="Doctor">Doctor / Physician</li>
+                                <li class="cs-option" data-value="Nurse">Nurse</li>
+                                <li class="cs-option" data-value="Laboratory">Laboratory Technician</li>
+                                <li class="cs-option" data-value="Pharmacy">Pharmacist</li>
+                                <li class="cs-option" data-value="Registry">Registry / Reception</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Department</label>
+                        <input type="text" id="inputStaffDept" placeholder="e.g. Internal Medicine, Pathology">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Initial Password *</label>
+                        <input type="password" id="inputStaffPassword" placeholder="Temporary login password">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="cancelAddMemberBtn">Cancel</button>
+                <button type="button" class="btn-primary" id="saveNewMemberBtn">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    <span>Register Staff Member</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/notifications.js"></script>
+    <script src="../js/staff.js"></script>
+</body>
+</html>
