@@ -1,907 +1,1521 @@
-/**
- * MediTrack Hospital ERP - Clinical Tracking & Consultation Logic (Dual-Mode)
- * 1. Patient Cards Grid Directory View (shows live lab statuses e.g. "Awaiting Lab Report", "Lab Results Ready!")
- * 2. Individual Consultation Workspace View (Diagnosis, Vitals, Lab Orders, Nurse Orders, Prescriptions)
- * Allows doctors to treat other patients while awaiting lab reports and switch effortlessly.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Consultation Desk
 
-(function() {
+   Design rules enforced here:
+
+   1. The clinician does not choose a patient. js/store.js owns the queue order
+      (triage priority, then arrival time) and this screen renders whatever sits
+      at position 1. There is no sort control, no filter and no patient picker.
+
+   2. Patients parked while diagnostics run are handled in a separate workbench
+      with two tabs: Awaiting Results and Completed Results.
+
+   3. Vitals are interpreted automatically (js/clinical.js) and abnormal or
+      critical observations are surfaced before the clinician has to look for
+      them.
+
+   4. Clinical Assist analyses the doctor's notes automatically and every
+      reading needs explicit doctor approval before it is attached.
+
+   5. Everything recorded here is stamped with the signed-in clinician's name
+      so the record always shows who did what.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_KEY_PATIENTS = 'clinic_patients_data';
-    var STORAGE_KEY_LAB = 'clinic_lab_requests';
-    var STORAGE_KEY_PRESCRIPTIONS = 'clinic_prescriptions_data';
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var clinical = window.MediClinical;
 
-    var allPatients = [];
-    var activeQueueList = [];
-    var currentPatient = null;
-    var currentViewMode = 'grid'; // 'grid' or 'workspace'
+    var STATUS = store.STATUS;
 
-    var searchTerm = '';
-    var clinicalStatusFilter = '';
-    var urgencyFilter = '';
-    var sortOrder = 'urgent_first';
+    /* ------------------------------------------------------------- state */
+    var patients = [];
+    var currentId = null;        /* patient currently in the workspace */
+    var awaitFilter = 'all';
 
-    /* --------------------------------------------------------------------------
-       Data Synchronization & Status Resolution
-       -------------------------------------------------------------------------- */
-    function loadAndOrderPatients() {
-        var data = localStorage.getItem(STORAGE_KEY_PATIENTS);
-        if (data) {
-            try {
-                allPatients = JSON.parse(data);
-                allPatients.forEach(function(p) {
-                    if (p.urgency === 'High') p.urgency = 'Urgent';
-                    else if (p.urgency === 'Medium' || p.urgency === 'Low') p.urgency = 'Non-Urgent';
-                    if (!p.bp) p.bp = '120/80';
-                    if (!p.hr) p.hr = 72;
-                    if (!p.clinicalNotes) p.clinicalNotes = [];
-                    if (!p.labOrders) p.labOrders = [];
-                    if (!p.nurseOrders) p.nurseOrders = [];
-                    if (!p.prescriptions) p.prescriptions = [];
-                });
-            } catch (e) {
-                allPatients = [];
-            }
-        } else {
-            allPatients = [];
-        }
-
-        // Active Queue: Non-Finished patients only
-        activeQueueList = allPatients.filter(function(p) {
-            return p.status === 'Pending' || p.status === 'In Treatment';
-        });
-
-        // Check if there's a requested patient via sessionStorage
-        var selectedId = sessionStorage.getItem('selected_tracking_patient_id');
-        if (selectedId) {
-            var target = activeQueueList.find(function(p) { return p.id === parseInt(selectedId, 10); });
-            if (target) {
-                currentPatient = target;
-                currentViewMode = 'workspace';
-            }
-            sessionStorage.removeItem('selected_tracking_patient_id');
-        }
-
-        applySorting();
-        renderView();
-    }
-
-    function getPatientLabStatus(patient) {
-        if (!patient.labOrders || patient.labOrders.length === 0) {
-            return patient.status === 'In Treatment' ? 'In Treatment' : 'Pending';
-        }
-        var hasRequested = patient.labOrders.some(function(o) { return o.status === 'Requested' || o.status === 'In Progress'; });
-        var hasCompleted = patient.labOrders.some(function(o) { return o.status === 'Completed'; });
-
-        if (hasCompleted && !hasRequested) return 'Lab Ready';
-        if (hasRequested) return 'Awaiting Labs';
-        return patient.status === 'In Treatment' ? 'In Treatment' : 'Pending';
-    }
-
-    function applySorting() {
-        if (sortOrder === 'urgent_first') {
-            activeQueueList.sort(function(a, b) {
-                var weightA = (a.urgency === 'Urgent') ? 2 : 1;
-                var weightB = (b.urgency === 'Urgent') ? 2 : 1;
-                var diff = weightB - weightA;
-                if (diff !== 0) return diff;
-                return new Date(a.registered) - new Date(b.registered);
-            });
-        } else if (sortOrder === 'fifo') {
-            activeQueueList.sort(function(a, b) {
-                return new Date(a.registered) - new Date(b.registered);
-            });
-        } else if (sortOrder === 'name_asc') {
-            activeQueueList.sort(function(a, b) {
-                return (a.name || '').localeCompare(b.name || '');
-            });
-        } else if (sortOrder === 'longest_wait') {
-            activeQueueList.sort(function(a, b) {
-                return new Date(a.registered) - new Date(b.registered);
-            });
-        }
-    }
-
-    function savePatients() {
-        localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(allPatients));
-    }
-
-    function saveLabRequestGlobally(labOrder) {
-        var existing = [];
+    /* The signed-in clinician owns everything they record here: notes,
+       lab orders, nursing orders and prescriptions are all stamped with
+       their name so the record always shows who did what. */
+    function currentStaffName() {
         try {
-            var raw = localStorage.getItem(STORAGE_KEY_LAB);
-            if (raw) existing = JSON.parse(raw);
-        } catch (e) { existing = []; }
-        existing.push(labOrder);
-        localStorage.setItem(STORAGE_KEY_LAB, JSON.stringify(existing));
+            var s = window.MediSession && window.MediSession.read();
+            if (s && s.name) return s.name;
+        } catch (e) {}
+        return 'Doctor';
     }
 
-    function savePrescriptionGlobally(rxOrder) {
-        var existing = [];
-        try {
-            var raw = localStorage.getItem(STORAGE_KEY_PRESCRIPTIONS);
-            if (raw) existing = JSON.parse(raw);
-        } catch (e) { existing = []; }
-        existing.push(rxOrder);
-        localStorage.setItem(STORAGE_KEY_PRESCRIPTIONS, JSON.stringify(existing));
+    /* ----------------------------------------------------------- helpers */
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value === null || value === undefined || value === '' ? '\u2014' : value;
     }
 
-    /* --------------------------------------------------------------------------
-       View Rendering (Grid vs Workspace)
-       -------------------------------------------------------------------------- */
-    function renderView() {
-        var gridView = document.getElementById('trackGridView');
-        var wsView = document.getElementById('trackWorkspaceView');
+    function urgencyClass(urgency) {
+        return 'urgency-' + String(store.normalizeUrgency(urgency)).toLowerCase();
+    }
 
-        if (currentViewMode === 'grid' || !currentPatient) {
-            if (gridView) gridView.style.display = 'flex';
-            if (wsView) wsView.style.display = 'none';
-            renderGridDirectory();
-        } else {
-            if (gridView) gridView.style.display = 'none';
-            if (wsView) wsView.style.display = 'flex';
+    function statusClass(status) {
+        switch (status) {
+            case STATUS.CONSULTING:        return 'status-consulting';
+            case STATUS.AWAITING:          return 'status-awaiting';
+            case STATUS.AWAITING_PAYMENT:  return 'status-awaiting-payment';
+            case STATUS.FINISHED:          return 'status-finished';
+            default:                       return 'status-pending';
+        }
+    }
+
+    /* Every write goes through here so all open pages refresh together. */
+    function persist() {
+        store.writePatients(patients);
+    }
+
+    function currentPatient() {
+        return currentId === null ? null : store.findPatient(patients, currentId);
+    }
+
+    function appendGlobal(key, record) {
+        var list = store.read(key);
+        list.push(record);
+        store.write(key, list);
+    }
+
+    /* ==================================================================
+        Load
+        ================================================================== */
+    function load(preserveView) {
+        patients = store.seedIfEmpty();
+        if (!patients.length) patients = store.readPatients();
+
+        /* A patient opened from another screen (dashboard, queue). */
+        var requested = store.sessionGet('selected_tracking_patient_id');
+        if (requested) {
+            store.sessionRemove('selected_tracking_patient_id');
+            var target = store.findPatient(patients, requested);
+            if (target && target.status !== STATUS.FINISHED) {
+                openWorkspace(target.id, true);
+                return;
+            }
+        }
+
+        if (currentId !== null && !currentPatient()) currentId = null;
+
+        if (currentId !== null && preserveView !== false) {
             renderWorkspace();
+        } else {
+            renderIntake();
         }
     }
 
-    function renderGridDirectory() {
-        var grid = document.getElementById('trackPatientCardGrid');
-        var emptyState = document.getElementById('noTrackPatientsState');
-        var activeCountEl = document.getElementById('gridActiveCount');
-        var awaitingLabsEl = document.getElementById('gridAwaitingLabsCount');
+    /* ==================================================================
+        View switching
+        ================================================================== */
+    function showIntake() {
+        byId('trackIntakeView').hidden = false;
+        byId('trackWorkspaceView').hidden = true;
+        currentId = null;
+        renderIntake();
+    }
 
-        var awaitingCount = activeQueueList.filter(function(p) { return getPatientLabStatus(p) === 'Awaiting Labs'; }).length;
-        if (activeCountEl) activeCountEl.textContent = activeQueueList.length;
-        if (awaitingLabsEl) awaitingLabsEl.textContent = awaitingCount;
+    function showWorkspace() {
+        byId('trackIntakeView').hidden = true;
+        byId('trackWorkspaceView').hidden = false;
+    }
 
-        var filtered = activeQueueList.filter(function(p) {
-            var labStat = getPatientLabStatus(p);
-            var matchesStatus = !clinicalStatusFilter || labStat === clinicalStatusFilter;
-            var matchesUrg = !urgencyFilter || p.urgency === urgencyFilter;
-            var matchesSearch = true;
-            if (searchTerm) {
-                var q = searchTerm.toLowerCase();
-                matchesSearch = (p.name && p.name.toLowerCase().includes(q)) ||
-                                (p.trackingId && p.trackingId.toLowerCase().includes(q)) ||
-                                (p.description && p.description.toLowerCase().includes(q));
-            }
-            return matchesStatus && matchesUrg && matchesSearch;
+    /* ==================================================================
+        INTAKE - counters, next patient, workbench
+        ================================================================== */
+    function renderIntake() {
+        showIntakeCounters();
+        renderNextPatient();
+        renderWorkbench();
+    }
+
+    function showIntakeCounters() {
+        var queue = store.queueOrder(patients);
+        var awaiting = store.awaitingPatients(patients);
+
+        var ready = 0;
+        patients.forEach(function (p) {
+            if (store.unreviewedResults(p).length) ready++;
         });
 
-        if (!grid) return;
+        setText('pillWaiting', queue.length);
+        setText('pillAwaiting', awaiting.length);
 
-        if (filtered.length === 0) {
-            grid.innerHTML = '';
-            if (emptyState) emptyState.style.display = 'flex';
+        var readyWrap = byId('pillReadyWrap');
+        if (readyWrap) {
+            readyWrap.hidden = ready === 0;
+            setText('pillReady', ready);
+        }
+    }
+
+    /* ------------------------------------------------- next patient card */
+    function renderNextPatient() {
+        var host = byId('nextPatientHost');
+        if (!host) return;
+
+        /* If someone is mid-consultation they are the active patient, not the
+           next queue entry: resuming must take priority over calling. */
+        var consulting = store.consultingPatients(patients);
+        if (consulting.length) {
+            host.innerHTML = nextCardHtml(consulting[0], 0, true);
+            bindNextCard(host);
             return;
         }
 
-        if (emptyState) emptyState.style.display = 'none';
+        var queue = store.queueOrder(patients);
+        if (!queue.length) {
+            host.innerHTML =
+                '<div class="np-empty">' +
+                    '<span class="np-empty-icon">' + icon('check-circle', 22) + '</span>' +
+                    '<div class="np-empty-text">' +
+                        '<h3>No patients waiting</h3>' +
+                        '<p>The triage queue is clear. New arrivals appear here automatically once reception completes registration.</p>' +
+                    '</div>' +
+                '</div>';
+            return;
+        }
 
-        grid.innerHTML = filtered.map(function(p, idx) {
-            var initials = p.name ? p.name.split(' ').map(function(n) { return n[0]; }).join('').toUpperCase() : 'PT';
-            var labStat = getPatientLabStatus(p);
-            var cardModifier = '';
-            var pillHtml = '';
+        host.innerHTML = nextCardHtml(queue[0], 1, false);
+        bindNextCard(host);
+    }
 
-            if (labStat === 'Awaiting Labs') {
-                cardModifier = ' pcard-awaiting-lab';
-                pillHtml = '<span class="status-pill status-pill-awaiting-lab">⏳ Awaiting Lab Report</span>';
-            } else if (labStat === 'Lab Ready') {
-                cardModifier = ' pcard-lab-ready';
-                pillHtml = '<span class="status-pill status-pill-lab-ready">✓ Lab Results Ready!</span>';
-            } else if (p.status === 'In Treatment') {
-                pillHtml = '<span class="status-pill status-pill-consulting">● In Consultation</span>';
-            } else {
-                pillHtml = '<span class="status-pill status-pill-pending">Waiting in Queue</span>';
-            }
+    function nextCardHtml(p, position, resuming) {
+        var urgency = store.normalizeUrgency(p.urgency);
+        var assessment = clinical.assess(p.vitals);
+        var frame = urgency === 'Emergency' ? ' is-emergency' : (urgency === 'Urgent' ? ' is-urgent' : '');
 
-            var urgClass = p.urgency === 'Urgent' ? 'urgency-urgent' : 'urgency-nonurgent';
-            var labCount = (p.labOrders || []).length;
-            var nurseCount = (p.nurseOrders || []).length;
-            var rxCount = (p.prescriptions || []).length;
+        var vitalCells = assessment.results.map(function (r) {
+            var unit = r.key === 'bloodPressure' ? 'mmHg' : r.unit;
+            return '<div class="np-vital level-' + r.level + '">' +
+                '<span class="np-vital-label">' + esc(r.label) + '</span>' +
+                '<span class="np-vital-value">' + esc(r.display) +
+                    (unit ? '<small>' + esc(unit) + '</small>' : '') +
+                '</span>' +
+                '<span class="np-vital-flag">' + esc(r.levelLabel) + '</span>' +
+            '</div>';
+        }).join('');
 
-            return '<div class="track-pcard' + cardModifier + '" data-id="' + p.id + '">' +
-                '<div class="pcard-head">' +
-                    '<div class="pcard-user-meta">' +
-                        '<div class="pcard-avatar">' + initials + '</div>' +
-                        '<div class="pcard-title-block">' +
-                            '<h4 class="pcard-name">' + p.name + '</h4>' +
-                            '<span class="pcard-sub">' + p.age + ' yrs · <span class="tid">' + p.trackingId + '</span></span>' +
+        if (!vitalCells) {
+            vitalCells = '<div class="np-vital level-normal">' +
+                '<span class="np-vital-label">Vitals</span>' +
+                '<span class="np-vital-value">\u2014</span>' +
+                '<span class="np-vital-flag">Not recorded</span>' +
+            '</div>';
+        }
+
+        var ageSex = [];
+        if (p.age !== null) ageSex.push(p.age + ' yrs');
+        if (p.sex) ageSex.push(esc(p.sex));
+
+        var assignedDoctor = lastDoctorOf(p);
+
+        return '<article class="np-card' + frame + '" data-patient="' + esc(p.id) + '">' +
+            '<div class="np-main">' +
+                '<header class="np-head">' +
+                    '<div class="np-position">' +
+                        '<span class="np-pos-label">' + (resuming ? 'Active' : 'Next') + '</span>' +
+                        '<span class="np-pos-value">' + (resuming ? '\u2014' : String(position).padStart(2, '0')) + '</span>' +
+                    '</div>' +
+                    '<div class="np-identity">' +
+                        '<div class="np-name-row">' +
+                            '<h3>' + esc(p.name) + '</h3>' +
+                            '<span class="tracking-id-pill">' + esc(p.trackingId) + '</span>' +
+                        '</div>' +
+                        '<div class="np-meta-row">' +
+                            (ageSex.length ? '<span>' + ageSex.join(' \u00b7 ') + '</span><span class="sep">|</span>' : '') +
+                            '<span>' + (p.phone ? esc(p.phone) : 'No contact number') + '</span>' +
+                            '<span class="sep">|</span>' +
+                            '<span>Registered ' + esc(store.formatTime(p.registered)) + '</span>' +
+                        '</div>' +
+                        '<div class="np-badges">' +
+                            '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
+                            '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                            (assignedDoctor
+                                ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' ' +
+                                      esc(assignedDoctor) + '</span>'
+                                : '') +
                         '</div>' +
                     '</div>' +
-                    '<div class="pcard-badges">' +
-                        pillHtml +
-                        '<span class="urgency-badge ' + urgClass + '">' + p.urgency + '</span>' +
-                    '</div>' +
+                '</header>' +
+
+                '<div class="np-complaint">' +
+                    '<span class="np-complaint-label">Presenting complaint</span>' +
+                    '<p>' + esc(p.description || 'No complaint recorded at triage.') + '</p>' +
                 '</div>' +
 
-                '<div class="pcard-vitals-row">' +
-                    '<div class="pcard-vital"><span class="pcard-vital-lbl">BP</span><span class="pcard-vital-val">' + (p.bp || '120/80') + '</span></div>' +
-                    '<div class="pcard-vital"><span class="pcard-vital-lbl">HR</span><span class="pcard-vital-val">' + (p.hr || '72') + ' bpm</span></div>' +
-                    '<div class="pcard-vital"><span class="pcard-vital-lbl">Height</span><span class="pcard-vital-val">' + (p.height || '170') + ' cm</span></div>' +
-                    '<div class="pcard-vital"><span class="pcard-vital-lbl">Weight</span><span class="pcard-vital-val">' + (p.weight || '70') + ' kg</span></div>' +
+                '<div class="np-vitals">' + vitalCells + '</div>' +
+            '</div>' +
+
+            '<aside class="np-side">' +
+                '<div class="np-assess level-' + assessment.overall + '">' +
+                    '<span class="np-assess-top">' + icon('pulse', 13) + '<span>Automatic assessment</span></span>' +
+                    '<span class="np-assess-verdict">' + esc(assessment.overallLabel) + ' vitals</span>' +
+                    '<span class="np-assess-text">' + esc(assessment.summary) + '</span>' +
+                    (assessment.suggestedUrgency !== urgency
+                        ? '<span class="np-assess-text"><strong>Triage check:</strong> observations suggest ' +
+                          esc(assessment.suggestedUrgency) + ', recorded as ' + esc(urgency) + '.</span>'
+                        : '') +
                 '</div>' +
 
-                '<div class="pcard-complaint">' +
-                    '<strong>Complaint:</strong> ' + (p.description || 'Routine medical checkup.') +
+                '<div class="np-wait">' +
+                    '<span>' + (resuming ? 'In consultation for' : 'Waiting') + '</span>' +
+                    '<strong data-elapsed="' + esc(resuming ? (p.calledAt || p.registered) : p.registered) + '">' +
+                        esc(store.elapsed(resuming ? (p.calledAt || p.registered) : p.registered)) +
+                    '</strong>' +
                 '</div>' +
 
-                '<div class="pcard-footer">' +
-                    '<div class="pcard-order-indicators">' +
-                        (labCount > 0 ? '<span class="order-dot-tag tag-lab">' + labCount + ' Labs</span>' : '') +
-                        (nurseCount > 0 ? '<span class="order-dot-tag tag-nurse">' + nurseCount + ' Nurse</span>' : '') +
-                        (rxCount > 0 ? '<span class="order-dot-tag tag-rx">' + rxCount + ' Rx</span>' : '') +
-                    '</div>' +
-                    '<button type="button" class="btn-open-consultation" data-id="' + p.id + '">' +
-                        '<span>' + (labStat === 'Lab Ready' ? 'Review Lab Results' : (p.status === 'In Treatment' ? 'Resume Consultation' : 'Open Consultation')) + '</span>' +
-                        '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' +
+                '<div class="np-actions">' +
+                    '<button type="button" class="btn-primary" data-call="' + esc(p.id) + '">' +
+                        icon(resuming ? 'play' : 'user-check', 15) +
+                        '<span>' + (resuming ? 'Resume consultation' : 'Call patient in') + '</span>' +
                     '</button>' +
+                    '<span class="np-hint">' + (resuming
+                        ? 'This patient is already in consultation. Complete or park the visit before the next patient can be called.'
+                        : 'Calling marks the visit as in consultation under your name. The queue decides the order.') +
+                    '</span>' +
                 '</div>' +
-            '</div>';
+            '</aside>' +
+        '</article>';
+    }
+
+    /* Most recent clinician who acted on this record. */
+    function lastDoctorOf(p) {
+        var latest = null;
+        (p.clinicalNotes || []).forEach(function (n) {
+            if (n.doctor && (!latest || new Date(n.time) > new Date(latest.time))) latest = n;
+        });
+        [['labOrders'], ['nurseOrders'], ['prescriptions']].forEach(function (pair) {
+            (p[pair[0]] || []).forEach(function (o) {
+                if (o.doctor && (!latest || new Date(o.time) > new Date(latest.time))) latest = o;
+            });
+        });
+        return latest ? latest.doctor : null;
+    }
+
+    function bindNextCard(host) {
+        var btn = host.querySelector('[data-call]');
+        if (btn) {
+            btn.addEventListener('click', function () {
+                openWorkspace(btn.getAttribute('data-call'));
+            });
+        }
+    }
+
+    /* ==================================================================
+        WORKBENCH - awaiting results / completed results
+        ================================================================== */
+    function openOrdersOf(p) {
+        var out = [];
+        [['labOrders', 'lab'], ['nurseOrders', 'nurse'], ['prescriptions', 'pharmacy']].forEach(function (pair) {
+            (p[pair[0]] || []).forEach(function (o) {
+                if (store.isOrderOpen(o)) out.push({ kind: pair[1], order: o });
+            });
+        });
+        return out;
+    }
+
+    function closedOrdersOf(p) {
+        var out = [];
+        [['labOrders', 'lab'], ['nurseOrders', 'nurse'], ['prescriptions', 'pharmacy']].forEach(function (pair) {
+            (p[pair[0]] || []).forEach(function (o) {
+                if (!store.isOrderOpen(o)) out.push({ kind: pair[1], order: o });
+            });
+        });
+        return out;
+    }
+
+    var KIND_META = {
+        lab:      { icon: 'lab',    label: 'Laboratory' },
+        nurse:    { icon: 'nurse',  label: 'Nursing' },
+        pharmacy: { icon: 'pill',   label: 'Pharmacy' }
+    };
+
+    function orderTitle(entry) {
+        var o = entry.order;
+        if (entry.kind === 'lab') return o.test || 'Diagnostic test';
+        if (entry.kind === 'nurse') return o.task || 'Nursing task';
+        return (o.medication || 'Medication') + (o.dosage ? ' ' + o.dosage : '');
+    }
+
+    function orderLine(entry) {
+        var meta = KIND_META[entry.kind];
+        var flag = String(entry.order.flag || '').toLowerCase();
+        var flagCls = flag === 'critical' ? ' flag-critical' : (flag === 'abnormal' ? ' flag-abnormal' : '');
+        var owner = '';
+        if (entry.kind === 'lab' && entry.order.status !== 'Completed') owner = entry.order.doctor;
+        else if (entry.kind === 'lab') owner = entry.order.technician || entry.order.doctor;
+        else if (entry.kind === 'nurse' && entry.order.status === 'Completed') owner = entry.order.completedBy;
+        else owner = entry.order.doctor;
+
+        return '<div class="wb-order-line' + flagCls + '">' +
+            icon(meta.icon, 13) +
+            '<span class="wb-order-name">' + esc(orderTitle(entry)) + '</span>' +
+            (owner ? '<span class="wb-order-owner">' + icon('user', 11) + ' ' + esc(owner) + '</span>' : '') +
+            '<span class="tag tag-' + (entry.kind === 'pharmacy' ? 'rx' : entry.kind) + '">' +
+                esc(entry.order.status || meta.label) +
+            '</span>' +
+        '</div>';
+    }
+
+    function renderWorkbench() {
+        var awaiting = [];
+        var completed = [];
+
+        patients.forEach(function (p) {
+            if (p.status === STATUS.FINISHED) return;
+            var open = openOrdersOf(p);
+            var closed = closedOrdersOf(p);
+            if (open.length) awaiting.push({ patient: p, orders: open });
+            if (closed.length) {
+                completed.push({
+                    patient: p,
+                    orders: closed,
+                    unreviewed: closed.filter(function (e) { return e.kind === 'lab' && !e.order.reviewed; }).length
+                });
+            }
+        });
+
+        /* Unreviewed first, then the most recently released. */
+        completed.sort(function (a, b) { return b.unreviewed - a.unreviewed; });
+
+        setText('wbCountAwaiting', awaiting.length);
+        var completedCount = byId('wbCountCompleted');
+        if (completedCount) {
+            completedCount.textContent = completed.length;
+            var anyUnreviewed = completed.some(function (c) { return c.unreviewed > 0; });
+            completedCount.classList.toggle('count-alert', anyUnreviewed);
+        }
+
+        renderAwaitingList(awaiting);
+        renderCompletedList(completed);
+    }
+
+    function renderAwaitingList(rows) {
+        var host = byId('awaitingList');
+        if (!host) return;
+
+        var filtered = awaitFilter === 'all' ? rows : rows.filter(function (r) {
+            return r.orders.some(function (e) { return e.kind === awaitFilter; });
+        });
+
+        if (!filtered.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'hourglass',
+                title: 'Nothing awaiting results',
+                text: 'Patients parked for laboratory, nursing or pharmacy work appear here until the department closes the order.'
+            });
+            return;
+        }
+
+        host.innerHTML = filtered.map(function (r) {
+            var p = r.patient;
+            var shown = awaitFilter === 'all' ? r.orders : r.orders.filter(function (e) { return e.kind === awaitFilter; });
+            var doc = lastDoctorOf(p);
+            return '<article class="wb-item is-waiting">' +
+                '<header class="wb-item-head">' +
+                    '<span class="avatar-sq ' + urgencyClass(p.urgency) + '">' + esc(store.initials(p.name)) + '</span>' +
+                    '<div class="wb-item-identity">' +
+                        '<span class="wb-item-name">' + esc(p.name) + '</span>' +
+                        '<span class="wb-item-sub">' +
+                            '<span class="mono">' + esc(p.trackingId) + '</span>' +
+                            '<span class="badge ' + urgencyClass(p.urgency) + '">' + esc(store.normalizeUrgency(p.urgency)) + '</span>' +
+                        '</span>' +
+                    '</div>' +
+                '</header>' +
+                (doc ? '<div class="wb-item-doctor">' + icon('stethoscope', 12) + ' Under ' + esc(doc) + '</div>' : '') +
+                '<div class="wb-item-orders">' + shown.map(orderLine).join('') + '</div>' +
+                '<footer class="wb-item-foot">' +
+                    '<span class="wb-item-elapsed">' + icon('clock', 13) +
+                        '<span data-elapsed="' + esc(p.calledAt || p.registered) + '">' +
+                            esc(store.elapsed(p.calledAt || p.registered)) +
+                        '</span>' +
+                    '</span>' +
+                    '<button type="button" class="btn-secondary btn-sm" data-open="' + esc(p.id) + '">' +
+                        icon('eye', 14) + '<span>Open record</span>' +
+                    '</button>' +
+                '</footer>' +
+            '</article>';
         }).join('');
 
-        // Card Click Handler
-        grid.querySelectorAll('.track-pcard').forEach(function(card) {
-            card.addEventListener('click', function() {
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                openPatientConsultation(id);
+        bindOpenButtons(host);
+    }
+
+    function renderCompletedList(rows) {
+        var host = byId('completedList');
+        if (!host) return;
+
+        if (!rows.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'check-circle',
+                title: 'No completed results',
+                text: 'Released laboratory results and closed orders are listed here for review and sign-off.'
+            });
+            return;
+        }
+
+        host.innerHTML = rows.map(function (r) {
+            var p = r.patient;
+            var critical = r.orders.some(function (e) {
+                return String(e.order.flag || '').toLowerCase() === 'critical';
+            });
+            var frame = critical ? ' is-critical' : (r.unreviewed ? ' is-ready' : '');
+            var doc = lastDoctorOf(p);
+
+            return '<article class="wb-item' + frame + '">' +
+                '<header class="wb-item-head">' +
+                    '<span class="avatar-sq ' + urgencyClass(p.urgency) + '">' + esc(store.initials(p.name)) + '</span>' +
+                    '<div class="wb-item-identity">' +
+                        '<span class="wb-item-name">' + esc(p.name) + '</span>' +
+                        '<span class="wb-item-sub">' +
+                            '<span class="mono">' + esc(p.trackingId) + '</span>' +
+                            (r.unreviewed
+                                ? '<span class="badge status-ready">' + r.unreviewed + ' unreviewed</span>'
+                                : '<span class="badge status-finished">Reviewed</span>') +
+                        '</span>' +
+                    '</div>' +
+                '</header>' +
+                (doc ? '<div class="wb-item-doctor">' + icon('stethoscope', 12) + ' Under ' + esc(doc) + '</div>' : '') +
+                '<div class="wb-item-orders">' + r.orders.map(orderLine).join('') + '</div>' +
+                '<footer class="wb-item-foot">' +
+                    '<span class="wb-item-elapsed">' + icon('clock', 13) +
+                        '<span>' + esc(store.relativeTime(latestOrderTime(r.orders))) + '</span>' +
+                    '</span>' +
+                    '<button type="button" class="' + (r.unreviewed ? 'btn-primary' : 'btn-secondary') + ' btn-sm" data-open="' + esc(p.id) + '">' +
+                        icon(r.unreviewed ? 'file-text' : 'eye', 14) +
+                        '<span>' + (r.unreviewed ? 'Review results' : 'Open record') + '</span>' +
+                    '</button>' +
+                '</footer>' +
+            '</article>';
+        }).join('');
+
+        bindOpenButtons(host);
+    }
+
+    function latestOrderTime(entries) {
+        var latest = null;
+        entries.forEach(function (e) {
+            var t = e.order.completedAt || e.order.time;
+            if (!t) return;
+            var d = new Date(t);
+            if (isNaN(d.getTime())) return;
+            if (!latest || d > latest) latest = d;
+        });
+        return latest ? latest.toISOString() : null;
+    }
+
+    function bindOpenButtons(host) {
+        ui.qsa('[data-open]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                openWorkspace(btn.getAttribute('data-open'));
             });
         });
     }
 
-    function openPatientConsultation(patientId) {
-        var found = activeQueueList.find(function(p) { return p.id === patientId; });
-        if (found) {
-            currentPatient = found;
-            if (currentPatient.status === 'Pending') {
-                currentPatient.status = 'In Treatment';
-                savePatients();
-            }
-            currentViewMode = 'workspace';
-            renderView();
+    /* ==================================================================
+        WORKSPACE
+        ================================================================== */
+    function openWorkspace(id, skipCall) {
+        var p = store.findPatient(patients, id);
+        if (!p) return;
 
-            if (window.MediTrackNotify) {
-                window.MediTrackNotify.push(
-                    'Consultation Workspace Opened',
-                    currentPatient.name + ' (' + currentPatient.trackingId + ') loaded into physician workspace.',
-                    'info',
-                    'Queue'
-                );
+        currentId = p.id;
+
+        /* Calling a waiting patient starts the consultation under the
+           signed-in clinician's name. */
+        if (!skipCall && p.status === STATUS.PENDING) {
+            p.status = STATUS.CONSULTING;
+            p.calledAt = new Date().toISOString();
+            p.assignedDoctor = currentStaffName();
+            persist();
+
+            window.MediTrackNotify.event('queue.called', {
+                key: 'called:' + p.id + ':' + p.calledAt,
+                title: 'Patient Called',
+                message: p.name + ' (' + p.trackingId + ') is now in consultation with ' + p.assignedDoctor + '.'
+            });
+
+            /* Abnormal observations must be raised at the point of call, once. */
+            var assessment = clinical.assess(p.vitals);
+            var stamp = assessment.overall + ':' + assessment.flagged.length;
+            if (assessment.flagged.length && p.vitalsAlerted !== stamp) {
+                clinical.notifyVitals(p.name, assessment, p.id + ':' + stamp);
+                p.vitalsAlerted = stamp;
+                persist();
             }
         }
+
+        showWorkspace();
+        renderWorkspace();
     }
 
-    /* --------------------------------------------------------------------------
-       Workspace Individual Patient Rendering
-       -------------------------------------------------------------------------- */
     function renderWorkspace() {
-        if (!currentPatient) return;
+        var p = currentPatient();
+        if (!p) { showIntake(); return; }
 
-        var p = currentPatient;
-        var pIdx = activeQueueList.findIndex(function(x) { return x.id === p.id; });
-        var initials = p.name ? p.name.split(' ').map(function(n) { return n[0]; }).join('').toUpperCase() : 'PT';
+        showWorkspace();
 
-        // Topbar
-        var topName = document.getElementById('topbarPatientName');
-        var topTid = document.getElementById('topbarPatientTid');
-        var qBadge = document.getElementById('queueOrderBadge');
+        var urgency = store.normalizeUrgency(p.urgency);
+        var inits = store.initials(p.name);
 
-        if (topName) topName.textContent = p.name;
-        if (topTid) topTid.textContent = p.trackingId;
-        if (qBadge) qBadge.textContent = '#' + String(pIdx + 1).padStart(2, '0') + ' in Queue (' + p.urgency + ')';
+        setText('wsTagAvatar', inits);
+        setText('topbarPatientName', p.name);
+        setText('topbarPatientTid', p.trackingId);
 
-        // Quick switcher menu in workspace
-        renderWorkspacePatientSwitcher();
+        var posBadge = byId('queueOrderBadge');
+        if (posBadge) {
+            var waiting = store.queueOrder(patients).length;
+            posBadge.textContent = urgency + ' \u00b7 ' + waiting + ' still waiting';
+        }
 
-        // Left Panel Profile
-        document.getElementById('patientAvatar').textContent = initials;
-        document.getElementById('patientName').textContent = p.name;
-        document.getElementById('patientTrackingId').textContent = p.trackingId;
+        setText('patientAvatar', inits);
+        setText('patientName', p.name);
+        setText('patientTrackingId', p.trackingId);
 
-        var urgBadge = document.getElementById('patientUrgencyBadge');
+        var urgBadge = byId('patientUrgencyBadge');
         if (urgBadge) {
-            urgBadge.className = (p.urgency === 'Urgent') ? 'badge urgency-urgent' : 'badge urgency-nonurgent';
-            urgBadge.textContent = p.urgency;
+            urgBadge.className = 'badge ' + urgencyClass(urgency);
+            urgBadge.textContent = urgency;
         }
-
-        var statBadge = document.getElementById('patientStatusBadge');
+        var statBadge = byId('patientStatusBadge');
         if (statBadge) {
-            var labStat = getPatientLabStatus(p);
-            statBadge.textContent = labStat === 'Lab Ready' ? 'Lab Results Ready' : (labStat === 'Awaiting Labs' ? 'Awaiting Lab Report' : p.status);
-            statBadge.className = 'badge ' + (p.status === 'In Treatment' ? 'status-treatment' : 'status-pending');
+            statBadge.className = 'badge ' + statusClass(p.status);
+            statBadge.textContent = p.status;
         }
 
-        document.getElementById('patientAge').textContent = p.age + ' yrs';
-        document.getElementById('patientPhone').textContent = p.phone || 'Not provided';
-        document.getElementById('patientRegistered').textContent = formatDate(p.registered);
-        document.getElementById('patientBMI').textContent = calculateBMI(p.weight, p.height);
+        setText('patientAge', p.age === null ? '\u2014' : p.age + ' yrs');
+        setText('patientSex', p.sex || '\u2014');
+        setText('patientPhone', p.phone || 'Not provided');
+        setText('patientRegistered', store.formatDateTime(p.registered));
+        setText('patientDoctor', p.assignedDoctor || lastDoctorOf(p) || 'Not assigned yet');
 
-        document.getElementById('patientBP').innerHTML = (p.bp || '120/80') + ' <small>mmHg</small>';
-        document.getElementById('patientHR').innerHTML = (p.hr || '72') + ' <small>bpm</small>';
-        document.getElementById('patientHeight').innerHTML = (p.height || '170') + ' <small>cm</small>';
-        document.getElementById('patientWeight').innerHTML = (p.weight || '70') + ' <small>kg</small>';
+        var b = store.bmi(p.vitals.weight, p.vitals.height);
+        setText('patientBMI', b ? b.value + ' (' + b.category + ')' : 'Not recorded');
+        setText('patientWaited', store.elapsed(p.registered, p.calledAt));
 
-        document.getElementById('patientDescription').textContent = p.description || 'Routine medical consultation.';
-        document.getElementById('tlRegisteredTime').textContent = formatTime12h(p.registered);
+        setText('patientDescription', p.description || 'No complaint recorded at triage.');
 
-        var barStatus = document.getElementById('barStatusText');
-        if (barStatus) barStatus.textContent = p.status;
+        renderVitals(p);
+        renderTimeline(p);
+        renderNotesHistory(p);
+        renderPreviousVisits(p);
+        renderOrderHistory(p, 'labOrders', 'labOrdersHistory');
+        renderOrderHistory(p, 'nurseOrders', 'nurseOrdersHistory');
+        renderOrderHistory(p, 'prescriptions', 'prescriptionOrdersHistory');
+        renderAssist(p);
+        markResultsReviewed(p);
+        updateTabAlerts(p);
+        renderStatusBar(p);
 
-        // Render Logs
-        renderNotesHistory();
-        renderStoragePhoneHistory();
-        renderLabOrdersHistory();
-        renderNurseOrdersHistory();
-        renderPrescriptionsHistory();
+        if (window.MediIcons) window.MediIcons.hydrate(document);
     }
 
-    function renderWorkspacePatientSwitcher() {
-        var menu = document.getElementById('wsPatientSwitcherMenu');
-        var toggle = document.querySelector('#wsPatientSwitcher .cs-toggle');
-        if (!menu || !toggle) return;
+    /* --------------------------------------------- status bar / stepper */
+    function openLabCount(p) {
+        return (p.labOrders || []).filter(store.isOrderOpen).length;
+    }
 
-        if (currentPatient) {
-            var pIdx = activeQueueList.findIndex(function(x) { return x.id === currentPatient.id; });
-            var posStr = '#' + String(pIdx + 1).padStart(2, '0');
-            toggle.querySelector('.cs-text').textContent = posStr + ' · ' + currentPatient.name;
+    function renderStatusBar(p) {
+        var step = p.status === STATUS.FINISHED ? 'finished'
+            : (p.status === STATUS.AWAITING ? 'awaiting' : 'consulting');
+
+        var stepper = byId('statusStepper');
+        if (stepper) {
+            ui.qsa('.ss-step', stepper).forEach(function (el) {
+                var key = el.getAttribute('data-ss');
+                el.classList.remove('is-current', 'is-done', 'is-locked');
+                if (key === step) el.classList.add('is-current');
+                else if ((step === 'awaiting' && key === 'consulting') ||
+                         (step === 'finished')) el.classList.add('is-done');
+            });
         }
 
-        menu.innerHTML = activeQueueList.map(function(p, idx) {
-            var posStr = '#' + String(idx + 1).padStart(2, '0');
-            var isSelected = (currentPatient && p.id === currentPatient.id) ? ' selected' : '';
-            var labStat = getPatientLabStatus(p);
-            var tag = labStat === 'Lab Ready' ? ' [Lab Ready!]' : (labStat === 'Awaiting Labs' ? ' [Awaiting Labs]' : '');
-            return '<li class="cs-option' + isSelected + '" data-value="' + p.id + '">' +
-                posStr + ' ' + p.name + ' (' + p.urgency + ')' + tag +
+        var labOutstanding = openLabCount(p);
+        var finishBtn = byId('btnSetFinished');
+
+        if (labOutstanding > 0 && p.status !== STATUS.FINISHED) {
+            if (finishBtn) {
+                finishBtn.disabled = true;
+                finishBtn.title = 'Laboratory results are still outstanding.';
+            }
+            var note = byId('statusLockNote');
+            if (note) {
+                note.hidden = false;
+                setText('statusLockText',
+                    labOutstanding + ' laboratory order' + (labOutstanding > 1 ? 's' : '') +
+                    ' still outstanding \u2014 Complete unlocks once the results are released.');
+            }
+        } else {
+            if (finishBtn) {
+                finishBtn.disabled = false;
+                finishBtn.removeAttribute('title');
+            }
+            var noteOff = byId('statusLockNote');
+            if (noteOff) noteOff.hidden = true;
+        }
+    }
+
+    /* ------------------------------------------------------ vitals card */
+    function renderVitals(p) {
+        var assessment = clinical.assess(p.vitals);
+
+        var overall = byId('vitalsOverallBadge');
+        if (overall) {
+            overall.className = 'vitals-overall level-' + assessment.overall;
+            overall.textContent = assessment.recordedCount
+                ? assessment.overallLabel
+                : 'Not recorded';
+        }
+
+        var callout = byId('vitalsCallout');
+        if (callout) {
+            var critical = assessment.flagged.filter(function (f) { return f.level === 'critical'; });
+            if (assessment.flagged.length) {
+                callout.hidden = false;
+                callout.className = 'vitals-callout level-' + (critical.length ? 'critical' : 'abnormal');
+                setText('vitalsCalloutTitle', critical.length
+                    ? 'Critical observation \u2014 immediate review'
+                    : 'Observations outside reference range');
+                setText('vitalsCalloutText', assessment.summary);
+            } else {
+                callout.hidden = true;
+            }
+        }
+
+        var grid = byId('vitalsGrid');
+        if (grid) {
+            if (!assessment.results.length) {
+                grid.innerHTML = '<div class="vital-box level-normal">' +
+                    '<span class="vital-label">Vitals</span>' +
+                    '<span class="vital-num">\u2014</span>' +
+                    '<span class="vital-range">No observations recorded at triage</span>' +
+                '</div>';
+            } else {
+                grid.innerHTML = assessment.results.map(function (r) {
+                    var unit = r.key === 'bloodPressure' ? 'mmHg' : r.unit;
+                    return '<div class="vital-box level-' + r.level + '">' +
+                        '<span class="vital-label">' + esc(r.label) + '</span>' +
+                        '<span class="vital-num">' + esc(r.display) +
+                            (unit ? '<small>' + esc(unit) + '</small>' : '') +
+                        '</span>' +
+                        '<span class="vital-state">' + esc(r.levelLabel) +
+                            (r.key === 'bloodPressure' && r.category ? ' \u00b7 ' + esc(r.category) : '') +
+                        '</span>' +
+                        (r.range ? '<span class="vital-range">Normal ' + esc(r.range) + '</span>' : '') +
+                    '</div>';
+                }).join('');
+            }
+        }
+
+        var notes = byId('vitalsNotes');
+        if (notes) {
+            notes.innerHTML = assessment.flagged.map(function (f) {
+                return '<li class="level-' + f.level + '">' +
+                    icon(f.level === 'critical' ? 'critical' : 'warning', 13) +
+                    '<span><strong>' + esc(f.label) + ':</strong> ' + esc(f.note) + '</span>' +
+                '</li>';
+            }).join('');
+        }
+    }
+
+    /* --------------------------------------------------------- timeline */
+    function renderTimeline(p) {
+        var host = byId('patientTimeline');
+        if (!host) return;
+
+        var steps = [{
+            state: 'step-done',
+            title: 'Registered at reception',
+            text: 'Triaged as ' + store.normalizeUrgency(p.urgency),
+            time: store.formatDateTime(p.registered)
+        }];
+
+        if (p.calledAt) {
+            steps.push({
+                state: 'step-done',
+                title: 'Called into consultation',
+                text: (p.assignedDoctor ? p.assignedDoctor + ' \u00b7 ' : '') +
+                      'Waited ' + store.elapsed(p.registered, p.calledAt),
+                time: store.formatDateTime(p.calledAt)
+            });
+        }
+
+        (p.clinicalNotes || []).forEach(function (n) {
+            steps.push({
+                state: 'step-done',
+                title: n.diagnosis ? 'Diagnosis: ' + n.diagnosis : 'Clinical note recorded',
+                text: (n.doctor ? n.doctor + ': ' : '') + n.note,
+                time: store.formatDateTime(n.time)
+            });
+        });
+
+        [['labOrders', 'Laboratory'], ['nurseOrders', 'Nursing'], ['prescriptions', 'Pharmacy']].forEach(function (pair) {
+            (p[pair[0]] || []).forEach(function (o) {
+                var open = store.isOrderOpen(o);
+                var flag = String(o.flag || '').toLowerCase();
+                steps.push({
+                    state: flag === 'critical' ? 'step-alert' : (open ? 'step-active' : 'step-done'),
+                    title: pair[1] + ': ' + (o.test || o.task || o.medication || 'Order'),
+                    text: (o.doctor ? o.doctor + ': ' : '') +
+                          (open ? (o.status || 'Outstanding') : (o.results || o.status || 'Completed')),
+                    time: store.formatDateTime(o.completedAt || o.time),
+                    sortTime: o.completedAt || o.time
+                });
+            });
+        });
+
+        if (p.status === STATUS.FINISHED && p.completedAt) {
+            steps.push({
+                state: 'step-done',
+                title: 'Visit completed and archived',
+                text: 'Total time in department ' + store.elapsed(p.registered, p.completedAt),
+                time: store.formatDateTime(p.completedAt)
+            });
+        }
+
+        host.innerHTML = steps.map(function (s) {
+            return '<li class="timeline-step ' + s.state + '">' +
+                '<span class="step-dot" aria-hidden="true"></span>' +
+                '<div class="step-content">' +
+                    '<span class="step-title">' + esc(s.title) + '</span>' +
+                    (s.text ? '<span class="step-text">' + esc(s.text) + '</span>' : '') +
+                    '<span class="step-time">' + esc(s.time) + '</span>' +
+                '</div>' +
             '</li>';
         }).join('');
+    }
 
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var pId = parseInt(this.getAttribute('data-value'), 10);
-                openPatientConsultation(pId);
-                var wrap = document.getElementById('wsPatientSwitcher');
-                if (wrap) wrap.classList.remove('active');
-            });
+    /* ------------------------------------------------------- histories */
+    function renderNotesHistory(p) {
+        var host = byId('clinicalNotesHistory');
+        if (!host) return;
+        var notes = (p.clinicalNotes || []).slice().reverse();
+
+        if (!notes.length) {
+            host.innerHTML = '<span class="history-empty">No clinical notes recorded for this visit yet.</span>';
+            return;
+        }
+
+        host.innerHTML = notes.map(function (n) {
+            return '<div class="history-item">' +
+                '<div class="history-item-head">' +
+                    '<strong class="history-item-title">' + esc(n.diagnosis || 'Clinical note') + '</strong>' +
+                    '<span class="history-item-time">' + esc(store.formatDateTime(n.time)) + '</span>' +
+                '</div>' +
+                '<div class="history-item-body">' + esc(n.note) + '</div>' +
+                (n.doctor ? '<div class="history-item-by">' + icon('stethoscope', 12) + ' ' + esc(n.doctor) + '</div>' : '') +
+            '</div>';
+        }).join('');
+    }
+
+    function renderPreviousVisits(p) {
+        var section = byId('storageHistorySection');
+        var host = byId('storageHistoryList');
+        if (!section || !host) return;
+
+        var phone = String(p.phone || '').replace(/\s+/g, '');
+        if (!phone) { section.hidden = true; return; }
+
+        var past = patients.filter(function (other) {
+            return String(other.id) !== String(p.id) &&
+                String(other.phone || '').replace(/\s+/g, '') === phone &&
+                other.status === STATUS.FINISHED;
+        });
+
+        if (!past.length) { section.hidden = true; return; }
+        section.hidden = false;
+
+        host.innerHTML = past.map(function (v) {
+            var body = (v.clinicalNotes || []).length
+                ? v.clinicalNotes.map(function (n) {
+                    return '<div><strong>' + esc(n.diagnosis || 'Note') + ':</strong> ' + esc(n.note) + '</div>';
+                }).join('')
+                : '<div>Complaint: ' + esc(v.description || '\u2014') + '</div>';
+
+            return '<div class="history-item is-complete">' +
+                '<div class="history-item-head">' +
+                    '<strong class="history-item-title">' + esc(store.formatDate(v.registered)) + '</strong>' +
+                    '<span class="badge status-finished">' + esc(v.trackingId) + '</span>' +
+                '</div>' +
+                '<div class="history-item-body">' + body + '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function renderOrderHistory(p, key, hostId) {
+        var host = byId(hostId);
+        if (!host) return;
+        var orders = (p[key] || []).slice().reverse();
+
+        if (!orders.length) {
+            host.innerHTML = '<span class="history-empty">No orders dispatched for this visit yet.</span>';
+            return;
+        }
+
+        host.innerHTML = orders.map(function (o) {
+            var open = store.isOrderOpen(o);
+            var flag = String(o.flag || '').toLowerCase();
+            var cls = flag === 'critical' ? 'is-critical' : (open ? 'is-open' : 'is-complete');
+
+            var title, body;
+            if (key === 'labOrders') {
+                title = (o.test || 'Diagnostic test') + (o.priority ? ' \u00b7 ' + o.priority : '');
+                body = '<strong>Instructions:</strong> ' + esc(o.note || '\u2014');
+            } else if (key === 'nurseOrders') {
+                title = o.task || 'Nursing task';
+                body = '<strong>Remarks:</strong> ' + esc(o.note || '\u2014');
+            } else {
+                title = (o.medication || 'Medication') + (o.dosage ? ' \u00b7 ' + o.dosage : '');
+                body = '<strong>Regimen:</strong> ' + esc([o.frequency, o.route, o.duration].filter(Boolean).join(' \u00b7 ') || '\u2014') +
+                    (o.instructions ? '<div>' + esc(o.instructions) + '</div>' : '');
+            }
+
+            var badgeCls = flag === 'critical' ? 'status-critical' : (open ? 'status-awaiting' : 'status-finished');
+
+            /* Who did what: ordering clinician plus whoever performed it. */
+            var actors = [];
+            if (o.doctor) actors.push('Ordered by ' + o.doctor);
+            if (key === 'labOrders' && o.technician) actors.push('Performed by ' + o.technician);
+            if (key === 'nurseOrders' && o.completedBy) actors.push('Performed by ' + o.completedBy);
+            if (key === 'prescriptions' && o.dispensedBy) actors.push('Handled by ' + o.dispensedBy);
+
+            return '<div class="history-item ' + cls + '">' +
+                '<div class="history-item-head">' +
+                    '<strong class="history-item-title">' + esc(title) + '</strong>' +
+                    '<span class="badge ' + badgeCls + '">' + esc(o.status || (open ? 'Outstanding' : 'Completed')) + '</span>' +
+                '</div>' +
+                '<div class="history-item-body">' + body + '</div>' +
+                (o.results
+                    ? '<div class="history-item-result"><strong>Result:</strong> ' + esc(o.results) +
+                      (o.techRemarks ? '<div>' + esc(o.techRemarks) + '</div>' : '') + '</div>'
+                    : '') +
+                '<div class="history-item-head" style="margin-top:6px">' +
+                    '<span class="history-item-time">' + esc(actors.join(' \u00b7 ') || 'Ordered ' + store.formatDateTime(o.time)) + '</span>' +
+                    '<span class="history-item-time">' + esc(store.formatDateTime(o.time)) + '</span>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    /* Opening the record counts as acknowledging delivered results. */
+    function markResultsReviewed(p) {
+        var pending = store.unreviewedResults(p);
+        if (!pending.length) return;
+        pending.forEach(function (o) { o.reviewed = true; });
+        persist();
+    }
+
+    function updateTabAlerts(p) {
+        var counts = {
+            tabLabOrders: (p.labOrders || []).filter(store.isOrderOpen).length,
+            tabNurseOrders: (p.nurseOrders || []).filter(store.isOrderOpen).length,
+            tabPharmacyOrders: (p.prescriptions || []).filter(store.isOrderOpen).length
+        };
+        Object.keys(counts).forEach(function (tab) {
+            var btn = ui.qs('[data-tab="' + tab + '"]');
+            if (!btn) return;
+            var dot = ui.qs('.tab-alert-dot', btn);
+            if (counts[tab] > 0) {
+                if (!dot) {
+                    dot = document.createElement('span');
+                    dot.className = 'tab-alert-dot';
+                    btn.appendChild(dot);
+                }
+            } else if (dot) {
+                btn.removeChild(dot);
+            }
         });
     }
 
-    function calculateBMI(weightKg, heightCm) {
-        if (!weightKg || !heightCm || heightCm <= 0) return 'Not recorded';
-        var hM = heightCm / 100;
-        var bmi = (weightKg / (hM * hM)).toFixed(1);
-        var cat = 'Normal';
-        if (bmi < 18.5) cat = 'Underweight';
-        else if (bmi >= 25 && bmi < 30) cat = 'Overweight';
-        else if (bmi >= 30) cat = 'Obese';
-        return bmi + ' (' + cat + ')';
-    }
+    /* ==================================================================
+        Clinical Assist (Gemini 2.5 Flash front end)
 
-    function formatDate(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function formatTime12h(isoString) {
-        if (!isoString) return '-';
-        var d = new Date(isoString);
-        var h = d.getHours();
-        var m = String(d.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return h + ':' + m + ' ' + ampm;
-    }
-
-    function renderStoragePhoneHistory() {
-        var section = document.getElementById('storageHistorySection');
-        var listContainer = document.getElementById('storageHistoryList');
-        if (!section || !listContainer || !currentPatient) return;
-
-        var phone = currentPatient.phone ? currentPatient.phone.replace(/\s+/g, '') : '';
-        if (!phone) { section.style.display = 'none'; return; }
-
-        var pastVisits = allPatients.filter(function(p) {
-            var pPhone = p.phone ? p.phone.replace(/\s+/g, '') : '';
-            return p.id !== currentPatient.id && pPhone === phone && p.status === 'Finished';
+        The doctor's notes are pasted in automatically and analysed as soon
+        as the workspace opens or a note is saved. Every reading stays
+        unapproved until the doctor presses Approve.
+        ================================================================== */
+    function buildAssistNarrative(p) {
+        var parts = [];
+        if (p.description) parts.push('Chief complaint: ' + p.description);
+        (p.clinicalNotes || []).slice(-2).forEach(function (n) {
+            if (n.diagnosis) parts.push('Diagnosis: ' + n.diagnosis);
+            if (n.note) parts.push('Findings: ' + n.note);
         });
-
-        if (pastVisits.length === 0) {
-            section.style.display = 'none';
-            return;
-        }
-
-        section.style.display = 'flex';
-        listContainer.innerHTML = pastVisits.map(function(pv) {
-            var pastNotesHtml = (pv.clinicalNotes && pv.clinicalNotes.length > 0) ?
-                pv.clinicalNotes.map(function(cn) {
-                    return '<div style="margin-top:4px; padding-left:8px; border-left:2px solid #BAE6FD;"><strong>' + (cn.diagnosis || 'Diagnosis') + ':</strong> ' + cn.note + '</div>';
-                }).join('') : '<div style="font-size:11.5px; color:var(--gray-muted);">Complaint: ' + (pv.description || '-') + '</div>';
-
-            return '<div class="history-item storage-match-item">' +
-                '<div class="history-item-head">' +
-                    '<strong class="history-item-title" style="color:#0369A1;">Past Visit: ' + formatDate(pv.registered) + ' (' + pv.trackingId + ')</strong>' +
-                    '<span class="badge status-finished">Archived Visit</span>' +
-                '</div>' +
-                '<div class="history-item-body">' + pastNotesHtml + '</div>' +
-            '</div>';
-        }).join('');
+        return parts.join('\n');
     }
 
-    function renderNotesHistory() {
-        var container = document.getElementById('clinicalNotesHistory');
-        if (!container || !currentPatient) return;
-        var notes = currentPatient.clinicalNotes || [];
-        if (notes.length === 0) {
-            container.innerHTML = '<span class="history-empty">No clinical notes recorded for current visit yet.</span>';
-            return;
+    function renderAssist(p) {
+        var input = byId('assistInput');
+        var out = byId('assistOutput');
+        if (!input || !out) return;
+
+        var narrative = buildAssistNarrative(p);
+
+        if (p.assist && p.assist.narrative) {
+            input.value = p.assist.narrative;
+            runAssist(false, false);
+        } else if (narrative) {
+            /* Auto-paste the doctor's notes and analyse immediately. */
+            input.value = narrative;
+            runAssist(false, false);
+        } else {
+            input.value = '';
+            out.innerHTML = '';
+            setReviewBar(false);
         }
-        container.innerHTML = notes.slice().reverse().map(function(n) {
-            return '<div class="history-item">' +
-                '<div class="history-item-head">' +
-                    '<strong class="history-item-title">' + (n.diagnosis ? n.diagnosis : 'Clinical Note') + '</strong>' +
-                    '<span class="history-item-time">' + formatTime12h(n.time) + ' · ' + formatDate(n.time) + '</span>' +
-                '</div>' +
-                '<div class="history-item-body">' + n.note + '</div>' +
-            '</div>';
-        }).join('');
     }
 
-    function renderLabOrdersHistory() {
-        var container = document.getElementById('labOrdersHistory');
-        if (!container || !currentPatient) return;
-        var orders = currentPatient.labOrders || [];
-        if (orders.length === 0) {
-            container.innerHTML = '<span class="history-empty">No diagnostic tests dispatched yet.</span>';
+    /* saveNarrative=false re-runs the analysis for display without rewriting
+       the stored narrative (used when the workspace re-renders).
+       announce=false keeps the toast quiet during automatic runs. */
+    function runAssist(saveNarrative, announce) {
+        var p = currentPatient();
+        var input = byId('assistInput');
+        var out = byId('assistOutput');
+        if (!p || !input || !out) return;
+
+        var narrative = input.value.trim();
+        if (!narrative) {
+            ui.fieldError('assistInput', 'Enter the reported symptoms before running the analysis.');
+            out.innerHTML = '';
+            setReviewBar(false);
             return;
         }
-        container.innerHTML = orders.slice().reverse().map(function(o) {
-            var statusBadge = (o.status === 'Completed') ? '<span class="badge status-finished">✓ Completed</span>' : '<span class="badge status-pending">⏳ ' + o.status + '</span>';
-            return '<div class="history-item' + (o.status === 'Completed' ? ' lab-completed-highlight' : '') + '">' +
-                '<div class="history-item-head">' +
-                    '<strong class="history-item-title">' + o.test + ' (' + o.priority + ')</strong>' +
-                    '<div style="display:flex; align-items:center; gap:6px;">' +
-                        statusBadge +
-                        '<span class="history-item-time">' + formatTime12h(o.time) + '</span>' +
+        ui.clearFieldError('assistInput');
+
+        var result = clinical.analyzeSymptoms(narrative, p.vitals);
+
+        if (saveNarrative !== false) {
+            p.assist = {
+                narrative: narrative,
+                approved: false,
+                engine: 'Gemini 2.5 Flash',
+                at: new Date().toISOString()
+            };
+            persist();
+        }
+
+        out.innerHTML = assistHtml(result);
+        setReviewBar(true);
+        if (window.MediIcons) window.MediIcons.hydrate(out);
+
+        if (announce !== false) {
+            window.MediTrackNotify.flash('Analysis ready',
+                'Gemini 2.5 Flash prepared a reading for your review.');
+        }
+    }
+
+    function setReviewBar(showApprovedState) {
+        var bar = byId('assistReviewBar');
+        if (!bar) return;
+        var p = currentPatient();
+        var approved = p && p.assist && p.assist.approved;
+        bar.hidden = !showApprovedState;
+        bar.classList.toggle('is-approved', !!approved);
+        var text = ui.qs('.assist-review-text strong', bar);
+        if (text) text.textContent = approved ? 'Reading approved' : 'Doctor review required';
+    }
+
+    function approveAssist() {
+        var p = currentPatient();
+        if (!p || !p.assist) return;
+        p.assist.approved = true;
+        p.assist.approvedBy = currentStaffName();
+        p.assist.approvedAt = new Date().toISOString();
+        persist();
+        setReviewBar(true);
+        window.MediTrackNotify.flash('Reading approved',
+            'The Gemini reading was signed off by ' + p.assist.approvedBy + '.');
+    }
+
+    function discardAssist() {
+        var p = currentPatient();
+        var input = byId('assistInput');
+        var out = byId('assistOutput');
+        if (input) input.value = '';
+        if (out) out.innerHTML = '';
+        setReviewBar(false);
+        if (p && p.assist) { p.assist = null; persist(); }
+    }
+
+    function assistHtml(r) {
+        var urgencyCls = 'u-' + String(r.suggestedUrgency).toLowerCase();
+
+        var summary =
+            '<div class="assist-summary">' +
+                '<span class="assist-summary-label">Suggested triage</span>' +
+                '<span class="assist-urgency ' + urgencyCls + '">' + esc(r.suggestedUrgency) + '</span>' +
+                '<span class="assist-summary-label">Vitals</span>' +
+                '<span>' + esc(r.vitals.overallLabel) + '</span>' +
+            '</div>';
+
+        if (!r.differentials.length) {
+            return summary +
+                '<div class="notice notice-info">' +
+                    '<span class="ico" data-icon="info" data-icon-size="15"></span>' +
+                    '<div><strong>No pattern matched</strong>' +
+                    'The notes did not match any rule in the knowledge base. ' +
+                    'Add more specific symptom terms, or proceed on clinical judgement alone.</div>' +
+                '</div>';
+        }
+
+        var dx = '<div class="assist-group">' +
+            '<h5>Considerations (ranked)</h5>' +
+            '<div class="assist-dx-list">' +
+            r.differentials.map(function (d, i) {
+                var terms = d.matchedTerms.map(function (t) {
+                    return '<span class="assist-term">' + esc(t) + '</span>';
+                }).join('') +
+                d.vitalSupport.map(function (v) {
+                    return '<span class="assist-term from-vitals">' + esc(v) + '</span>';
+                }).join('');
+
+                return '<div class="assist-dx rank-' + (i + 1) + '">' +
+                    '<div class="assist-dx-head">' +
+                        '<div>' +
+                            '<span class="assist-dx-name">' + esc(d.name) + '</span>' +
+                            '<span class="assist-dx-system"> \u00b7 ' + esc(d.system) + '</span>' +
+                        '</div>' +
+                        '<span class="assist-dx-confidence c-' + String(d.confidence).toLowerCase() + '">' +
+                            esc(d.confidence) + ' match' +
+                        '</span>' +
                     '</div>' +
-                '</div>' +
-                '<div class="history-item-body"><strong>Instructions to Lab:</strong> ' + o.note + '</div>' +
-                (o.results ? '<div class="history-item-result"><strong>Official Lab Findings:</strong> ' + o.results + '</div>' : '') +
-            '</div>';
-        }).join('');
+                    '<div class="assist-meter"><span style="width:' + d.confidencePct + '%"></span></div>' +
+                    '<div class="assist-terms">' + terms + '</div>' +
+                '</div>';
+            }).join('') +
+            '</div></div>';
+
+        var flags = r.redFlags.length
+            ? '<div class="assist-group"><h5>Red flags to exclude</h5><div class="assist-flags">' +
+                r.redFlags.map(function (f) {
+                    return '<div class="assist-flag">' +
+                        '<span class="ico" data-icon="warning" data-icon-size="13"></span>' +
+                        '<span>' + esc(f) + '</span>' +
+                    '</div>';
+                }).join('') +
+              '</div></div>'
+            : '';
+
+        var workup = r.suggestedWorkup.length
+            ? '<div class="assist-group"><h5>Commonly indicated workup</h5><ul class="assist-workup">' +
+                r.suggestedWorkup.map(function (w) {
+                    return '<li><span class="ico" data-icon="vial" data-icon-size="13"></span><span>' + esc(w) + '</span></li>';
+                }).join('') +
+              '</ul></div>'
+            : '';
+
+        return summary + dx + flags + workup;
     }
 
-    function renderNurseOrdersHistory() {
-        var container = document.getElementById('nurseOrdersHistory');
-        if (!container || !currentPatient) return;
-        var orders = currentPatient.nurseOrders || [];
-        if (orders.length === 0) {
-            container.innerHTML = '<span class="history-empty">No nursing orders dispatched yet.</span>';
-            return;
-        }
-        container.innerHTML = orders.slice().reverse().map(function(o) {
-            return '<div class="history-item">' +
-                '<div class="history-item-head">' +
-                    '<strong class="history-item-title">' + o.task + '</strong>' +
-                    '<span class="history-item-time">' + formatTime12h(o.time) + '</span>' +
-                '</div>' +
-                '<div class="history-item-body"><strong>Instructions:</strong> ' + o.note + '</div>' +
-            '</div>';
-        }).join('');
-    }
+    /* ==================================================================
+        Clinician actions
+        ================================================================== */
+    function saveNote() {
+        var p = currentPatient();
+        if (!p) return;
 
-    function renderPrescriptionsHistory() {
-        var container = document.getElementById('prescriptionOrdersHistory');
-        if (!container || !currentPatient) return;
-        var rxs = currentPatient.prescriptions || [];
-        if (rxs.length === 0) {
-            container.innerHTML = '<span class="history-empty">No pharmacy prescriptions dispatched yet.</span>';
-            return;
-        }
-        container.innerHTML = rxs.slice().reverse().map(function(rx) {
-            return '<div class="history-item">' +
-                '<div class="history-item-head">' +
-                    '<strong class="history-item-title">' + rx.medication + ' (' + rx.dosage + ')</strong>' +
-                    '<div style="display:flex; align-items:center; gap:6px;">' +
-                        '<span class="badge status-pending">' + (rx.status || 'Prescribed') + '</span>' +
-                        '<span class="history-item-time">' + formatTime12h(rx.time) + '</span>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="history-item-body">' +
-                    '<div><strong>Regimen:</strong> ' + rx.frequency + ' · Route: ' + rx.route + (rx.duration ? ' · Duration: ' + rx.duration : '') + '</div>' +
-                    (rx.instructions ? '<div style="margin-top:3px; color:var(--gray-muted);"><strong>Remarks:</strong> ' + rx.instructions + '</div>' : '') +
-                '</div>' +
-            '</div>';
-        }).join('');
-    }
+        if (!ui.requireFields([
+            { id: 'inputClinicalNotes', message: 'Record the examination findings before saving.' }
+        ])) return;
 
-    /* --------------------------------------------------------------------------
-       Doctor Actions (Save Notes & Dispatch Orders)
-       -------------------------------------------------------------------------- */
-    function saveClinicalNote() {
-        if (!currentPatient) return;
-        var diagnosisInput = document.getElementById('inputDiagnosis');
-        var notesInput = document.getElementById('inputClinicalNotes');
-
-        var diagnosis = diagnosisInput.value.trim();
-        var note = notesInput.value.trim();
-
-        if (!note) {
-            alert('Please enter clinical notes before saving.');
-            return;
-        }
-
-        if (!currentPatient.clinicalNotes) currentPatient.clinicalNotes = [];
-
-        currentPatient.clinicalNotes.push({
+        p.clinicalNotes.push({
             id: Date.now(),
-            diagnosis: diagnosis,
-            note: note,
-            doctor: 'Dr. Sarah Chen',
+            diagnosis: byId('inputDiagnosis').value.trim(),
+            note: byId('inputClinicalNotes').value.trim(),
+            doctor: currentStaffName(),
             time: new Date().toISOString()
         });
 
-        if (currentPatient.status === 'Pending') currentPatient.status = 'In Treatment';
+        if (p.status === STATUS.PENDING) {
+            p.status = STATUS.CONSULTING;
+            p.calledAt = p.calledAt || new Date().toISOString();
+        }
 
-        savePatients();
+        persist();
+        byId('inputDiagnosis').value = '';
+        byId('inputClinicalNotes').value = '';
+
         renderWorkspace();
 
-        diagnosisInput.value = '';
-        notesInput.value = '';
+        /* Fresh notes flow straight into Clinical Assist. */
+        setTimeout(function () { runAssist(true); }, 150);
 
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Clinical Note Saved',
-                'Diagnosis documented for ' + currentPatient.name + '.',
-                'success',
-                'Doctor'
-            );
-        }
+        window.MediTrackNotify.flash('Note saved',
+            'Clinical note attached to this visit under ' + currentStaffName() + '.');
     }
 
     function sendLabOrder() {
-        if (!currentPatient) return;
-        var testInput = document.getElementById('inputLabTestName');
-        var prioritySelect = document.querySelector('#labPriorityWrapper .cs-toggle');
-        var noteInput = document.getElementById('inputLabNote');
+        var p = currentPatient();
+        if (!p) return;
 
-        var test = testInput.value.trim();
-        var priority = (prioritySelect && prioritySelect.getAttribute('data-value')) || 'Urgent';
-        var note = noteInput.value.trim();
+        if (!ui.requireFields([
+            { id: 'inputLabTestName', message: 'Specify the test or panel required.' },
+            { id: 'inputLabNote', message: 'Add instructions so the laboratory knows what to prioritise.' }
+        ])) return;
 
-        if (!test) {
-            alert('Please specify the diagnostic test(s).');
-            return;
-        }
-        if (!note) {
-            alert('Please provide instructions for the lab assistant.');
-            return;
-        }
-
-        var labOrder = {
+        var priority = ui.getSelectValue('labPriorityWrapper') || 'Routine';
+        var order = {
             id: Date.now(),
-            patientId: currentPatient.id,
-            trackingId: currentPatient.trackingId,
-            patientName: currentPatient.name,
-            age: currentPatient.age,
-            phone: currentPatient.phone,
-            test: test,
+            patientId: p.id,
+            trackingId: p.trackingId,
+            patientName: p.name,
+            age: p.age,
+            phone: p.phone,
+            test: byId('inputLabTestName').value.trim(),
             priority: priority,
-            note: note,
-            doctor: 'Dr. Sarah Chen',
+            note: byId('inputLabNote').value.trim(),
+            doctor: currentStaffName(),
             time: new Date().toISOString(),
             status: 'Requested',
             results: ''
         };
 
-        if (!currentPatient.labOrders) currentPatient.labOrders = [];
-        currentPatient.labOrders.push(labOrder);
+        p.labOrders.push(order);
+        p.status = STATUS.AWAITING;
+        persist();
+        appendGlobal(store.KEYS.labRequests, order);
 
-        savePatients();
-        saveLabRequestGlobally(labOrder);
-        renderLabOrdersHistory();
+        byId('inputLabTestName').value = '';
+        byId('inputLabNote').value = '';
+        renderWorkspace();
 
-        testInput.value = '';
-        noteInput.value = '';
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Lab Order Dispatched',
-                test + ' dispatched for ' + currentPatient.name + '. You may return to patients directory to treat others while results are prepared.',
-                'info',
-                'Lab'
-            );
-        }
+        var urgent = priority === 'Urgent' || priority === 'STAT';
+        window.MediTrackNotify.event(urgent ? 'lab.request.urgent' : 'lab.request.created', {
+            key: 'laborder:' + order.id,
+            title: urgent ? priority + ' Lab Request' : 'Lab Request Sent',
+            message: order.test + ' requested for ' + p.name + ' by ' + order.doctor +
+                     '. Patient moved to awaiting results.'
+        });
     }
 
     function sendNurseOrder() {
-        if (!currentPatient) return;
-        var taskInput = document.getElementById('inputNurseTask');
-        var noteInput = document.getElementById('inputNurseNote');
+        var p = currentPatient();
+        if (!p) return;
 
-        var task = taskInput.value.trim();
-        var note = noteInput.value.trim();
+        if (!ui.requireFields([
+            { id: 'inputNurseTask', message: 'Describe the nursing task.' },
+            { id: 'inputNurseNote', message: 'Add the parameters the nurse should act on.' }
+        ])) return;
 
-        if (!task) {
-            alert('Please specify the nursing task or order.');
-            return;
-        }
-
-        if (!currentPatient.nurseOrders) currentPatient.nurseOrders = [];
-
-        currentPatient.nurseOrders.push({
+        var order = {
             id: Date.now(),
-            task: task,
-            note: note,
-            doctor: 'Dr. Sarah Chen',
+            patientId: p.id,
+            trackingId: p.trackingId,
+            patientName: p.name,
+            task: byId('inputNurseTask').value.trim(),
+            note: byId('inputNurseNote').value.trim(),
+            doctor: currentStaffName(),
             time: new Date().toISOString(),
             status: 'Dispatched'
-        });
+        };
 
-        savePatients();
-        renderNurseOrdersHistory();
+        p.nurseOrders.push(order);
+        persist();
+        appendGlobal(store.KEYS.nurseTasks, order);
 
-        taskInput.value = '';
-        noteInput.value = '';
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Nurse Order Dispatched',
-                task + ' assigned to Nurse Station.',
-                'info',
-                'Doctor'
-            );
-        }
+        byId('inputNurseTask').value = '';
+        byId('inputNurseNote').value = '';
+        renderWorkspace();
+        window.MediTrackNotify.flash('Sent to nurse station',
+            order.task + ' dispatched by ' + order.doctor + '.');
     }
 
-    function sendPrescriptionOrder() {
-        if (!currentPatient) return;
-        var medInput = document.getElementById('inputRxMedName');
-        var dosageInput = document.getElementById('inputRxDosage');
-        var freqToggle = document.querySelector('#rxFreqWrapper .cs-toggle');
-        var routeToggle = document.querySelector('#rxRouteWrapper .cs-toggle');
-        var durationInput = document.getElementById('inputRxDuration');
-        var instInput = document.getElementById('inputRxInstructions');
+    function sendPrescription() {
+        var p = currentPatient();
+        if (!p) return;
 
-        var med = medInput.value.trim();
-        var dosage = dosageInput.value.trim();
-        var freq = (freqToggle && freqToggle.getAttribute('data-value')) || 'BID';
-        var route = (routeToggle && routeToggle.getAttribute('data-value')) || 'Oral';
-        var duration = durationInput.value.trim();
-        var inst = instInput.value.trim();
+        if (!ui.requireFields([
+            { id: 'inputRxMedName', message: 'Enter the medication name and strength.' },
+            { id: 'inputRxDosage', message: 'Enter the dose.' }
+        ])) return;
 
-        if (!med || !dosage) {
-            alert('Please specify medication name and dosage.');
-            return;
-        }
-
-        var rxOrder = {
+        var order = {
             id: Date.now(),
-            patientId: currentPatient.id,
-            trackingId: currentPatient.trackingId,
-            patientName: currentPatient.name,
-            medication: med,
-            dosage: dosage,
-            frequency: freq,
-            route: route,
-            duration: duration,
-            instructions: inst,
-            doctor: 'Dr. Sarah Chen',
+            patientId: p.id,
+            trackingId: p.trackingId,
+            patientName: p.name,
+            medication: byId('inputRxMedName').value.trim(),
+            dosage: byId('inputRxDosage').value.trim(),
+            frequency: ui.getSelectValue('rxFreqWrapper') || 'BID',
+            route: ui.getSelectValue('rxRouteWrapper') || 'Oral',
+            duration: byId('inputRxDuration').value.trim(),
+            instructions: byId('inputRxInstructions').value.trim(),
+            doctor: currentStaffName(),
             time: new Date().toISOString(),
             status: 'Prescribed'
         };
 
-        if (!currentPatient.prescriptions) currentPatient.prescriptions = [];
-        currentPatient.prescriptions.push(rxOrder);
+        p.prescriptions.push(order);
+        persist();
+        appendGlobal(store.KEYS.prescriptions, order);
 
-        savePatients();
-        savePrescriptionGlobally(rxOrder);
-        renderPrescriptionsHistory();
-
-        medInput.value = '';
-        dosageInput.value = '';
-        durationInput.value = '';
-        instInput.value = '';
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Prescription Sent to Pharmacy',
-                med + ' (' + dosage + ') dispatched to Pharmacy Dispensary.',
-                'success',
-                'Prescription'
-            );
-        }
+        ['inputRxMedName', 'inputRxDosage', 'inputRxDuration', 'inputRxInstructions'].forEach(function (id) {
+            byId(id).value = '';
+        });
+        renderWorkspace();
+        window.MediTrackNotify.flash('Sent to pharmacy',
+            order.medication + ' prescribed by ' + order.doctor + '.');
     }
 
-    function finishConsultation() {
-        if (!currentPatient) return;
-        var finishedName = currentPatient.name;
-        currentPatient.status = 'Finished';
-        savePatients();
+    function parkForResults() {
+        var p = currentPatient();
+        if (!p) return;
 
-        if (window.MediTrackNotify) {
+        if (!store.openOrderCount(p)) {
             window.MediTrackNotify.push(
-                'Consultation Finished',
-                finishedName + ' consultation closed and archived to storage.',
-                'success',
-                'Doctor'
+                'Nothing outstanding',
+                'There are no open orders for ' + p.name + '. Complete the visit instead of parking it.',
+                'warning', 'Doctor', 'high'
             );
-        }
-
-        currentPatient = null;
-        currentViewMode = 'grid';
-        loadAndOrderPatients();
-    }
-
-    function nextPatient() {
-        if (!currentPatient) return;
-        currentPatient.status = 'Finished';
-        savePatients();
-
-        loadAndOrderPatients();
-
-        if (activeQueueList.length === 0) {
-            currentPatient = null;
-            currentViewMode = 'grid';
-            renderView();
-            if (window.MediTrackNotify) {
-                window.MediTrackNotify.push('Queue Completed', 'All patient consultations concluded.', 'success', 'Queue');
-            }
             return;
         }
 
-        currentPatient = activeQueueList[0];
-        currentPatient.status = 'In Treatment';
-        savePatients();
-        renderView();
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push('Next Patient Called', currentPatient.name + ' in consultation.', 'info', 'Queue');
-        }
+        p.status = STATUS.AWAITING;
+        persist();
+        showIntake();
+        window.MediTrackNotify.flash('Patient parked', p.name + ' moved to awaiting results.');
     }
 
-    /* --------------------------------------------------------------------------
-       Custom Select Initializer
-       -------------------------------------------------------------------------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
+    /* After the doctor signs the visit off, everything outstanding on the
+       record becomes one final bill at the billing desk. */
+    function raiseFinalBill(p) {
+        var items = store.buildChargesFromRecord(p);
+        if (!items.length) return null;
 
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
-            });
-            wrapper.classList.toggle('active');
+        var openUnpaid = store.readInvoices().filter(function (inv) {
+            return String(inv.patientId) === String(p.id) &&
+                   inv.kind === 'final' &&
+                   inv.status !== 'Paid' && inv.status !== 'Cancelled';
         });
 
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                var text = this.textContent;
-                var textSpan = toggle.querySelector('.cs-text');
-                if (textSpan) textSpan.textContent = text;
-                toggle.setAttribute('data-value', val);
+        var invoice = store.createInvoice({
+            patientId: p.id,
+            patientName: p.name,
+            trackingId: p.trackingId,
+            kind: 'final',
+            items: items
+        });
 
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
+        /* One open final bill per visit is enough; retire any stale ones. */
+        openUnpaid.forEach(function (old) {
+            old.status = 'Cancelled';
+            old.note = (old.note ? old.note + ' \u00b7 ' : '') + 'Replaced by ' + invoice.number;
+            store.saveInvoice(old);
+        });
 
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
+        try { window.sessionStorage.setItem('billing_open_invoice_id', invoice.id); } catch (e) {}
+
+        window.MediTrackNotify.push(
+            'Final Payment Due',
+            p.name + ' (' + p.trackingId + ') has a final bill of ' +
+                store.formatMoney(store.invoiceTotals(invoice).total) + ' at the billing desk.',
+            'info', 'Billing', 'normal'
+        );
+
+        return invoice;
+    }
+
+    /* Only released laboratory results block completion. Nursing tasks and
+       prescriptions do not hold the visit hostage - the visit can be marked
+       complete regardless of them. */
+    function completeVisit() {
+        var p = currentPatient();
+        if (!p) return;
+
+        var labsOutstanding = openLabCount(p);
+        if (labsOutstanding > 0) {
+            window.MediTrackNotify.push(
+                'Results still outstanding',
+                p.name + ' has ' + labsOutstanding + ' laboratory order' +
+                    (labsOutstanding > 1 ? 's' : '') + ' without a result. Complete unlocks once they are released.',
+                'warning', 'Doctor', 'high'
+            );
+            return;
+        }
+
+        var otherOpen = (store.openOrderCount(p) - labsOutstanding);
+        var message = otherOpen > 0
+            ? 'Completing marks the visit complete even though ' + otherOpen + ' nursing/pharmacy order' +
+              (otherOpen > 1 ? 's are' : ' is') + ' still open. A final bill will be raised from the charges on the record.'
+            : 'This closes the visit for ' + p.name + '. A final bill will be raised from the charges on the record.';
+
+        ui.confirmAction({
+            title: 'Complete visit \u00b7 final payment',
+            subtitle: p.trackingId,
+            message: message,
+            confirmLabel: 'Complete & bill',
+            tone: otherOpen ? 'warning' : 'info',
+            icon: 'receipt'
+        }, function () {
+            p.status = STATUS.FINISHED;
+            p.completedAt = new Date().toISOString();
+            p.completedBy = currentStaffName();
+            persist();
+
+            raiseFinalBill(p);
+
+            window.MediTrackNotify.event('consult.completed', {
+                key: 'completed:' + p.id,
+                title: 'Visit Completed',
+                message: p.name + ' (' + p.trackingId + ') archived by ' + p.completedBy +
+                         ' after ' + store.elapsed(p.registered, p.completedAt) + ' in the department.'
             });
+
+            showIntake();
+            store.navigate('pages/billing.html');
         });
     }
 
-    /* --------------------------------------------------------------------------
-       Initialization
-       -------------------------------------------------------------------------- */
-    function init() {
-        loadAndOrderPatients();
+    /* Completes the current visit and immediately calls the queue's next. */
+    function callNext() {
+        var p = currentPatient();
 
-        // Workspace tab switcher
-        var tabBtns = document.querySelectorAll('.tab-nav-btn');
-        var tabPanels = document.querySelectorAll('.tab-panel-content');
-
-        tabBtns.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var targetTab = this.getAttribute('data-tab');
-                tabBtns.forEach(function(b) { b.classList.remove('active'); });
-                tabPanels.forEach(function(p) { p.classList.remove('active'); });
-
-                this.classList.add('active');
-                var panel = document.getElementById(targetTab);
-                if (panel) panel.classList.add('active');
-            });
-        });
-
-        // Search & Filters in Grid View
-        var searchInput = document.getElementById('trackSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                searchTerm = e.target.value.trim();
-                renderGridDirectory();
-            });
-        }
-
-        initCustomSelect('filterClinicalStatusWrapper', function(val) {
-            clinicalStatusFilter = val;
-            renderGridDirectory();
-        });
-
-        initCustomSelect('filterTrackUrgencyWrapper', function(val) {
-            urgencyFilter = val;
-            renderGridDirectory();
-        });
-
-        initCustomSelect('trackSortOrderWrapper', function(val) {
-            sortOrder = val;
-            applySorting();
-            renderGridDirectory();
-        });
-
-        var resetBtn = document.getElementById('resetTrackFiltersBtn');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', function() {
-                searchTerm = '';
-                clinicalStatusFilter = '';
-                urgencyFilter = '';
-                sortOrder = 'urgent_first';
-                if (searchInput) searchInput.value = '';
-                renderGridDirectory();
-            });
-        }
-
-        // Custom Selects in Workspace
-        initCustomSelect('labPriorityWrapper');
-        initCustomSelect('rxFreqWrapper');
-        initCustomSelect('rxRouteWrapper');
-        initCustomSelect('wsPatientSwitcher');
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                el.classList.remove('active');
-            });
-        });
-
-        // Back to Grid Button
-        var btnBackGrid = document.getElementById('btnBackToGrid');
-        if (btnBackGrid) {
-            btnBackGrid.addEventListener('click', function() {
-                currentViewMode = 'grid';
-                renderView();
-            });
-        }
-
-        // Action Buttons
-        var saveNoteBtn = document.getElementById('saveNoteBtn');
-        var sendLabBtn = document.getElementById('sendLabOrderBtn');
-        var sendNurseBtn = document.getElementById('sendNurseOrderBtn');
-        var sendRxBtn = document.getElementById('sendPrescriptionBtn');
-
-        if (saveNoteBtn) saveNoteBtn.addEventListener('click', saveClinicalNote);
-        if (sendLabBtn) sendLabBtn.addEventListener('click', sendLabOrder);
-        if (sendNurseBtn) sendNurseBtn.addEventListener('click', sendNurseOrder);
-        if (sendRxBtn) sendRxBtn.addEventListener('click', sendPrescriptionOrder);
-
-        var btnFinish = document.getElementById('btnSetFinished');
-        var btnNext = document.getElementById('btnNextPatient');
-        var btnGoQ = document.getElementById('btnGoToQueueFromGrid');
-
-        if (btnFinish) btnFinish.addEventListener('click', finishConsultation);
-        if (btnNext) btnNext.addEventListener('click', nextPatient);
-        if (btnGoQ) btnGoQ.addEventListener('click', function() { window.location.href = 'queue.html'; });
-
-        // Storage sync listener
-        window.addEventListener('storage', function(e) {
-            if (e.key === STORAGE_KEY_PATIENTS || e.key === STORAGE_KEY_LAB) {
-                loadAndOrderPatients();
+        function proceed() {
+            var queue = store.queueOrder(patients);
+            if (!queue.length) {
+                showIntake();
+                window.MediTrackNotify.push(
+                    'Queue clear',
+                    'No patients are waiting to be called.',
+                    'success', 'Queue', 'normal'
+                );
+                return;
             }
+            openWorkspace(queue[0].id);
+        }
+
+        if (!p) { proceed(); return; }
+
+        if (openLabCount(p) > 0) {
+            window.MediTrackNotify.push(
+                'Results still outstanding',
+                p.name + ' still has laboratory orders without results. Release them first, or park the patient.',
+                'warning', 'Doctor', 'high'
+            );
+            return;
+        }
+
+        ui.confirmAction({
+            title: 'Call the next patient',
+            subtitle: 'Current visit: ' + p.name,
+            message: 'This completes ' + p.name + '\u2019s visit and calls the next patient in the queue. ' +
+                     'Use \u201cPark for results\u201d instead if diagnostics are still pending.',
+            confirmLabel: 'Complete and call next',
+            tone: 'info',
+            icon: 'arrow-right'
+        }, function () {
+            p.status = STATUS.FINISHED;
+            p.completedAt = new Date().toISOString();
+            p.completedBy = currentStaffName();
+            persist();
+            raiseFinalBill(p);
+            proceed();
         });
+    }
+
+    /* ==================================================================
+        Live elapsed counters
+        ================================================================== */
+    function tickElapsed() {
+        ui.qsa('[data-elapsed]').forEach(function (el) {
+            el.textContent = store.elapsed(el.getAttribute('data-elapsed'));
+        });
+    }
+
+    /* ==================================================================
+        Init
+        ================================================================== */
+    function init() {
+        load();
+
+        /* Workbench tabs */
+        ui.initTabs({
+            buttonSelector: '.wb-tab',
+            panelSelector: '.wb-panel',
+            attribute: 'data-wb'
+        });
+
+        /* Awaiting-results source filter */
+        ui.initChips(document.querySelector('#wbAwaiting .wb-subhead'), 'data-await-filter', function (value) {
+            awaitFilter = value;
+            renderWorkbench();
+        });
+
+        /* Workspace tabs */
+        ui.initTabs({
+            buttonSelector: '.tab-nav-btn',
+            panelSelector: '.tab-panel-content',
+            attribute: 'data-tab'
+        });
+
+        ui.initSelect('labPriorityWrapper');
+        ui.initSelect('rxFreqWrapper');
+        ui.initSelect('rxRouteWrapper');
+
+        ui.bindLiveValidation([
+            'inputClinicalNotes', 'inputLabTestName', 'inputLabNote',
+            'inputNurseTask', 'inputNurseNote', 'inputRxMedName', 'inputRxDosage', 'assistInput'
+        ]);
+
+        var bindings = [
+            ['btnBackToIntake', showIntake],
+            ['saveNoteBtn', saveNote],
+            ['sendLabOrderBtn', sendLabOrder],
+            ['sendNurseOrderBtn', sendNurseOrder],
+            ['sendPrescriptionBtn', sendPrescription],
+            ['btnParkForResults', parkForResults],
+            ['btnSetFinished', completeVisit],
+            ['btnNextPatient', callNext],
+            ['assistRunBtn', function () { runAssist(true); }],
+            ['assistApproveBtn', approveAssist],
+            ['assistDiscardBtn', discardAssist]
+        ];
+        bindings.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.addEventListener('click', pair[1]);
+        });
+
+        var useComplaint = byId('assistUseComplaintBtn');
+        if (useComplaint) {
+            useComplaint.addEventListener('click', function () {
+                var p = currentPatient();
+                var input = byId('assistInput');
+                if (!p || !input) return;
+                input.value = buildAssistNarrative(p) || (p.description || '');
+                ui.clearFieldError('assistInput');
+                runAssist(true);
+            });
+        }
+
+        var clearAssist = byId('assistClearBtn');
+        if (clearAssist) {
+            clearAssist.addEventListener('click', function () {
+                var input = byId('assistInput');
+                if (input) input.value = '';
+                var out = byId('assistOutput');
+                if (out) out.innerHTML = '';
+                setReviewBar(false);
+                ui.clearFieldError('assistInput');
+                var p = currentPatient();
+                if (p && p.assist) { p.assist = null; persist(); }
+            });
+        }
+
+        store.onPatientsChanged(function () {
+            patients = store.readPatients();
+            if (currentId !== null && currentPatient()) renderWorkspace();
+            else if (currentId !== null) showIntake();
+            else renderIntake();
+        });
+
+        setInterval(tickElapsed, 30000);
     }
 
     if (document.readyState === 'loading') {
@@ -909,4 +1523,4 @@
     } else {
         init();
     }
-})();
+})(window, document);

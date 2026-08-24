@@ -1,514 +1,561 @@
-/**
- * MediTrack Hospital ERP - Site Settings Logic
- * Manages facility branding, theme choices, clinical queue defaults,
- * notification preferences, database backup exports, and demo resets.
- * (Staff member management omitted).
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Settings
 
-(function() {
+   Scope is deliberately narrow: this build has no backend, so the page only
+   offers settings it can actually honour. Three things it honours properly:
+
+     - appearance (theme, accent, density, motion, sound), which js/theme.js
+       applies to <html> and relays into every page inside the dashboard
+       frame. Everything is persisted in localStorage under clinic_settings.
+     - the calling policy, which js/store.js reads when ordering the queue
+     - alert routing, which js/notifications.js reads before raising anything
+
+   Critical alerts are excluded from routing on purpose. A panic laboratory
+   value must not be silenceable from a preferences screen.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_SETTINGS_KEY = 'clinic_system_settings';
-    var STORAGE_KEY_PATIENTS = 'clinic_patients_data';
-    var STORAGE_KEY_LAB = 'clinic_lab_requests';
-    var STORAGE_KEY_PRESCRIPTIONS = 'clinic_prescriptions_data';
-    var STORAGE_NOTIFS_KEY = 'clinic_notifications_log';
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var theme = window.MediTheme;
 
-    var defaultSettings = {
-        hospName: 'MediTrack Central Hospital',
-        facilityCode: 'MTRK-HOSP-001',
-        emergencyPhone: '0911-00-EMERGENCY',
-        supportEmail: 'admin@meditrack.health',
-        address: '450 Medical Heights Parkway, Suite 100, West Wing',
-        timezone: 'UTC+3',
-        dateFormat: 'MMM D, YYYY',
-        deptInternalMed: true,
-        deptLab: true,
-        deptPharmacy: true,
-        deptEmergency: true,
-        accentTheme: '#B91C1C',
-        animations: true,
-        compactDensity: false,
-        showBadges: true,
-        defaultQueueOrder: 'urgent_first',
-        autoAdvanceQueue: true,
-        statAlertSound: true,
-        bpSystolicHigh: 140,
-        bpDiastolicHigh: 90,
-        hrHigh: 100,
-        toastDuration: '7000',
-        notifLabReady: true,
-        notifNewPatient: true,
-        notifDoctorOrders: true,
-        notifConsultFinish: true,
-        autoLogoutTime: '1800',
-        auditLogging: true,
-        requirePassDischarge: false
+    var SETTINGS_KEY = 'clinic_settings';
+
+    /* Only what this page owns. Facility details written elsewhere in the
+       same storage key are preserved on save (see writeSettings). */
+    var DEFAULTS = {
+        alertLabResults: true,
+        alertAbnormalVitals: true,
+        alertStatRequests: true,
+        alertLowStock: true,
+        alertRoutineLog: true,
+        alertConfirmations: true,
+        toastDuration: '6000'
     };
 
-    var currentSettings = Object.assign({}, defaultSettings);
+    var TOGGLES = [
+        ['alertLabResults', 'alertLabResults'],
+        ['alertAbnormalVitals', 'alertAbnormalVitals'],
+        ['alertStatRequests', 'alertStatRequests'],
+        ['alertLowStock', 'alertLowStock'],
+        ['alertRoutineLog', 'alertRoutineLog'],
+        ['alertConfirmations', 'alertConfirmations']
+    ];
 
-    function loadSettings() {
+    var settings = {};
+
+    function byId(id) { return document.getElementById(id); }
+    function esc(s) { return store.escapeHtml(s); }
+
+    /* Settings are an object, not an array, so read() cannot be used. */
+    function readSettings() {
         try {
-            var raw = localStorage.getItem(STORAGE_SETTINGS_KEY);
-            if (raw) {
-                currentSettings = Object.assign({}, defaultSettings, JSON.parse(raw));
-            }
+            var raw = store.rawGet(SETTINGS_KEY);
+            var parsed = raw ? JSON.parse(raw) : {};
+            var out = {};
+            Object.keys(DEFAULTS).forEach(function (k) {
+                out[k] = (parsed && parsed[k] !== undefined) ? parsed[k] : DEFAULTS[k];
+            });
+            return out;
         } catch (e) {
-            currentSettings = Object.assign({}, defaultSettings);
-        }
-        applySettingsToUI();
-        applyThemeAccent(currentSettings.accentTheme);
-    }
-
-    function saveSettings() {
-        gatherSettingsFromUI();
-        localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(currentSettings));
-        applyThemeAccent(currentSettings.accentTheme);
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Settings Saved',
-                'Hospital site configuration has been updated successfully.',
-                'success',
-                'Settings'
-            );
+            var fallback = {};
+            Object.keys(DEFAULTS).forEach(function (k) { fallback[k] = DEFAULTS[k]; });
+            return fallback;
         }
     }
 
-    function applyThemeAccent(color) {
-        if (!color) color = '#B91C1C';
-        var darkColor = color === '#B91C1C' ? '#991B1B' : (color === '#0284C7' ? '#0369A1' : (color === '#059669' ? '#047857' : '#6D28D9'));
-        var lightColor = color === '#B91C1C' ? '#FEE2E2' : (color === '#0284C7' ? '#E0F2FE' : (color === '#059669' ? '#DCFCE7' : '#EDE9FE'));
+    /* Merge rather than replace, so values owned by other screens (facility
+       name used in the sidebar brand, appearance keys) are never clobbered
+       by a save from this page. */
+    function writeSettings(partial) {
+        var existing = {};
+        try {
+            var raw = store.rawGet(SETTINGS_KEY);
+            var parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && typeof parsed === 'object') existing = parsed;
+        } catch (e) {}
 
-        document.documentElement.style.setProperty('--primary-red', color);
-        document.documentElement.style.setProperty('--primary-dark', darkColor);
-        document.documentElement.style.setProperty('--primary-light', lightColor);
+        Object.keys(settings).forEach(function (k) { existing[k] = settings[k]; });
+        if (partial) Object.keys(partial).forEach(function (k) { existing[k] = partial[k]; });
 
-        // Also pass theme change to parent window if inside iframe
-        if (window.parent && window.parent !== window) {
-            try {
-                window.parent.document.documentElement.style.setProperty('--primary-red', color);
-                window.parent.document.documentElement.style.setProperty('--primary-dark', darkColor);
-                window.parent.document.documentElement.style.setProperty('--primary-light', lightColor);
-            } catch (e) {}
-        }
+        store.rawSet(SETTINGS_KEY, JSON.stringify(existing));
+        try { window.dispatchEvent(new CustomEvent('meditrack:settings-updated')); } catch (e) {}
     }
 
-    function applySettingsToUI() {
-        setInputValue('setHospName', currentSettings.hospName);
-        setInputValue('setFacilityCode', currentSettings.facilityCode);
-        setInputValue('setEmergencyPhone', currentSettings.emergencyPhone);
-        setInputValue('setSupportEmail', currentSettings.supportEmail);
-        setInputValue('setAddress', currentSettings.address);
-        setInputValue('setBpSystolicHigh', currentSettings.bpSystolicHigh);
-        setInputValue('setBpDiastolicHigh', currentSettings.bpDiastolicHigh);
-        setInputValue('setHrHigh', currentSettings.hrHigh);
+    /* ==================================================================
+        Appearance (delegates to js/theme.js)
+        ================================================================== */
+    function currentAppearance() {
+        return theme ? theme.read() : { theme: 'light', accent: 'blue', density: 'comfortable', reduceMotion: false, soundEnabled: true, soundVolume: 'medium' };
+    }
 
-        setCheckbox('deptInternalMed', currentSettings.deptInternalMed);
-        setCheckbox('deptLab', currentSettings.deptLab);
-        setCheckbox('deptPharmacy', currentSettings.deptPharmacy);
-        setCheckbox('deptEmergency', currentSettings.deptEmergency);
-        setCheckbox('setAnimations', currentSettings.animations);
-        setCheckbox('setCompactDensity', currentSettings.compactDensity);
-        setCheckbox('setShowBadges', currentSettings.showBadges);
-        setCheckbox('setAutoAdvanceQueue', currentSettings.autoAdvanceQueue);
-        setCheckbox('setStatAlertSound', currentSettings.statAlertSound);
-        setCheckbox('notifLabReady', currentSettings.notifLabReady);
-        setCheckbox('notifNewPatient', currentSettings.notifNewPatient);
-        setCheckbox('notifDoctorOrders', currentSettings.notifDoctorOrders);
-        setCheckbox('notifConsultFinish', currentSettings.notifConsultFinish);
-        setCheckbox('setAuditLogging', currentSettings.auditLogging);
-        setCheckbox('setRequirePassDischarge', currentSettings.requirePassDischarge);
+    function renderAppearance() {
+        var a = currentAppearance();
 
-        // Custom selects
-        setCustomSelectValue('setTimezoneWrapper', currentSettings.timezone);
-        setCustomSelectValue('setDateFormatWrapper', currentSettings.dateFormat);
-        setCustomSelectValue('setDefaultQueueOrderWrapper', currentSettings.defaultQueueOrder);
-        setCustomSelectValue('setToastDurationWrapper', currentSettings.toastDuration);
-        setCustomSelectValue('setAutoLogoutWrapper', currentSettings.autoLogoutTime);
+        ui.qsa('#themeModeOptions [data-theme-choice]').forEach(function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-theme-choice') === a.theme);
+        });
 
-        // Radio theme choice
-        document.querySelectorAll('.theme-choice').forEach(function(el) {
-            var val = el.getAttribute('data-color');
-            var radio = el.querySelector('input[type="radio"]');
-            if (val === currentSettings.accentTheme) {
-                el.classList.add('active');
-                if (radio) radio.checked = true;
-            } else {
-                el.classList.remove('active');
-                if (radio) radio.checked = false;
+        var host = byId('accentSwatches');
+        if (host && theme) {
+            if (!host.childElementCount) {
+                host.innerHTML = theme.ACCENTS.map(function (acc) {
+                    return '<button type="button" class="accent-swatch" data-accent-choice="' +
+                        esc(acc.value) + '" title="' + esc(acc.label) + '" aria-label="' + esc(acc.label) + '">' +
+                        '<span class="swatch-dot" style="background:' + esc(acc.swatch) + '"></span>' +
+                        '<span class="swatch-label">' + esc(acc.label) + '</span>' +
+                    '</button>';
+                }).join('');
             }
-        });
-    }
-
-    function gatherSettingsFromUI() {
-        currentSettings.hospName = getInputValue('setHospName');
-        currentSettings.facilityCode = getInputValue('setFacilityCode');
-        currentSettings.emergencyPhone = getInputValue('setEmergencyPhone');
-        currentSettings.supportEmail = getInputValue('setSupportEmail');
-        currentSettings.address = getInputValue('setAddress');
-        currentSettings.bpSystolicHigh = parseInt(getInputValue('setBpSystolicHigh'), 10) || 140;
-        currentSettings.bpDiastolicHigh = parseInt(getInputValue('setBpDiastolicHigh'), 10) || 90;
-        currentSettings.hrHigh = parseInt(getInputValue('setHrHigh'), 10) || 100;
-
-        currentSettings.deptInternalMed = getCheckbox('deptInternalMed');
-        currentSettings.deptLab = getCheckbox('deptLab');
-        currentSettings.deptPharmacy = getCheckbox('deptPharmacy');
-        currentSettings.deptEmergency = getCheckbox('deptEmergency');
-        currentSettings.animations = getCheckbox('setAnimations');
-        currentSettings.compactDensity = getCheckbox('setCompactDensity');
-        currentSettings.showBadges = getCheckbox('setShowBadges');
-        currentSettings.setAutoAdvanceQueue = getCheckbox('setAutoAdvanceQueue');
-        currentSettings.setStatAlertSound = getCheckbox('setStatAlertSound');
-        currentSettings.notifLabReady = getCheckbox('notifLabReady');
-        currentSettings.notifNewPatient = getCheckbox('notifNewPatient');
-        currentSettings.notifDoctorOrders = getCheckbox('notifDoctorOrders');
-        currentSettings.notifConsultFinish = getCheckbox('notifConsultFinish');
-        currentSettings.auditLogging = getCheckbox('setAuditLogging');
-        currentSettings.requirePassDischarge = getCheckbox('setRequirePassDischarge');
-
-        currentSettings.timezone = getCustomSelectValue('setTimezoneWrapper') || 'UTC+3';
-        currentSettings.dateFormat = getCustomSelectValue('setDateFormatWrapper') || 'MMM D, YYYY';
-        currentSettings.defaultQueueOrder = getCustomSelectValue('setDefaultQueueOrderWrapper') || 'urgent_first';
-        currentSettings.toastDuration = getCustomSelectValue('setToastDurationWrapper') || '7000';
-        currentSettings.autoLogoutTime = getCustomSelectValue('setAutoLogoutWrapper') || '1800';
-
-        var activeThemeEl = document.querySelector('.theme-choice.active');
-        if (activeThemeEl) {
-            currentSettings.accentTheme = activeThemeEl.getAttribute('data-color') || '#B91C1C';
-        }
-    }
-
-    function setInputValue(id, val) {
-        var el = document.getElementById(id);
-        if (el && val !== undefined) el.value = val;
-    }
-    function getInputValue(id) {
-        var el = document.getElementById(id);
-        return el ? el.value.trim() : '';
-    }
-    function setCheckbox(id, checked) {
-        var el = document.getElementById(id);
-        if (el) el.checked = !!checked;
-    }
-    function getCheckbox(id) {
-        var el = document.getElementById(id);
-        return el ? el.checked : false;
-    }
-
-    function setCustomSelectValue(wrapperId, val) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var opt = wrapper.querySelector('.cs-option[data-value="' + val + '"]');
-        if (opt && toggle) {
-            wrapper.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-            opt.classList.add('selected');
-            toggle.setAttribute('data-value', val);
-            var textSpan = toggle.querySelector('.cs-text');
-            if (textSpan) textSpan.textContent = opt.textContent;
-        }
-    }
-
-    function getCustomSelectValue(wrapperId) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return '';
-        var toggle = wrapper.querySelector('.cs-toggle');
-        return toggle ? toggle.getAttribute('data-value') : '';
-    }
-
-    /* --------------------------------------------------------------------------
-       Custom Select Initializer
-       -------------------------------------------------------------------------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
-
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
+            ui.qsa('[data-accent-choice]', host).forEach(function (btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-accent-choice') === a.accent);
             });
-            wrapper.classList.toggle('active');
-        });
-
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                var text = this.textContent;
-                var textSpan = toggle.querySelector('.cs-text');
-                if (textSpan) textSpan.textContent = text;
-                toggle.setAttribute('data-value', val);
-
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
-            });
-        });
-    }
-
-    /* --------------------------------------------------------------------------
-       Database Export & Reset Demo
-       -------------------------------------------------------------------------- */
-    function exportClinicDatabase() {
-        var exportObj = {
-            exportDate: new Date().toISOString(),
-            systemVersion: 'MediTrack ERP v2.4',
-            settings: currentSettings,
-            patients: JSON.parse(localStorage.getItem(STORAGE_KEY_PATIENTS) || '[]'),
-            labRequests: JSON.parse(localStorage.getItem(STORAGE_KEY_LAB) || '[]'),
-            prescriptions: JSON.parse(localStorage.getItem(STORAGE_KEY_PRESCRIPTIONS) || '[]'),
-            notifications: JSON.parse(localStorage.getItem(STORAGE_NOTIFS_KEY) || '[]')
-        };
-
-        var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 2));
-        var downloadAnchor = document.createElement('a');
-        downloadAnchor.setAttribute("href", dataStr);
-        downloadAnchor.setAttribute("download", "meditrack_clinic_backup_" + new Date().toISOString().slice(0,10) + ".json");
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        downloadAnchor.remove();
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Database Exported',
-                'Full clinical database backup JSON generated successfully.',
-                'success',
-                'Settings'
-            );
-        }
-    }
-
-    function resetDemoData() {
-        if (!confirm('Are you sure you want to reset all demo patient records, lab orders, and test data? This will restore factory demonstration data.')) {
-            return;
         }
 
-        var samplePatients = [
-            {
-                id: 1,
-                trackingId: 'TRK-10293847',
-                name: 'John Doe',
-                age: 34,
-                phone: '0912 345 678',
-                urgency: 'Urgent',
-                status: 'In Treatment',
-                description: 'Severe acute chest pain radiating to left shoulder and arm. Undergoing cardiac evaluation.',
-                registered: new Date(Date.now() - 45 * 60000).toISOString(),
-                bp: '138/88',
-                hr: 86,
-                height: 175,
-                weight: 74,
-                clinicalNotes: [
-                    { id: 101, diagnosis: 'Acute Coronary Syndrome Rule-Out', note: 'Patient presented with 2-hour onset retrosternal chest pain. S1/S2 heard, no murmurs. ECG ordered.', doctor: 'Dr. Sarah Chen', time: new Date(Date.now() - 30 * 60000).toISOString() }
-                ],
-                labOrders: [
-                    { id: 1001, test: 'Cardiac Enzymes (Troponin I) & 12-Lead ECG', priority: 'Urgent', note: 'Expedite STAT.', doctor: 'Dr. Sarah Chen', status: 'In Progress', results: 'Troponin I: 0.04 ng/mL. Normal sinus rhythm.', time: new Date(Date.now() - 25 * 60000).toISOString() }
-                ],
-                nurseOrders: [
-                    { id: 201, task: 'Continuous ECG Monitoring & Supplemental O2', note: 'Maintain SpO2 > 95%.', doctor: 'Dr. Sarah Chen', time: new Date(Date.now() - 20 * 60000).toISOString() }
-                ],
-                prescriptions: [
-                    { id: 301, medication: 'Aspirin Dispersible', dosage: '300mg', frequency: 'Stat', route: 'Oral', duration: 'Single Dose', instructions: 'Chew immediately.', doctor: 'Dr. Sarah Chen', time: new Date(Date.now() - 15 * 60000).toISOString() }
-                ]
-            },
-            {
-                id: 2,
-                trackingId: 'TRK-77123901',
-                name: 'Alice Smith',
-                age: 28,
-                phone: '0987 654 321',
-                urgency: 'Non-Urgent',
-                status: 'Pending',
-                description: 'Persistent dry cough, mild intermittent fever (38.1°C), and sore throat for 3 days.',
-                registered: new Date(Date.now() - 30 * 60000).toISOString(),
-                bp: '118/76',
-                hr: 74,
-                height: 164,
-                weight: 58,
-                clinicalNotes: [],
-                labOrders: [
-                    { id: 1002, test: 'Complete Blood Count (CBC) & Sputum Analysis', priority: 'Routine', note: 'Check differential WBC.', doctor: 'Dr. Sarah Chen', status: 'Requested', results: '', time: new Date(Date.now() - 10 * 60000).toISOString() }
-                ],
-                nurseOrders: [],
-                prescriptions: []
-            },
-            {
-                id: 3,
-                trackingId: 'TRK-33418721',
-                name: 'Bob Johnson',
-                age: 45,
-                phone: '0911 222 333',
-                urgency: 'Non-Urgent',
-                status: 'Finished',
-                description: 'Annual wellness checkup and routine biochemical blood screening.',
-                registered: new Date(Date.now() - 120 * 60000).toISOString(),
-                bp: '122/80',
-                hr: 70,
-                height: 180,
-                weight: 82,
-                clinicalNotes: [
-                    { id: 102, diagnosis: 'Normal Annual Physical Exam', note: 'Cardiovascular and respiratory systems unremarkable. Lifestyle recommendations given.', doctor: 'Dr. Sarah Chen', time: new Date(Date.now() - 90 * 60000).toISOString() }
-                ],
-                labOrders: [
-                    { id: 1003, test: 'Fasting Lipid Profile & Blood Glucose', priority: 'Routine', note: 'Check baseline.', doctor: 'Dr. Sarah Chen', status: 'Completed', results: 'Total Cholesterol: 185 mg/dL, Fasting Glucose: 92 mg/dL.', time: new Date(Date.now() - 100 * 60000).toISOString() }
-                ],
-                nurseOrders: [],
-                prescriptions: []
-            },
-            {
-                id: 4,
-                trackingId: 'TRK-99014523',
-                name: 'Charlie Brown',
-                age: 52,
-                phone: '0922 444 888',
-                urgency: 'Urgent',
-                status: 'Pending',
-                description: 'Suspected right forearm fracture after fall from ladder; visible swelling and tenderness.',
-                registered: new Date(Date.now() - 15 * 60000).toISOString(),
-                bp: '130/84',
-                hr: 88,
-                height: 172,
-                weight: 78,
-                clinicalNotes: [],
-                labOrders: [],
-                nurseOrders: [],
-                prescriptions: []
-            }
-        ];
+        var compact = byId('setCompactDensity');
+        if (compact) compact.checked = a.density === 'compact';
+        var motion = byId('setReduceMotion');
+        if (motion) motion.checked = !!a.reduceMotion;
 
-        var sampleLabs = [
-            {
-                id: 1001,
-                patientId: 1,
-                trackingId: 'TRK-10293847',
-                patientName: 'John Doe',
-                age: 34,
-                phone: '0912 345 678',
-                test: 'Cardiac Enzymes (Troponin I) & 12-Lead ECG',
-                priority: 'Urgent',
-                note: 'Severe chest pain radiating to shoulder. Please expedite STAT.',
-                doctor: 'Dr. Sarah Chen',
-                time: new Date(Date.now() - 25 * 60000).toISOString(),
-                status: 'In Progress',
-                results: 'Troponin I: 0.04 ng/mL. Normal sinus rhythm.'
-            },
-            {
-                id: 1002,
-                patientId: 2,
-                trackingId: 'TRK-77123901',
-                patientName: 'Alice Smith',
-                age: 28,
-                phone: '0987 654 321',
-                test: 'Complete Blood Count (CBC) & Sputum Analysis',
-                priority: 'Routine',
-                note: 'Check differential WBC.',
-                doctor: 'Dr. Sarah Chen',
-                time: new Date(Date.now() - 10 * 60000).toISOString(),
-                status: 'Requested',
-                results: ''
-            },
-            {
-                id: 1003,
-                patientId: 3,
-                trackingId: 'TRK-33418721',
-                patientName: 'Bob Johnson',
-                age: 45,
-                phone: '0911 222 333',
-                test: 'Fasting Lipid Profile & Blood Glucose',
-                priority: 'Routine',
-                note: 'Annual wellness checkup screen.',
-                doctor: 'Dr. Sarah Chen',
-                time: new Date(Date.now() - 100 * 60000).toISOString(),
-                status: 'Completed',
-                results: 'Total Cholesterol: 185 mg/dL, Fasting Glucose: 92 mg/dL.'
-            }
-        ];
+        var sound = byId('setSoundEnabled');
+        if (sound) sound.checked = a.soundEnabled !== false;
 
-        localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(samplePatients));
-        localStorage.setItem(STORAGE_KEY_LAB, JSON.stringify(sampleLabs));
-        localStorage.setItem(STORAGE_KEY_PRESCRIPTIONS, JSON.stringify([]));
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Demo Data Restored',
-                'Sample patient queue and laboratory test records have been reset.',
-                'success',
-                'Settings'
-            );
-        }
+        ui.setSelectValue('setSoundVolumeWrapper', a.soundVolume || 'medium',
+            (a.soundVolume || 'medium').charAt(0).toUpperCase() + (a.soundVolume || 'medium').slice(1));
     }
 
-    /* --------------------------------------------------------------------------
-       Initialization
-       -------------------------------------------------------------------------- */
-    function init() {
-        loadSettings();
-
-        // Tab Navigation
-        var tabItems = document.querySelectorAll('.settings-tab-item');
-        var panels = document.querySelectorAll('.settings-panel');
-
-        tabItems.forEach(function(item) {
-            item.addEventListener('click', function() {
-                var targetTab = this.getAttribute('data-tab');
-                tabItems.forEach(function(t) { t.classList.remove('active'); });
-                panels.forEach(function(p) { p.classList.remove('active'); });
-
-                this.classList.add('active');
-                var panel = document.getElementById(targetTab);
-                if (panel) panel.classList.add('active');
+    function bindAppearance() {
+        var modeHost = byId('themeModeOptions');
+        if (modeHost) {
+            modeHost.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('[data-theme-choice]') : null;
+                if (!btn) return;
+                /* Dark / light chosen explicitly; "system" follows the OS. */
+                if (theme) theme.set({ theme: btn.getAttribute('data-theme-choice') });
+                renderAppearance();
+                window.MediTrackNotify.flash('Appearance saved',
+                    btn.getAttribute('data-theme-choice') === 'dark'
+                        ? 'Dark mode is on across the whole application.'
+                        : 'Appearance updated on this workstation.');
             });
-        });
+        }
 
-        // Theme Pickers
-        var themeChoices = document.querySelectorAll('.theme-choice');
-        themeChoices.forEach(function(choice) {
-            choice.addEventListener('click', function() {
-                themeChoices.forEach(function(c) { c.classList.remove('active'); });
-                this.classList.add('active');
-                var color = this.getAttribute('data-color');
-                applyThemeAccent(color);
+        var swatchHost = byId('accentSwatches');
+        if (swatchHost) {
+            swatchHost.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('[data-accent-choice]') : null;
+                if (!btn) return;
+                if (theme) theme.set({ accent: btn.getAttribute('data-accent-choice') });
+                renderAppearance();
             });
-        });
+        }
 
-        // Initialize Custom Selects
-        initCustomSelect('setTimezoneWrapper');
-        initCustomSelect('setDateFormatWrapper');
-        initCustomSelect('setDefaultQueueOrderWrapper');
-        initCustomSelect('setToastDurationWrapper');
-        initCustomSelect('setAutoLogoutWrapper');
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                el.classList.remove('active');
+        [['setCompactDensity', 'density', 'compact'], ['setReduceMotion', 'reduceMotion', true]]
+            .forEach(function (pair) {
+                var el = byId(pair[0]);
+                if (!el) return;
+                el.addEventListener('change', function () {
+                    var patch = {};
+                    if (pair[1] === 'density') patch.density = el.checked ? 'compact' : 'comfortable';
+                    else patch.reduceMotion = el.checked;
+                    if (theme) theme.set(patch);
+                });
             });
-        });
 
-        // Actions
-        var btnSave = document.getElementById('btnSaveAllSettings');
-        var btnReset = document.getElementById('btnResetSettings');
-        var btnExport = document.getElementById('btnExportData');
-        var btnResetDemo = document.getElementById('btnResetDemoData');
+        var sound = byId('setSoundEnabled');
+        if (sound) {
+            sound.addEventListener('change', function () {
+                if (theme) theme.set({ soundEnabled: sound.checked });
+            });
+        }
 
-        if (btnSave) btnSave.addEventListener('click', saveSettings);
-        if (btnReset) {
-            btnReset.addEventListener('click', function() {
-                if (confirm('Reset settings to factory defaults?')) {
-                    currentSettings = Object.assign({}, defaultSettings);
-                    applySettingsToUI();
-                    saveSettings();
+        ui.initSelect('setSoundVolumeWrapper');
+        var volHost = byId('setSoundVolumeWrapper');
+        if (volHost) {
+            volHost.addEventListener('click', function () {
+                if (theme) theme.set({ soundVolume: ui.getSelectValue('setSoundVolumeWrapper') || 'medium' });
+            });
+        }
+
+        var test = byId('btnTestSound');
+        if (test) {
+            test.addEventListener('click', function () {
+                if (theme) {
+                    theme.unlockAudio();
+                    theme.playAlert('high');
                 }
             });
         }
-        if (btnExport) btnExport.addEventListener('click', exportClinicDatabase);
-        if (btnResetDemo) btnResetDemo.addEventListener('click', resetDemoData);
+    }
+
+    /* ==================================================================
+        Form <-> state (alerts only now)
+        ================================================================== */
+    function toForm() {
+        TOGGLES.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.checked = !!settings[pair[1]];
+        });
+
+        ui.setSelectValue('setToastDurationWrapper', settings.toastDuration,
+            (Number(settings.toastDuration) / 1000) + ' seconds');
+
+        renderPolicy();
+        renderAppearance();
+    }
+
+    function fromForm() {
+        TOGGLES.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) settings[pair[1]] = !!el.checked;
+        });
+        settings.toastDuration = ui.getSelectValue('setToastDurationWrapper') || '6000';
+    }
+
+    /* ==================================================================
+        Calling policy
+        ================================================================== */
+    function renderPolicy() {
+        var policy = store.queuePolicy();
+        ui.qsa('#policyOptions [data-policy]').forEach(function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-policy') === policy);
+        });
+        var warn = byId('policyWarning');
+        if (warn) warn.hidden = policy !== store.POLICIES.FIFO;
+    }
+
+    function choosePolicy(value) {
+        var current = store.queuePolicy();
+        if (value === current) return;
+
+        var toFifo = value === store.POLICIES.FIFO;
+
+        ui.confirmAction({
+            title: 'Change the calling policy',
+            subtitle: store.policyLabel(current) + ' \u2192 ' + store.policyLabel(value),
+            message: toFifo
+                ? 'Arrival order ignores clinical priority across the whole department. Emergency and Urgent patients will wait behind earlier routine arrivals.'
+                : 'Triage priority calls Emergency and Urgent patients ahead of Routine arrivals. This is the clinical default.',
+            confirmLabel: 'Apply ' + store.policyLabel(value).toLowerCase(),
+            tone: toFifo ? 'danger' : 'info',
+            icon: toFifo ? 'warning' : 'shield-check'
+        }, function () {
+            store.setQueuePolicy(value);
+            renderPolicy();
+            if (toFifo) {
+                window.MediTrackNotify.push(
+                    'Calling Policy Changed',
+                    'The queue now runs in strict arrival order. Clinical priority is not applied.',
+                    'warning', 'Queue', 'high'
+                );
+            } else {
+                window.MediTrackNotify.flash('Policy restored', 'Queue is calling by triage priority again.');
+            }
+        });
+    }
+
+    /* ==================================================================
+        Storage usage
+        ================================================================== */
+    var TRACKED = [
+        ['Patient records', store.KEYS.patients],
+        ['Laboratory requests', store.KEYS.labRequests],
+        ['Laboratory archive', store.KEYS.labArchive],
+        ['Prescriptions', store.KEYS.prescriptions],
+        ['Nursing tasks', store.KEYS.nurseTasks],
+        ['Inventory', store.KEYS.inventory],
+        ['Bills', store.KEYS.invoices],
+        ['Staff directory', 'clinic_staff_members'],
+        ['Notifications', store.KEYS.notifications]
+    ];
+
+    function renderUsage() {
+        var host = byId('storageUsage');
+        if (!host) return;
+
+        var totalBytes = 0;
+
+        var rows = TRACKED.map(function (pair) {
+            var raw = store.rawGet(pair[1]) || '';
+            var bytes = raw.length * 2;   /* UTF-16 code units in localStorage */
+            totalBytes += bytes;
+
+            var count = 0;
+            try {
+                var parsed = JSON.parse(raw || '[]');
+                count = Array.isArray(parsed) ? parsed.length : 0;
+            } catch (e) {}
+
+            return '<div class="su-row">' +
+                '<dt>' + esc(pair[0]) + '</dt>' +
+                '<dd>' + count + (count === 1 ? ' record' : ' records') +
+                    '<span class="su-size">' + formatBytes(bytes) + '</span>' +
+                '</dd>' +
+            '</div>';
+        }).join('');
+
+        host.innerHTML = rows +
+            '<div class="su-row su-total">' +
+                '<dt>Total</dt>' +
+                '<dd><span class="su-size">' + formatBytes(totalBytes) + '</span></dd>' +
+            '</div>';
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+
+    /* ==================================================================
+        Backup / restore
+        ================================================================== */
+    function exportBackup() {
+        var payload = {
+            application: 'MediTrack Hospital ERP',
+            exportedAt: new Date().toISOString(),
+            schema: 1,
+            settings: settings,
+            appearance: currentAppearance(),
+            queuePolicy: store.queuePolicy(),
+            data: {}
+        };
+
+        TRACKED.forEach(function (pair) {
+            try { payload.data[pair[1]] = JSON.parse(store.rawGet(pair[1]) || '[]'); }
+            catch (e) { payload.data[pair[1]] = []; }
+        });
+
+        var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var name = 'meditrack_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+
+        window.MediTrackNotify.flash('Backup created', name + ' saved to your downloads.');
+    }
+
+    function importBackup(file) {
+        var reader = new FileReader();
+
+        reader.onload = function () {
+            var payload;
+            try {
+                payload = JSON.parse(String(reader.result));
+            } catch (e) {
+                window.MediTrackNotify.push(
+                    'Restore failed',
+                    'That file is not valid JSON and was not applied.',
+                    'error', 'System', 'high'
+                );
+                return;
+            }
+
+            if (!payload || !payload.data || typeof payload.data !== 'object') {
+                window.MediTrackNotify.push(
+                    'Restore failed',
+                    'That file is not a MediTrack backup. Nothing was changed.',
+                    'error', 'System', 'high'
+                );
+                return;
+            }
+
+            var recordCount = Object.keys(payload.data).reduce(function (n, k) {
+                return n + (Array.isArray(payload.data[k]) ? payload.data[k].length : 0);
+            }, 0);
+
+            ui.confirmAction({
+                title: 'Restore from backup',
+                subtitle: payload.exportedAt ? 'Exported ' + store.formatDateTime(payload.exportedAt) : '',
+                message: 'This replaces all current data on this workstation with ' + recordCount +
+                         ' records from the backup. Current records are not recoverable afterwards.',
+                confirmLabel: 'Replace all data',
+                tone: 'danger',
+                icon: 'warning'
+            }, function () {
+                Object.keys(payload.data).forEach(function (key) {
+                    if (Array.isArray(payload.data[key])) store.write(key, payload.data[key]);
+                });
+
+                if (payload.settings) {
+                    Object.keys(DEFAULTS).forEach(function (k) {
+                        if (payload.settings[k] !== undefined) settings[k] = payload.settings[k];
+                    });
+                    writeSettings();
+                }
+                if (payload.appearance && theme) {
+                    theme.set(payload.appearance);
+                }
+                if (payload.queuePolicy) store.setQueuePolicy(payload.queuePolicy);
+
+                toForm();
+                renderUsage();
+                window.MediTrackNotify.push(
+                    'Backup Restored',
+                    recordCount + ' records were restored from the backup file.',
+                    'success', 'System', 'normal'
+                );
+            });
+        };
+
+        reader.readAsText(file);
+    }
+
+    /* ==================================================================
+        Demo data / erase
+        ================================================================== */
+    function loadDemoData() {
+        ui.confirmAction({
+            title: 'Load demonstration data',
+            message: 'This replaces every patient record, order and result on this workstation with a sample data set. Export a backup first if the current records matter.',
+            confirmLabel: 'Replace with demo data',
+            tone: 'danger',
+            icon: 'warning'
+        }, function () {
+            [store.KEYS.patients, store.KEYS.labRequests, store.KEYS.labArchive,
+             store.KEYS.prescriptions, store.KEYS.nurseTasks].forEach(function (k) {
+                store.remove(k);
+            });
+
+            store.seedIfEmpty();
+            renderUsage();
+            window.MediTrackNotify.push(
+                'Demonstration Data Loaded',
+                'Sample patients and orders are in place. Reload any open department screen.',
+                'success', 'System', 'normal'
+            );
+        });
+    }
+
+    function eraseEverything() {
+        ui.confirmAction({
+            title: 'Erase all clinical data',
+            message: 'This permanently removes every patient record, order, result and notification from this workstation. There is no server copy and no undo.',
+            confirmLabel: 'Erase everything',
+            cancelLabel: 'Keep my data',
+            tone: 'danger',
+            icon: 'trash'
+        }, function () {
+            TRACKED.forEach(function (pair) {
+                store.remove(pair[1]);
+            });
+            renderUsage();
+            window.MediTrackNotify.push(
+                'All Data Erased',
+                'This workstation now holds no clinical records.',
+                'warning', 'System', 'high'
+            );
+        });
+    }
+
+    /* ==================================================================
+        Init
+        ================================================================== */
+    function init() {
+        /* Low-privilege roles never see the Data section: backups, restores,
+           demo data and the erase-everything switch stay with admins and
+           doctors so hospital records cannot be wiped from a ward terminal. */
+        var fullScope = window.MediSession && window.MediSession.hasFullSettings();
+
+        settings = readSettings();
+        toForm();
+        renderUsage();
+
+        ui.initTabs({
+            buttonSelector: '[data-settab]',
+            panelSelector: '.settings-panel',
+            attribute: 'data-settab'
+        });
+
+        var dataNav = document.querySelector('[data-settab="panelData"]');
+        var dataPanel = byId('panelData');
+        if (!fullScope) {
+            /* Default landing tab is Appearance, so simply removing the Data
+               entry from the nav and the DOM leaves a clean page behind. */
+            if (dataNav) dataNav.parentNode.removeChild(dataNav);
+            if (dataPanel) dataPanel.parentNode.removeChild(dataPanel);
+        }
+
+        ui.initSelect('setToastDurationWrapper');
+
+        bindAppearance();
+
+        var policyHost = byId('policyOptions');
+        if (policyHost) {
+            policyHost.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('[data-policy]') : null;
+                if (btn) choosePolicy(btn.getAttribute('data-policy'));
+            });
+        }
+
+        var saveBtn = byId('btnSaveAllSettings');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function () {
+                fromForm();
+                writeSettings();
+                window.MediTrackNotify.flash('Settings saved', 'Configuration updated on this workstation.');
+            });
+        }
+
+        var resetBtn = byId('btnResetSettings');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function () {
+                ui.confirmAction({
+                    title: 'Restore default settings',
+                    message: 'Alert routing, interface preferences and appearance return to their defaults. Clinical data is not affected.',
+                    confirmLabel: 'Restore defaults',
+                    tone: 'warning',
+                    icon: 'reset'
+                }, function () {
+                    Object.keys(DEFAULTS).forEach(function (k) { settings[k] = DEFAULTS[k]; });
+                    writeSettings();
+                    if (theme) theme.set(theme.DEFAULTS);
+                    toForm();
+                    window.MediTrackNotify.flash('Defaults restored', 'Settings returned to their original values.');
+                });
+            });
+        }
+
+        var alertTest = byId('btnTestAlert');
+        if (alertTest) {
+            alertTest.addEventListener('click', function () {
+                fromForm();
+                writeSettings();
+                window.MediTrackNotify.event('lab.result.ready', {
+                    title: 'Test Alert',
+                    message: 'This is what a released laboratory result looks like with the current routing.'
+                });
+            });
+        }
+
+        var exportBtn = byId('btnExportData');
+        if (exportBtn) exportBtn.addEventListener('click', exportBackup);
+
+        var importBtn = byId('btnImportData');
+        var fileInput = byId('importFileInput');
+        if (importBtn && fileInput) {
+            importBtn.addEventListener('click', function () { fileInput.click(); });
+            fileInput.addEventListener('change', function () {
+                if (fileInput.files && fileInput.files[0]) importBackup(fileInput.files[0]);
+                fileInput.value = '';
+            });
+        }
+
+        var demoBtn = byId('btnResetDemoData');
+        if (demoBtn) demoBtn.addEventListener('click', loadDemoData);
+
+        var eraseBtn = byId('btnEraseData');
+        if (eraseBtn) eraseBtn.addEventListener('click', eraseEverything);
+
+        store.onPatientsChanged(renderUsage);
     }
 
     if (document.readyState === 'loading') {
@@ -516,4 +563,4 @@
     } else {
         init();
     }
-})();
+})(window, document);

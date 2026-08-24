@@ -1,289 +1,449 @@
-/**
- * MediTrack Hospital ERP - Nurse Station Logic
- * Reads nursing orders from clinic_patients_data and admin directives from
- * clinic_nurse_directives. Allows nurses to complete tasks and acknowledge admin messages.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Nurse Station
 
-(function() {
+   Nursing orders live on the patient record, so this screen flattens them into
+   a worklist and writes completions straight back. Completing a task can also
+   record fresh observations, which are re-interpreted by js/clinical.js — that
+   is how deterioration reaches the clinician without a phone call.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var PATIENTS_KEY = 'clinic_patients_data';
-    var DIRECTIVES_KEY = 'clinic_nurse_directives';
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var clinical = window.MediClinical;
 
-    var activeOrders = [];
-    var completedOrders = [];
+    var patients = [];
+    var openTasks = [];
+    var doneTasks = [];
     var directives = [];
-    var currentTab = 'orders';
     var searchTerm = '';
+    var currentTab = 'panelOrders';
 
-    function loadData() {
-        activeOrders = [];
-        completedOrders = [];
+    var activeTask = null;   /* { patientId, orderId } */
 
+    /* The signed-in nurse is the default performer; the name can be edited
+       per task (e.g. a colleague covers one injection). */
+    function currentStaffName() {
         try {
-            var raw = localStorage.getItem(PATIENTS_KEY);
-            var patients = raw ? JSON.parse(raw) : [];
-
-            patients.forEach(function(p) {
-                if (!p.nurseOrders) return;
-                p.nurseOrders.forEach(function(order) {
-                    var entry = {
-                        orderId: order.id,
-                        patientId: p.id,
-                        patientName: p.name,
-                        trackingId: p.trackingId,
-                        task: order.task,
-                        note: order.note,
-                        doctor: order.doctor || 'Dr. Sarah Chen',
-                        time: order.time,
-                        status: order.status || 'Dispatched'
-                    };
-
-                    if (entry.status === 'Completed') {
-                        completedOrders.push(entry);
-                    } else {
-                        activeOrders.push(entry);
-                    }
-                });
-            });
+            var s = window.MediSession && window.MediSession.read();
+            if (s && s.name) return s.name;
         } catch (e) {}
+        return 'Nurse on duty';
+    }
+    var NURSE = 'Nurse on duty';
 
-        // Sort by most recent first
-        activeOrders.sort(function(a, b) { return new Date(b.time) - new Date(a.time); });
-        completedOrders.sort(function(a, b) { return new Date(b.time) - new Date(a.time); });
+    var OBS_FIELDS = [
+        ['obsSystolic', 'systolic'],
+        ['obsDiastolic', 'diastolic'],
+        ['obsPulse', 'pulse'],
+        ['obsTemp', 'temperature'],
+        ['obsSpo2', 'spo2'],
+        ['obsRespRate', 'respRate']
+    ];
 
-        // Load admin directives
-        try {
-            var rawDir = localStorage.getItem(DIRECTIVES_KEY);
-            directives = rawDir ? JSON.parse(rawDir) : [];
-        } catch (e) { directives = []; }
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
 
-        if (directives.length === 0) {
-            directives = [
-                {
-                    id: Date.now() - 10000,
-                    title: 'Ward Hygiene Protocol Update',
-                    body: 'All nursing staff must complete the updated hand hygiene compliance checklist before each shift. New antiseptic dispensers have been installed at all bedside stations.',
-                    from: 'Dr. Sarah Chen (Admin)',
-                    time: new Date(Date.now() - 2 * 3600000).toISOString(),
-                    acknowledged: false
-                },
-                {
-                    id: Date.now() - 20000,
-                    title: 'Emergency Equipment Inventory Check',
-                    body: 'Please verify crash cart supplies (defibrillator pads, epinephrine, IV kits) on your floor and report any shortages to pharmacy before end of shift.',
-                    from: 'Dr. Sarah Chen (Admin)',
-                    time: new Date(Date.now() - 5 * 3600000).toISOString(),
-                    acknowledged: false
-                }
-            ];
-            saveDirectives();
-        }
-
-        updateCounts();
-        renderCurrentTab();
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value === null || value === undefined || value === '' ? '—' : value;
     }
 
-    function saveDirectives() {
-        localStorage.setItem(DIRECTIVES_KEY, JSON.stringify(directives));
-    }
+    /* ==================================================================
+       Load
+       ================================================================== */
+    function load() {
+        patients = store.readPatients();
+        openTasks = [];
+        doneTasks = [];
 
-    function updateCounts() {
-        var el1 = document.getElementById('nurseActiveCount');
-        var el2 = document.getElementById('nurseCompletedCount');
-        var el3 = document.getElementById('tabOrdersCount');
-        var el4 = document.getElementById('tabCompletedCount');
-        var el5 = document.getElementById('tabDirectivesCount');
-
-        if (el1) el1.textContent = activeOrders.length;
-        if (el2) el2.textContent = completedOrders.length;
-        if (el3) el3.textContent = activeOrders.length;
-        if (el4) el4.textContent = completedOrders.length;
-        if (el5) el5.textContent = directives.filter(function(d) { return !d.acknowledged; }).length;
-    }
-
-    function formatDate(iso) {
-        if (!iso) return '-';
-        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function formatTime(iso) {
-        if (!iso) return '-';
-        var d = new Date(iso);
-        var h = d.getHours(), m = String(d.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return h + ':' + m + ' ' + ampm;
-    }
-
-    function renderCurrentTab() {
-        if (currentTab === 'orders') renderOrdersGrid(activeOrders, 'nurseOrdersGrid', 'noOrdersData', false);
-        else if (currentTab === 'completed') renderOrdersGrid(completedOrders, 'completedOrdersGrid', 'noCompletedData', true);
-        else if (currentTab === 'directives') renderDirectives();
-    }
-
-    function renderOrdersGrid(orders, gridId, noDataId, isCompleted) {
-        var grid = document.getElementById(gridId);
-        var noData = document.getElementById(noDataId);
-        if (!grid) return;
-
-        var filtered = orders.filter(function(o) {
-            if (!searchTerm) return true;
-            var q = searchTerm.toLowerCase();
-            return (o.patientName && o.patientName.toLowerCase().includes(q)) ||
-                   (o.task && o.task.toLowerCase().includes(q)) ||
-                   (o.doctor && o.doctor.toLowerCase().includes(q));
+        patients.forEach(function (p) {
+            (p.nurseOrders || []).forEach(function (o) {
+                var entry = {
+                    patientId: p.id,
+                    orderId: o.id,
+                    patientName: p.name,
+                    trackingId: p.trackingId,
+                    urgency: store.normalizeUrgency(p.urgency),
+                    task: o.task,
+                    note: o.note,
+                    doctor: o.doctor,
+                    time: o.time,
+                    status: o.status || 'Dispatched',
+                    outcome: o.outcome,
+                    completedBy: o.completedBy,
+                    completedAt: o.completedAt
+                };
+                if (store.isOrderOpen(o)) openTasks.push(entry);
+                else doneTasks.push(entry);
+            });
         });
 
-        if (filtered.length === 0) {
-            grid.innerHTML = '';
-            if (noData) noData.style.display = 'block';
+        /* Oldest outstanding first: a nursing worklist, not a news feed. */
+        openTasks.sort(function (a, b) { return new Date(a.time) - new Date(b.time); });
+        doneTasks.sort(function (a, b) {
+            return new Date(b.completedAt || b.time) - new Date(a.completedAt || a.time);
+        });
+
+        directives = store.read('clinic_nurse_directives');
+        if (!directives.length) {
+            directives = seedDirectives();
+            store.write('clinic_nurse_directives', directives);
+        }
+
+        render();
+    }
+
+    function seedDirectives() {
+        var hoursAgo = function (h) { return new Date(Date.now() - h * 3600000).toISOString(); };
+        return [
+            {
+                id: 1,
+                title: 'Hand hygiene audit this shift',
+                body: 'Complete the hand hygiene compliance checklist before the first bedside round. Antiseptic dispensers have been refilled at every bay.',
+                from: 'Nursing supervisor',
+                time: hoursAgo(2),
+                acknowledged: false
+            },
+            {
+                id: 2,
+                title: 'Crash cart verification',
+                body: 'Verify defibrillator pads, adrenaline and IV cannulation kits on your floor. Report shortages to pharmacy before handover.',
+                from: 'Nursing supervisor',
+                time: hoursAgo(5),
+                acknowledged: false
+            }
+        ];
+    }
+
+    /* ==================================================================
+       Render
+       ================================================================== */
+    function render() {
+        setText('nurseActiveCount', openTasks.length);
+        setText('nurseCompletedCount', doneTasks.length);
+        setText('tabOrdersCount', openTasks.length);
+        setText('tabCompletedCount', doneTasks.length);
+
+        var unread = directives.filter(function (d) { return !d.acknowledged; }).length;
+        var dirCount = byId('tabDirectivesCount');
+        if (dirCount) {
+            dirCount.textContent = unread;
+            dirCount.classList.toggle('count-alert', unread > 0);
+        }
+
+        renderTasks(openTasks, 'nurseOrdersGrid', false);
+        renderTasks(doneTasks, 'completedOrdersGrid', true);
+        renderDirectives();
+    }
+
+    function matches(t) {
+        if (!searchTerm) return true;
+        var q = searchTerm.toLowerCase();
+        return [t.patientName, t.task, t.doctor, t.trackingId].some(function (f) {
+            return String(f || '').toLowerCase().indexOf(q) !== -1;
+        });
+    }
+
+    function renderTasks(list, hostId, done) {
+        var host = byId(hostId);
+        if (!host) return;
+
+        var rows = list.filter(matches);
+
+        if (!rows.length) {
+            host.innerHTML = ui.emptyState({
+                icon: done ? 'check-circle' : 'clipboard',
+                title: done ? 'No completed tasks yet' : 'No outstanding nursing orders',
+                text: done
+                    ? 'Completed tasks are kept here with the outcome recorded by the nurse.'
+                    : 'Orders appear here as soon as a clinician dispatches them from the consultation desk.'
+            });
             return;
         }
-        if (noData) noData.style.display = 'none';
 
-        grid.innerHTML = filtered.map(function(o) {
-            var initials = o.patientName ? o.patientName.split(' ').map(function(n) { return n[0]; }).join('').toUpperCase() : 'PT';
-            var statusClass = isCompleted ? 'status-completed' : 'status-dispatched';
-            var cardClass = isCompleted ? ' completed-card' : '';
-
-            return '<div class="nurse-order-card' + cardClass + '">' +
-                '<div class="ncard-top">' +
-                    '<div class="ncard-patient">' +
-                        '<div class="ncard-avatar">' + initials + '</div>' +
-                        '<div class="ncard-pinfo">' +
-                            '<h4 class="ncard-pname">' + o.patientName + '</h4>' +
-                            '<span class="ncard-pmeta"><span class="tid">' + o.trackingId + '</span></span>' +
-                        '</div>' +
+        host.innerHTML = rows.map(function (t) {
+            return '<article class="nurse-card' + (done ? ' is-done' : '') + '">' +
+                '<header class="nc-head">' +
+                    '<span class="avatar-sq urgency-' + esc(t.urgency.toLowerCase()) + '">' +
+                        esc(store.initials(t.patientName)) +
+                    '</span>' +
+                    '<div class="nc-identity">' +
+                        '<span class="nc-name">' + esc(t.patientName) + '</span>' +
+                        '<span class="nc-sub">' +
+                            '<span class="mono">' + esc(t.trackingId) + '</span>' +
+                            '<span class="badge urgency-' + esc(t.urgency.toLowerCase()) + '">' + esc(t.urgency) + '</span>' +
+                        '</span>' +
                     '</div>' +
-                    '<span class="badge ' + statusClass + '">' + o.status + '</span>' +
+                    '<span class="badge ' + (done ? 'status-finished' : 'status-awaiting') + '">' +
+                        esc(done ? 'Completed' : t.status) +
+                    '</span>' +
+                '</header>' +
+
+                '<div class="nc-task">' +
+                    '<span class="nc-task-label">Task</span>' +
+                    '<strong>' + esc(t.task) + '</strong>' +
                 '</div>' +
 
-                '<div class="ncard-task-box">' +
-                    '<span class="ncard-task-label">Nursing Task / Order</span>' +
-                    '<strong class="ncard-task-name">' + o.task + '</strong>' +
-                '</div>' +
+                (t.note
+                    ? '<div class="nc-note">' + icon('file-text', 13) +
+                      '<span><strong>Instruction:</strong> ' + esc(t.note) + '</span></div>'
+                    : '') +
 
-                (o.note ? '<div class="ncard-note"><strong>Doctor Instructions:</strong> ' + o.note + '</div>' : '') +
+                (done && t.outcome
+                    ? '<div class="nc-outcome">' +
+                        '<span class="nc-task-label">Outcome</span>' +
+                        '<span>' + esc(t.outcome) + '</span>' +
+                      '</div>'
+                    : '') +
 
-                '<div class="ncard-footer">' +
-                    '<div>' +
-                        '<span class="ncard-doctor">From: ' + o.doctor + '</span>' +
-                        '<span class="ncard-time"> · ' + formatTime(o.time) + '</span>' +
-                    '</div>' +
-                    (!isCompleted ?
-                        '<button type="button" class="btn-nurse-action btn-complete-task" data-patient-id="' + o.patientId + '" data-order-id="' + o.orderId + '">' +
-                            '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' +
-                            '<span>Mark Complete</span>' +
-                        '</button>'
-                        : '<span style="font-size:11px;color:#10B981;font-weight:600;">✓ Done</span>'
-                    ) +
-                '</div>' +
-            '</div>';
+                (done && t.completedBy
+                    ? '<div class="nc-note">' + icon('nurse', 13) +
+                      '<span><strong>Performed by:</strong> ' + esc(t.completedBy) + '</span></div>'
+                    : '') +
+
+                '<footer class="nc-foot">' +
+                    '<span class="nc-meta">' + icon('clock', 13) +
+                        '<span>' + esc(done
+                            ? 'Completed ' + store.relativeTime(t.completedAt || t.time)
+                            : 'Outstanding ' + store.elapsed(t.time)) +
+                        '</span>' +
+                    '</span>' +
+                    (done
+                        ? '<span class="nc-from">' + esc(t.doctor || '—') + '</span>'
+                        : '<button type="button" class="btn-primary btn-sm" data-complete="' +
+                          esc(t.patientId) + '" data-order="' + esc(t.orderId) + '">' +
+                            icon('check', 14) + '<span>Complete</span>' +
+                          '</button>') +
+                '</footer>' +
+            '</article>';
         }).join('');
 
-        if (!isCompleted) {
-            grid.querySelectorAll('.btn-complete-task').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var patientId = parseInt(this.getAttribute('data-patient-id'), 10);
-                    var orderId = parseInt(this.getAttribute('data-order-id'), 10);
-                    completeNurseOrder(patientId, orderId);
+        if (!done) {
+            ui.qsa('[data-complete]', host).forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    openCompleteModal(btn.getAttribute('data-complete'), btn.getAttribute('data-order'));
                 });
             });
         }
-    }
-
-    function completeNurseOrder(patientId, orderId) {
-        try {
-            var raw = localStorage.getItem(PATIENTS_KEY);
-            var patients = raw ? JSON.parse(raw) : [];
-            var patient = patients.find(function(p) { return p.id === patientId; });
-            if (patient && patient.nurseOrders) {
-                var order = patient.nurseOrders.find(function(o) { return o.id === orderId; });
-                if (order) {
-                    order.status = 'Completed';
-                    order.completedAt = new Date().toISOString();
-                    localStorage.setItem(PATIENTS_KEY, JSON.stringify(patients));
-                    loadData();
-
-                    if (window.MediTrackNotify) {
-                        window.MediTrackNotify.push(
-                            'Nursing Task Completed',
-                            order.task + ' for ' + patient.name + ' has been fulfilled.',
-                            'success',
-                            'Doctor'
-                        );
-                    }
-                }
-            }
-        } catch (e) {}
     }
 
     function renderDirectives() {
-        var container = document.getElementById('directivesList');
-        var noData = document.getElementById('noDirectivesData');
-        if (!container) return;
+        var host = byId('directivesList');
+        if (!host) return;
 
-        if (directives.length === 0) {
-            container.innerHTML = '';
-            if (noData) noData.style.display = 'block';
+        if (!directives.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'list',
+                title: 'No standing directives',
+                text: 'Ward-level instructions from the nursing supervisor appear here.'
+            });
             return;
         }
-        if (noData) noData.style.display = 'none';
 
-        container.innerHTML = directives.map(function(d) {
-            var ackClass = d.acknowledged ? ' ack-card' : '';
-            return '<div class="directive-card' + ackClass + '">' +
-                '<div class="dir-header">' +
-                    '<h4 class="dir-title">' + d.title + '</h4>' +
-                    '<span class="dir-time">' + formatDate(d.time) + ' · ' + formatTime(d.time) + '</span>' +
-                '</div>' +
-                '<div class="dir-body">' + d.body + '</div>' +
-                '<div style="font-size:11.5px;color:var(--gray-muted);">From: ' + d.from + '</div>' +
-                '<div class="dir-footer">' +
-                    (!d.acknowledged ?
-                        '<button type="button" class="btn-ack" data-id="' + d.id + '">Acknowledge & Confirm</button>'
-                        : '<span style="font-size:12px;color:#10B981;font-weight:600;">✓ Acknowledged</span>'
-                    ) +
-                '</div>' +
-            '</div>';
+        host.innerHTML = directives.map(function (d) {
+            return '<article class="directive' + (d.acknowledged ? ' is-ack' : '') + '">' +
+                '<header class="dir-head">' +
+                    '<h4>' + esc(d.title) + '</h4>' +
+                    '<span class="dir-time">' + esc(store.formatDateTime(d.time)) + '</span>' +
+                '</header>' +
+                '<p class="dir-body">' + esc(d.body) + '</p>' +
+                '<footer class="dir-foot">' +
+                    '<span class="dir-from">' + esc(d.from) + '</span>' +
+                    (d.acknowledged
+                        ? '<span class="badge status-finished">' + icon('check', 12) + '<span>Acknowledged</span></span>'
+                        : '<button type="button" class="btn-secondary btn-sm" data-ack="' + esc(d.id) + '">' +
+                            icon('check', 14) + '<span>Acknowledge</span>' +
+                          '</button>') +
+                '</footer>' +
+            '</article>';
         }).join('');
 
-        container.querySelectorAll('.btn-ack').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                var d = directives.find(function(x) { return x.id === id; });
-                if (d) { d.acknowledged = true; saveDirectives(); updateCounts(); renderDirectives(); }
+        ui.qsa('[data-ack]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var id = btn.getAttribute('data-ack');
+                directives.forEach(function (d) {
+                    if (String(d.id) === String(id)) {
+                        d.acknowledged = true;
+                        d.acknowledgedAt = new Date().toISOString();
+                    }
+                });
+                store.write('clinic_nurse_directives', directives);
+                render();
             });
         });
     }
 
-    function init() {
-        loadData();
+    /* ==================================================================
+       Complete a task
+       ================================================================== */
+    function openCompleteModal(patientId, orderId) {
+        var p = store.findPatient(patients, patientId);
+        if (!p) return;
+        var order = null;
+        (p.nurseOrders || []).forEach(function (o) {
+            if (String(o.id) === String(orderId)) order = o;
+        });
+        if (!order) return;
 
-        // Tab switching
-        document.querySelectorAll('.nurse-tab-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.nurse-tab-btn').forEach(function(b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                currentTab = this.getAttribute('data-tab');
-                document.querySelectorAll('.nurse-tab-panel').forEach(function(p) { p.classList.remove('active'); });
-                var panelMap = { orders: 'panelOrders', completed: 'panelCompleted', directives: 'panelDirectives' };
-                var panel = document.getElementById(panelMap[currentTab]);
-                if (panel) panel.classList.add('active');
-                renderCurrentTab();
-            });
+        activeTask = { patientId: p.id, orderId: order.id };
+
+        setText('completeTaskSub', p.name + ' · ' + p.trackingId);
+        setText('taskName', order.task);
+        setText('taskInstruction', order.note || 'No additional instruction given.');
+
+        byId('taskNurseName').value = currentStaffName();
+        byId('taskOutcome').value = '';
+        ui.clearFieldError('taskNurseName');
+        ui.clearFieldError('taskOutcome');
+
+        /* Pre-fill with the last recorded values so the nurse edits, not retypes. */
+        OBS_FIELDS.forEach(function (pair) {
+            var v = p.vitals[pair[1]];
+            byId(pair[0]).value = v === null || v === undefined ? '' : v;
         });
 
-        var searchInput = document.getElementById('nurseSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', function() { searchTerm = this.value; renderCurrentTab(); });
+        refreshObsReadout();
+        ui.openModal('completeTaskModal');
+    }
+
+    function readObs() {
+        var v = {};
+        OBS_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            v[pair[1]] = store.toNumber(el ? el.value : '');
+        });
+        return v;
+    }
+
+    function refreshObsReadout() {
+        var host = byId('obsReadout');
+        if (!host) return;
+
+        var assessment = clinical.assess(readObs());
+        if (!assessment.recordedCount) { host.innerHTML = ''; return; }
+
+        var tone = assessment.overall === 'critical' ? 'notice-danger'
+            : (assessment.overall === 'normal' ? 'notice-success' : 'notice-warning');
+
+        host.innerHTML =
+            '<div class="notice ' + tone + '">' +
+                '<span class="ico" data-icon="' +
+                    (assessment.overall === 'normal' ? 'check-circle' : 'warning') + '" data-icon-size="15"></span>' +
+                '<div><strong>' + esc(assessment.overallLabel) + ' observations</strong>' +
+                esc(assessment.summary) + '</div>' +
+            '</div>';
+
+        if (window.MediIcons) window.MediIcons.hydrate(host);
+    }
+
+    function completeTask() {
+        if (!activeTask) return;
+
+        if (!ui.requireFields([
+            { id: 'taskNurseName', message: 'Enter the name of the nurse who performed the task.' },
+            { id: 'taskOutcome', message: 'Record what was done or observed.' }
+        ])) return;
+
+        var all = store.readPatients();
+        var p = store.findPatient(all, activeTask.patientId);
+        if (!p) return;
+
+        var order = null;
+        (p.nurseOrders || []).forEach(function (o) {
+            if (String(o.id) === String(activeTask.orderId)) order = o;
+        });
+        if (!order) return;
+
+        order.status = 'Completed';
+        order.completedAt = new Date().toISOString();
+        order.outcome = byId('taskOutcome').value.trim();
+        order.completedBy = byId('taskNurseName').value.trim() || currentStaffName();
+
+        /* Only overwrite vitals the nurse actually entered. */
+        var obs = readObs();
+        var changed = false;
+        Object.keys(obs).forEach(function (k) {
+            if (obs[k] !== null) { p.vitals[k] = obs[k]; changed = true; }
+        });
+
+        var assessment = null;
+        if (changed) {
+            p.bp = store.bloodPressureText(p.vitals);
+            p.hr = p.vitals.pulse;
+            assessment = clinical.assess(p.vitals);
+            var stamp = 'nurse:' + assessment.overall + ':' + assessment.flagged.length;
+            if (assessment.flagged.length && p.vitalsAlerted !== stamp) {
+                p.vitalsAlerted = stamp;
+            } else {
+                assessment = null;   /* nothing new to raise */
+            }
         }
 
-        window.addEventListener('storage', function(e) {
-            if (e.key === PATIENTS_KEY || e.key === DIRECTIVES_KEY) loadData();
-        });
+        /* Nothing left outstanding means the patient can be seen again. */
+        if (p.status === store.STATUS.AWAITING && store.openOrderCount(p) === 0) {
+            p.status = store.STATUS.PENDING;
+        }
+
+        store.writePatients(all);
+        ui.closeModal('completeTaskModal');
+        activeTask = null;
+        load();
+
+        window.MediTrackNotify.flash('Task completed', order.task + ' recorded for ' + p.name + '.');
+        if (assessment) clinical.notifyVitals(p.name, assessment, p.id + ':' + p.vitalsAlerted);
     }
 
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
-})();
+    /* ==================================================================
+       Init
+       ================================================================== */
+    function init() {
+        load();
+
+        ui.initTabs({
+            buttonSelector: '[data-nursetab]',
+            panelSelector: '.tab-panel',
+            attribute: 'data-nursetab',
+            onChange: function (id) { currentTab = id; }
+        });
+
+        ui.bindLiveValidation(['taskOutcome', 'taskNurseName']);
+
+        OBS_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.addEventListener('input', refreshObsReadout);
+        });
+
+        var confirm = byId('confirmCompleteTaskBtn');
+        if (confirm) confirm.addEventListener('click', completeTask);
+
+        var search = byId('nurseSearch');
+        var clear = byId('nurseSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                render();
+            });
+        }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                render();
+            });
+        }
+
+        store.onPatientsChanged(load);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})(window, document);

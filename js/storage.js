@@ -1,397 +1,435 @@
-/**
- * MediTrack Hospital ERP - Medical Storage & Patient Archive Logic
- * Permanent record of all patients treated and discharged since hospital opening.
- * Synchronized with clinic_patients_data in localStorage.
- * Provides search, clinical history detail modals, and CSV / Excel export.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Records Archive
 
-(function() {
+   Completed visits only. A dense table rather than cards: this screen is used
+   to find one record among many, not to browse.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_KEY = 'clinic_patients_data';
-    var archivedPatients = [];
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var clinical = window.MediClinical;
+
+    var archived = [];
     var searchTerm = '';
     var urgencyFilter = '';
+    var periodFilter = 'all';
     var sortOrder = 'date_desc';
+    var detailId = null;
 
-    function toggleBlur(state) {
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ action: 'toggleBlur', state: state }, '*');
-        }
+    function esc(s) { return store.escapeHtml(s); }
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value === null || value === undefined || value === '' ? '—' : value;
     }
 
-    /* --------------------------------------------------------------------------
-       LocalStorage Load (Finished Patients Only)
-       -------------------------------------------------------------------------- */
-    function loadArchivedPatients() {
-        var raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-            try {
-                var all = JSON.parse(raw);
-                archivedPatients = all.filter(function(p) { return p.status === 'Finished'; });
-            } catch (e) {
-                archivedPatients = [];
-            }
-        } else {
-            archivedPatients = [];
-        }
+    function urgencyClass(u) {
+        return 'urgency-' + String(store.normalizeUrgency(u)).toLowerCase();
     }
 
-    /* --------------------------------------------------------------------------
-       Filtering & Sorting
-       -------------------------------------------------------------------------- */
-    function getFilteredPatients() {
-        var filtered = archivedPatients.filter(function(p) {
-            var matchesSearch = true;
-            if (searchTerm.trim() !== '') {
-                var term = searchTerm.toLowerCase().trim();
-                matchesSearch = (p.name && p.name.toLowerCase().includes(term)) ||
-                                (p.trackingId && p.trackingId.toLowerCase().includes(term)) ||
-                                (p.phone && p.phone.includes(term));
-            }
+    /* Discharge time falls back to registration on legacy records. */
+    function dischargedAt(p) { return p.completedAt || p.registered; }
 
-            var matchesUrgency = (urgencyFilter === '') || (p.urgency === urgencyFilter);
+    function stayMinutes(p) {
+        var start = new Date(p.registered);
+        var end = new Date(dischargedAt(p));
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+        return Math.max(0, Math.round((end - start) / 60000));
+    }
 
-            return matchesSearch && matchesUrgency;
+    function latestDiagnosis(p) {
+        var notes = p.clinicalNotes || [];
+        for (var i = notes.length - 1; i >= 0; i--) {
+            if (notes[i].diagnosis) return notes[i].diagnosis;
+        }
+        return null;
+    }
+
+    /* ==================================================================
+       Load
+       ================================================================== */
+    function load() {
+        archived = store.readPatients().filter(function (p) {
+            return p.status === store.STATUS.FINISHED;
         });
-
-        if (sortOrder === 'date_desc') {
-            filtered.sort(function(a, b) { return new Date(b.registered) - new Date(a.registered); });
-        } else if (sortOrder === 'date_asc') {
-            filtered.sort(function(a, b) { return new Date(a.registered) - new Date(b.registered); });
-        } else if (sortOrder === 'name_asc') {
-            filtered.sort(function(a, b) { return a.name.localeCompare(b.name); });
-        } else if (sortOrder === 'name_desc') {
-            filtered.sort(function(a, b) { return b.name.localeCompare(a.name); });
-        }
-
-        return filtered;
+        render();
     }
 
-    function formatDate(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
+    /* ==================================================================
+       Render
+       ================================================================== */
+    function render() {
+        renderStats();
 
-    function formatDateTime(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        var dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        var h = date.getHours(); var m = String(date.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
-        return dateStr + ' at ' + h + ':' + m + ' ' + ampm;
-    }
-
-    /* --------------------------------------------------------------------------
-       Render Counters & Cards
-       -------------------------------------------------------------------------- */
-    function renderCounters() {
-        var total = archivedPatients.length;
-        var urgent = archivedPatients.filter(function(p) { return p.urgency === 'Urgent'; }).length;
-        var nonUrgent = total - urgent;
-
-        var elTotal = document.getElementById('totalArchivedCount');
-        var elUrgent = document.getElementById('urgentArchivedCount');
-        var elNonUrgent = document.getElementById('nonUrgentArchivedCount');
-
-        if (elTotal) elTotal.textContent = total;
-        if (elUrgent) elUrgent.textContent = urgent;
-        if (elNonUrgent) elNonUrgent.textContent = nonUrgent;
-    }
-
-    function renderCards() {
-        var grid = document.getElementById('storageCardGrid');
-        var noDataDiv = document.getElementById('noStorageData');
-        if (!grid) return;
-
-        renderCounters();
-
-        var list = getFilteredPatients();
-
-        if (list.length === 0) {
-            grid.innerHTML = '';
-            if (noDataDiv) noDataDiv.style.display = 'block';
-            return;
-        }
-
-        if (noDataDiv) noDataDiv.style.display = 'none';
-
-        grid.innerHTML = list.map(function(p) {
-            var initials = p.name.split(' ').map(function(n) { return n[0]; }).join('').toUpperCase().substring(0, 2);
-            var urgencyClass = (p.urgency === 'Urgent') ? 'urgency-urgent' : 'urgency-nonurgent';
-
-            return '<div class="storage-card" data-id="' + p.id + '">' +
-                '<div class="scard-top">' +
-                    '<div style="display:flex; align-items:center; gap:10px; min-width:0;">' +
-                        '<div class="scard-avatar">' + initials + '</div>' +
-                        '<div class="scard-head-info">' +
-                            '<h4 class="scard-name">' + p.name + '</h4>' +
-                            '<span class="tracking-id">' + p.trackingId + '</span>' +
-                        '</div>' +
-                    '</div>' +
-                    '<span class="badge ' + urgencyClass + '">' + p.urgency + '</span>' +
-                '</div>' +
-                '<div class="scard-meta">' +
-                    '<div class="scard-meta-item"><span class="label">Age</span><strong>' + p.age + '</strong></div>' +
-                    '<div class="scard-meta-item"><span class="label">Phone</span><strong>' + (p.phone || '-') + '</strong></div>' +
-                    '<div class="scard-meta-item"><span class="label">BP</span><strong>' + (p.bp || '-') + '</strong></div>' +
-                '</div>' +
-                '<div class="scard-bottom">' +
-                    '<span class="badge status-finished">Discharged / Finished</span>' +
-                    '<span>Treated: ' + formatDate(p.registered) + '</span>' +
-                '</div>' +
-            '</div>';
-        }).join('');
-
-        // Attach card clicks for detail modal
-        grid.querySelectorAll('.storage-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-                var pId = parseInt(this.getAttribute('data-id'), 10);
-                openArchiveDetailModal(pId);
+        var rows = archived.filter(function (p) {
+            if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
+            if (!withinPeriod(p)) return false;
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return [p.name, p.trackingId, p.phone, latestDiagnosis(p), p.description].some(function (f) {
+                return String(f || '').toLowerCase().indexOf(q) !== -1;
             });
         });
-    }
 
-    /* --------------------------------------------------------------------------
-       Archive Detail Modal
-       -------------------------------------------------------------------------- */
-    function openArchiveDetailModal(patientId) {
-        var p = archivedPatients.find(function(x) { return x.id === patientId; });
-        if (!p) return;
+        rows.sort(comparator(sortOrder));
 
-        document.getElementById('archiveModalTitle').textContent = p.name + ' (' + p.trackingId + ')';
+        setText('archiveResultCount', rows.length + (rows.length === 1 ? ' record' : ' records'));
 
-        var urgencyClass = (p.urgency === 'Urgent') ? 'urgency-urgent' : 'urgency-nonurgent';
+        var body = byId('archiveTableBody');
+        var emptyHost = byId('archiveEmptyHost');
+        var table = byId('archiveTable');
+        if (!body) return;
 
-        var notesHtml = '';
-        if (p.clinicalNotes && p.clinicalNotes.length > 0) {
-            notesHtml = p.clinicalNotes.map(function(n) {
-                return '<div class="anote-card">' +
-                    '<div style="display:flex; justify-content:space-between; margin-bottom:4px;">' +
-                        '<strong>' + (n.diagnosis || 'Clinical Note') + '</strong>' +
-                        '<span style="font-size:11px; color:var(--gray-muted);">' + formatDate(n.time) + '</span>' +
-                    '</div>' +
-                    '<div style="color:var(--text-body);">' + n.note + '</div>' +
-                '</div>';
-            }).join('');
-        } else {
-            notesHtml = '<span style="font-size:12px; color:var(--gray-muted); font-style:italic;">No detailed doctor clinical notes recorded during visit.</span>';
-        }
-
-        var labHtml = '';
-        if (p.labOrders && p.labOrders.length > 0) {
-            labHtml = p.labOrders.map(function(l) {
-                return '<div class="anote-card">' +
-                    '<div style="display:flex; justify-content:space-between; margin-bottom:4px;">' +
-                        '<strong>' + l.test + ' (' + l.priority + ')</strong>' +
-                        '<span class="badge status-finished">' + l.status + '</span>' +
-                    '</div>' +
-                    (l.results ? '<div style="font-size:12px; color:#0369A1; background:#E0F2FE; padding:4px 8px; border-radius:4px; margin-top:4px;"><strong>Results:</strong> ' + l.results + '</div>' : '') +
-                '</div>';
-            }).join('');
-        }
-
-        document.getElementById('archiveModalBody').innerHTML =
-            '<div class="archive-detail-grid">' +
-                '<div class="ad-row"><span class="ad-label">Tracking ID</span><span class="ad-val"><span class="tracking-id">' + p.trackingId + '</span></span></div>' +
-                '<div class="ad-row"><span class="ad-label">Patient Name</span><span class="ad-val"><strong>' + p.name + '</strong></span></div>' +
-                '<div class="ad-row"><span class="ad-label">Age</span><span class="ad-val">' + p.age + ' yrs</span></div>' +
-                '<div class="ad-row"><span class="ad-label">Phone</span><span class="ad-val">' + (p.phone || '-') + '</span></div>' +
-                '<div class="ad-row"><span class="ad-label">Urgency</span><span class="ad-val"><span class="badge ' + urgencyClass + '">' + p.urgency + '</span></span></div>' +
-                '<div class="ad-row"><span class="ad-label">Status</span><span class="ad-val"><span class="badge status-finished">Finished</span></span></div>' +
-                '<div class="ad-row"><span class="ad-label">Blood Pressure</span><span class="ad-val">' + (p.bp || '-') + ' mmHg</span></div>' +
-                '<div class="ad-row"><span class="ad-label">Heart Rate</span><span class="ad-val">' + (p.hr || '-') + ' bpm</span></div>' +
-                '<div class="ad-row"><span class="ad-label">Weight / Height</span><span class="ad-val">' + (p.weight || '-') + ' kg / ' + (p.height || '-') + ' cm</span></div>' +
-                '<div class="ad-row"><span class="ad-label">Admission / Visit Date</span><span class="ad-val">' + formatDateTime(p.registered) + '</span></div>' +
-            '</div>' +
-            '<div class="archive-section-block">' +
-                '<span class="archive-section-title">Initial Chief Complaint / Condition</span>' +
-                '<p style="font-size:13px; color:var(--text-dark); margin:0; line-height:1.45;">' + (p.description || 'Routine consultation') + '</p>' +
-            '</div>' +
-            '<div class="archive-section-block">' +
-                '<span class="archive-section-title">Doctor Examination & Clinical Notes</span>' +
-                '<div class="archive-notes-list">' + notesHtml + '</div>' +
-            '</div>' +
-            (labHtml ? 
-                '<div class="archive-section-block">' +
-                    '<span class="archive-section-title">Laboratory Diagnostic Findings</span>' +
-                    '<div class="archive-notes-list">' + labHtml + '</div>' +
-                '</div>' : '');
-
-        document.getElementById('archiveDetailModal').classList.add('active');
-        toggleBlur(true);
-    }
-
-    function closeArchiveDetailModal() {
-        document.getElementById('archiveDetailModal').classList.remove('active');
-        toggleBlur(false);
-    }
-
-    /* --------------------------------------------------------------------------
-       Export to CSV & Excel (.xlsx formatted CSV)
-       -------------------------------------------------------------------------- */
-    function exportToCSV(filename, isExcel) {
-        var list = getFilteredPatients();
-        if (list.length === 0) {
-            alert('No archived patient records to export.');
+        if (!rows.length) {
+            body.innerHTML = '';
+            if (table) table.hidden = true;
+            if (emptyHost) {
+                emptyHost.innerHTML = ui.emptyState({
+                    icon: archived.length ? 'search' : 'layers',
+                    title: archived.length ? 'No records match these filters' : 'The archive is empty',
+                    text: archived.length
+                        ? 'Widen the date range or clear the search to see more records.'
+                        : 'Visits are archived here once a clinician completes the consultation.'
+                });
+            }
             return;
         }
 
-        var headers = [
-            'Tracking ID',
-            'Full Name',
-            'Age',
-            'Phone',
-            'Urgency',
-            'Status',
-            'Blood Pressure (mmHg)',
-            'Heart Rate (bpm)',
-            'Weight (kg)',
-            'Height (cm)',
-            'Chief Complaint',
-            'Visit Date'
-        ];
+        if (table) table.hidden = false;
+        if (emptyHost) emptyHost.innerHTML = '';
 
-        var rows = list.map(function(p) {
-            return [
-                '"' + (p.trackingId || '') + '"',
-                '"' + (p.name || '').replace(/"/g, '""') + '"',
-                p.age || '',
-                '"' + (p.phone || '') + '"',
-                '"' + (p.urgency || '') + '"',
-                '"' + (p.status || '') + '"',
-                '"' + (p.bp || '') + '"',
-                p.hr || '',
-                p.weight || '',
-                p.height || '',
-                '"' + (p.description || '').replace(/"/g, '""') + '"',
-                '"' + (p.registered ? new Date(p.registered).toLocaleString() : '') + '"'
-            ];
+        body.innerHTML = rows.map(function (p) {
+            var urgency = store.normalizeUrgency(p.urgency);
+            var mins = stayMinutes(p);
+            var dx = latestDiagnosis(p);
+
+            return '<tr data-id="' + esc(p.id) + '">' +
+                '<td>' +
+                    '<div class="cell-patient">' +
+                        '<span class="avatar-sq ' + urgencyClass(urgency) + '">' + esc(store.initials(p.name)) + '</span>' +
+                        '<div class="cell-patient-text">' +
+                            '<span class="cell-name">' + esc(p.name) + '</span>' +
+                            '<span class="cell-meta">' +
+                                (p.age !== null ? esc(p.age) + ' yrs' : '—') +
+                                (p.sex ? ' · ' + esc(p.sex) : '') +
+                                (p.phone ? ' · ' + esc(p.phone) : '') +
+                            '</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</td>' +
+                '<td><span class="mono">' + esc(p.trackingId) + '</span></td>' +
+                '<td><span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span></td>' +
+                '<td><span class="cell-dx">' + esc(dx || p.description || '—') + '</span></td>' +
+                '<td>' + esc(store.formatDateTime(dischargedAt(p))) + '</td>' +
+                '<td class="num">' + esc(mins === null ? '—' : formatStay(mins)) + '</td>' +
+                '<td class="num">' +
+                    '<button type="button" class="btn-secondary btn-sm" data-view="' + esc(p.id) + '">' +
+                        ui.icon('eye', 14) + '<span>Open</span>' +
+                    '</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
+
+        ui.qsa('[data-view]', body).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openDetail(btn.getAttribute('data-view'));
+            });
+        });
+        ui.qsa('tr[data-id]', body).forEach(function (tr) {
+            tr.addEventListener('click', function () { openDetail(tr.getAttribute('data-id')); });
+        });
+    }
+
+    function withinPeriod(p) {
+        if (periodFilter === 'all') return true;
+        var when = new Date(dischargedAt(p));
+        if (isNaN(when.getTime())) return false;
+
+        if (periodFilter === 'today') {
+            var now = new Date();
+            return when.getFullYear() === now.getFullYear() &&
+                when.getMonth() === now.getMonth() &&
+                when.getDate() === now.getDate();
+        }
+        var days = Number(periodFilter);
+        return (Date.now() - when.getTime()) <= days * 86400000;
+    }
+
+    function comparator(mode) {
+        return function (a, b) {
+            switch (mode) {
+                case 'date_asc': return new Date(dischargedAt(a)) - new Date(dischargedAt(b));
+                case 'name_asc': return String(a.name).localeCompare(String(b.name));
+                case 'stay_desc': return (stayMinutes(b) || 0) - (stayMinutes(a) || 0);
+                default: return new Date(dischargedAt(b)) - new Date(dischargedAt(a));
+            }
+        };
+    }
+
+    function formatStay(mins) {
+        if (mins < 60) return mins + 'm';
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        return m ? h + 'h ' + m + 'm' : h + 'h';
+    }
+
+    function renderStats() {
+        var counts = { Emergency: 0, Urgent: 0, Routine: 0 };
+        var stays = [];
+
+        archived.forEach(function (p) {
+            counts[store.normalizeUrgency(p.urgency)]++;
+            var m = stayMinutes(p);
+            if (m !== null) stays.push(m);
         });
 
-        var csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(function(r) { return r.join(','); }).join('\n');
-        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        setText('totalArchivedCount', archived.length);
+        setText('emergencyArchivedCount', counts.Emergency);
+        setText('urgentArchivedCount', counts.Urgent);
+        setText('routineArchivedCount', counts.Routine);
+
+        /* Median, not mean: one very long stay should not distort the figure. */
+        if (!stays.length) {
+            setText('medianStayValue', '—');
+            return;
+        }
+        stays.sort(function (a, b) { return a - b; });
+        var mid = Math.floor(stays.length / 2);
+        var median = stays.length % 2 ? stays[mid] : Math.round((stays[mid - 1] + stays[mid]) / 2);
+        setText('medianStayValue', formatStay(median));
+    }
+
+    /* ==================================================================
+       Detail
+       ================================================================== */
+    function openDetail(id) {
+        var p = store.findPatient(archived, id);
+        if (!p) return;
+        detailId = p.id;
+
+        var urgency = store.normalizeUrgency(p.urgency);
+        var assessment = clinical.assess(p.vitals);
+        var b = store.bmi(p.vitals.weight, p.vitals.height);
+        var mins = stayMinutes(p);
+
+        setText('archiveModalTitle', p.name);
+        setText('archiveModalSub', p.trackingId + ' · discharged ' + store.formatDateTime(dischargedAt(p)));
+
+        var vitals = assessment.results.length
+            ? '<div class="rec-vitals">' + assessment.results.map(function (r) {
+                var unit = r.key === 'bloodPressure' ? 'mmHg' : r.unit;
+                return '<div class="rec-vital level-' + r.level + '">' +
+                    '<span class="rv-label">' + esc(r.label) + '</span>' +
+                    '<span class="rv-value">' + esc(r.display) + '<small>' + esc(unit) + '</small></span>' +
+                    '<span class="rv-state">' + esc(r.levelLabel) + '</span>' +
+                '</div>';
+              }).join('') + '</div>'
+            : '<p class="rec-empty">No observations were recorded for this visit.</p>';
+
+        byId('archiveModalBody').innerHTML =
+            '<div class="detail-badges">' +
+                '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
+                '<span class="badge status-finished">Completed</span>' +
+                (assessment.flagged.length
+                    ? '<span class="badge ' + (assessment.overall === 'critical' ? 'status-critical' : 'status-awaiting') + '">' +
+                      esc(assessment.overallLabel) + ' vitals at triage</span>'
+                    : '') +
+            '</div>' +
+
+            '<dl class="detail-grid">' +
+                item('Age', p.age === null ? '—' : p.age + ' years') +
+                item('Sex', p.sex || '—') +
+                item('Phone', p.phone || '—') +
+                item('Registered', store.formatDateTime(p.registered)) +
+                item('Discharged', store.formatDateTime(dischargedAt(p))) +
+                item('Time in department', mins === null ? '—' : formatStay(mins)) +
+                item('BMI at triage', b ? b.value + ' (' + b.category + ')' : '—') +
+                item('Diagnosis', latestDiagnosis(p) || 'Not recorded') +
+            '</dl>' +
+
+            block('Presenting complaint', '<p class="rec-text">' + esc(p.description || 'Not recorded.') + '</p>') +
+            block('Observations at triage', vitals) +
+            block('Clinical notes', notesHtml(p)) +
+            block('Diagnostics', ordersHtml(p.labOrders, 'lab')) +
+            block('Nursing', ordersHtml(p.nurseOrders, 'nurse')) +
+            block('Medication', ordersHtml(p.prescriptions, 'rx'));
+
+        if (window.MediIcons) window.MediIcons.hydrate(byId('archiveModalBody'));
+        ui.openModal('archiveDetailModal');
+    }
+
+    function item(label, value) {
+        return '<div class="detail-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>';
+    }
+
+    function block(title, body) {
+        return '<section class="rec-section">' +
+            '<h4 class="rec-section-title">' + esc(title) + '</h4>' + body +
+        '</section>';
+    }
+
+    function notesHtml(p) {
+        var notes = p.clinicalNotes || [];
+        if (!notes.length) return '<p class="rec-empty">No clinical notes were recorded.</p>';
+        return '<div class="history-list">' + notes.map(function (n) {
+            return '<div class="history-item">' +
+                '<div class="history-item-head">' +
+                    '<strong class="history-item-title">' + esc(n.diagnosis || 'Clinical note') + '</strong>' +
+                    '<span class="history-item-time">' + esc(store.formatDateTime(n.time)) + '</span>' +
+                '</div>' +
+                '<div class="history-item-body">' + esc(n.note) + '</div>' +
+                (n.doctor ? '<div class="history-item-time">' + esc(n.doctor) + '</div>' : '') +
+            '</div>';
+        }).join('') + '</div>';
+    }
+
+    function ordersHtml(list, kind) {
+        var orders = list || [];
+        if (!orders.length) {
+            return '<p class="rec-empty">None ordered during this visit.</p>';
+        }
+        return '<div class="history-list">' + orders.map(function (o) {
+            var title = kind === 'lab' ? o.test
+                : (kind === 'nurse' ? o.task
+                : (o.medication || 'Medication') + (o.dosage ? ' ' + o.dosage : ''));
+
+            var body = kind === 'lab' ? ('Instructions: ' + (o.note || '—'))
+                : (kind === 'nurse' ? ('Instructions: ' + (o.note || '—'))
+                : [o.frequency, o.route, o.duration].filter(Boolean).join(' · '));
+
+            var flag = String(o.flag || '').toLowerCase();
+
+            return '<div class="history-item ' + (store.isOrderOpen(o) ? 'is-open' : 'is-complete') +
+                    (flag === 'critical' ? ' is-critical' : '') + '">' +
+                '<div class="history-item-head">' +
+                    '<strong class="history-item-title">' + esc(title || 'Order') + '</strong>' +
+                    '<span class="badge ' + (store.isOrderOpen(o) ? 'status-awaiting' : 'status-finished') + '">' +
+                        esc(o.status || 'Completed') +
+                    '</span>' +
+                '</div>' +
+                '<div class="history-item-body">' + esc(body || '—') + '</div>' +
+                (o.results ? '<div class="history-item-result">' + esc(o.results) + '</div>' : '') +
+                (o.outcome ? '<div class="history-item-result">' + esc(o.outcome) + '</div>' : '') +
+            '</div>';
+        }).join('') + '</div>';
+    }
+
+    /* ==================================================================
+       Export
+       ================================================================== */
+    function exportCsv() {
+        var rows = archived.filter(function (p) {
+            if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
+            return withinPeriod(p);
+        });
+
+        if (!rows.length) {
+            window.MediTrackNotify.push(
+                'Nothing to export',
+                'No archived records match the current filters.',
+                'warning', 'System', 'high'
+            );
+            return;
+        }
+
+        var headers = ['Tracking ID', 'Name', 'Age', 'Sex', 'Phone', 'Priority', 'Diagnosis',
+            'Complaint', 'BP', 'Pulse', 'Temperature', 'SpO2', 'Registered', 'Discharged', 'Stay (minutes)'];
+
+        function cell(v) {
+            var s = v === null || v === undefined ? '' : String(v);
+            return '"' + s.replace(/"/g, '""') + '"';
+        }
+
+        var lines = rows.map(function (p) {
+            return [
+                p.trackingId, p.name, p.age, p.sex, p.phone,
+                store.normalizeUrgency(p.urgency),
+                latestDiagnosis(p) || '',
+                p.description,
+                store.bloodPressureText(p.vitals),
+                p.vitals.pulse, p.vitals.temperature, p.vitals.spo2,
+                store.formatDateTime(p.registered),
+                store.formatDateTime(dischargedAt(p)),
+                stayMinutes(p)
+            ].map(cell).join(',');
+        });
+
+        /* BOM so Excel opens UTF-8 correctly on Windows. */
+        var csv = '\uFEFF' + headers.map(cell).join(',') + '\r\n' + lines.join('\r\n');
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
+        var name = 'MediTrack_Archive_' + new Date().toISOString().slice(0, 10) + '.csv';
+
         var link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
+        link.href = url;
+        link.download = name;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify('Export Successful', 'Archived patients exported to ' + filename, 'success');
-        }
+        window.MediTrackNotify.flash('Export ready', rows.length + ' records written to ' + name + '.');
     }
 
-    /* --------------------------------------------------------------------------
-       Custom Select
-       -------------------------------------------------------------------------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
-
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
-            });
-            wrapper.classList.toggle('active');
-        });
-
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                var text = this.textContent;
-                toggle.querySelector('.cs-text').textContent = text;
-                toggle.setAttribute('data-value', val);
-
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
-            });
-        });
-    }
-
-    /* --------------------------------------------------------------------------
-       Initialization
-       -------------------------------------------------------------------------- */
+    /* ==================================================================
+       Init
+       ================================================================== */
     function init() {
-        loadArchivedPatients();
-        renderCards();
+        load();
 
-        initCustomSelect('filterUrgencyWrapper', function(val) {
-            urgencyFilter = val;
-            renderCards();
-        });
+        ui.initSelect('filterUrgencyWrapper', function (v) { urgencyFilter = v; render(); });
+        ui.initSelect('filterPeriodWrapper', function (v) { periodFilter = v; render(); });
+        ui.initSelect('sortWrapper', function (v) { sortOrder = v; render(); });
 
-        initCustomSelect('sortWrapper', function(val) {
-            sortOrder = val;
-            renderCards();
-        });
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                el.classList.remove('active');
-            });
-        });
-
-        var searchInput = document.getElementById('storageSearch');
-        var clearSearchBtn = document.getElementById('clearSearchBtn');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                searchTerm = e.target.value;
-                if (clearSearchBtn) {
-                    clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
-                }
-                renderCards();
+        var search = byId('storageSearch');
+        var clear = byId('storageSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                render();
             });
         }
-        if (clearSearchBtn) {
-            clearSearchBtn.addEventListener('click', function() {
-                if (searchInput) {
-                    searchInput.value = '';
-                    searchTerm = '';
-                    clearSearchBtn.style.display = 'none';
-                    renderCards();
-                }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                render();
             });
         }
 
-        // Export Buttons
-        var expCsv = document.getElementById('exportCsvBtn');
-        var expExcel = document.getElementById('exportExcelBtn');
-
-        if (expCsv) {
-            expCsv.addEventListener('click', function() {
-                exportToCSV('MediTrack_Discharged_Patients_' + new Date().toISOString().slice(0, 10) + '.csv', false);
+        var reset = byId('resetFiltersBtn');
+        if (reset) {
+            reset.addEventListener('click', function () {
+                searchTerm = '';
+                urgencyFilter = '';
+                periodFilter = 'all';
+                sortOrder = 'date_desc';
+                if (search) search.value = '';
+                if (clear) clear.classList.remove('visible');
+                ui.setSelectValue('filterUrgencyWrapper', '', 'All priorities');
+                ui.setSelectValue('filterPeriodWrapper', 'all', 'All time');
+                ui.setSelectValue('sortWrapper', 'date_desc', 'Newest first');
+                render();
             });
         }
 
-        if (expExcel) {
-            expExcel.addEventListener('click', function() {
-                exportToCSV('MediTrack_Discharged_Patients_' + new Date().toISOString().slice(0, 10) + '.xlsx.csv', true);
-            });
-        }
+        var exportBtn = byId('exportCsvBtn');
+        if (exportBtn) exportBtn.addEventListener('click', exportCsv);
 
-        // Modal Close Buttons
-        var closeM1 = document.getElementById('closeArchiveModalBtn');
-        var closeM2 = document.getElementById('closeArchiveModalBtn2');
-        if (closeM1) closeM1.addEventListener('click', closeArchiveDetailModal);
-        if (closeM2) closeM2.addEventListener('click', closeArchiveDetailModal);
+        var printSummary = byId('printSummaryBtn');
+        if (printSummary) printSummary.addEventListener('click', function () { ui.printNode('archiveTableCard'); });
 
-        window.addEventListener('storage', function(e) {
-            if (e.key === STORAGE_KEY) {
-                loadArchivedPatients();
-                renderCards();
-            }
-        });
+        var printRecord = byId('printRecordBtn');
+        if (printRecord) printRecord.addEventListener('click', function () { ui.printNode('archiveModalBody'); });
+
+        store.onPatientsChanged(load);
     }
 
     if (document.readyState === 'loading') {
@@ -399,4 +437,4 @@
     } else {
         init();
     }
-})();
+})(window, document);

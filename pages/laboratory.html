@@ -3,235 +3,248 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Diagnostic Laboratory & Pathology</title>
+    <title>Laboratory · MediTrack</title>
+    <script src="../js/theme.js"></script>
     <link rel="stylesheet" href="../css/variables.css">
-    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/components.css">
     <link rel="stylesheet" href="../css/notifications.css">
     <link rel="stylesheet" href="../css/laboratory.css">
 </head>
 <body>
-    <div class="lab-page">
-        <!-- Header -->
-        <div class="lab-header">
-            <div>
-                <h2>Diagnostic Laboratory & Pathology</h2>
-                <p class="subtitle">Real-time specimen analysis queue, test execution, and certified pathology report generation</p>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Laboratory</h1>
+            <p>Specimen analysis queue and result release. Marking a result abnormal or critical alerts the requesting clinician immediately.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="vial" data-icon-size="15"></span>
+                <span>Open <strong id="labActiveCount">0</strong></span>
             </div>
-            <div class="lab-summary-tags">
-                <div class="summary-tag pending-tag">
-                    <span class="tag-label">Active Orders:</span>
-                    <strong class="tag-val" id="labActiveCount">0</strong>
-                </div>
-                <div class="summary-tag">
-                    <span class="tag-label">Completed Today:</span>
-                    <strong class="tag-val" id="labCompletedCount">0</strong>
-                </div>
+            <div class="meta-pill meta-pill-alert" id="labStatPill" hidden>
+                <span class="ico" data-icon="critical" data-icon-size="15"></span>
+                <span>STAT <strong id="labStatCount">0</strong></span>
+            </div>
+            <div class="meta-pill">
+                <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                <span>Released <strong id="labCompletedCount">0</strong></span>
             </div>
         </div>
+    </header>
 
-        <!-- Active vs Archive Tabs Bar -->
-        <div class="lab-tabs-bar">
-            <button type="button" class="lab-tab-btn active" data-tab="active">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg>
-                <span>Active Diagnostic Requests</span>
-                <span class="lab-tab-count" id="tabActiveCount">0</span>
-            </button>
-            <button type="button" class="lab-tab-btn" data-tab="archive">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
-                <span>Completed & Dispatched Archive</span>
-                <span class="lab-tab-count" id="tabArchiveCount">0</span>
+    <div class="tabs" role="tablist" aria-label="Laboratory workload">
+        <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-labtab="active">
+            <span class="ico" data-icon="lab" data-icon-size="15"></span>
+            <span>Analysis queue</span>
+            <span class="tab-count" id="tabActiveCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-labtab="archive">
+            <span class="ico" data-icon="layers" data-icon-size="15"></span>
+            <span>Released results</span>
+            <span class="tab-count" id="tabArchiveCount">0</span>
+        </button>
+    </div>
+
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="labSearch" placeholder="Search patient, tracking ID, test or clinician" aria-label="Search laboratory orders">
+            <button type="button" class="search-clear" id="labSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
             </button>
         </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterStatusWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All statuses</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All statuses</li>
+                    <li class="cs-option" data-value="Requested">Requested</li>
+                    <li class="cs-option" data-value="In Progress">In progress</li>
+                    <li class="cs-option" data-value="Completed">Completed</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="filterPriorityWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All priorities</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All priorities</li>
+                    <li class="cs-option" data-value="STAT">STAT</li>
+                    <li class="cs-option" data-value="Urgent">Urgent</li>
+                    <li class="cs-option" data-value="Routine">Routine</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
 
-        <!-- Toolbar -->
-        <div class="lab-toolbar">
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="labSearch" placeholder="Search by patient name, tracking ID, test name, or doctor...">
-                <button id="clearSearchBtn" class="clear-search-btn" style="display:none;">&times;</button>
+    <div class="card-grid card-grid-wide" id="labCardGrid"></div>
+
+    <!-- ==================================================================
+         Record findings
+         ================================================================== -->
+    <div class="modal-overlay" id="resultModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-lab"><span class="ico" data-icon="vial" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="resultModalTitle">Record laboratory findings</h3>
+                    <span>Values are released to the requesting clinician on submit</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
             </div>
 
-            <div class="filters-wrapper">
-                <!-- Status Filter -->
-                <div class="custom-select" id="filterStatusWrapper">
-                    <div class="cs-toggle" data-value="">
-                        <span class="cs-text">All Statuses</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                    </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="">All Statuses</li>
-                        <li class="cs-option" data-value="Requested">Requested (New)</li>
-                        <li class="cs-option" data-value="In Progress">In Progress</li>
-                        <li class="cs-option" data-value="Completed">Completed</li>
-                    </ul>
+            <div class="modal-body">
+                <dl class="detail-grid specimen-grid">
+                    <div class="detail-item"><dt>Patient</dt><dd id="resPatientName">—</dd></div>
+                    <div class="detail-item"><dt>Tracking ID</dt><dd class="mono" id="resTrackingId">—</dd></div>
+                    <div class="detail-item"><dt>Priority</dt><dd id="resPriority">—</dd></div>
+                    <div class="detail-item"><dt>Requested by</dt><dd id="resDoctor">—</dd></div>
+                </dl>
+
+                <div class="requested-test">
+                    <span class="rt-label">Investigation requested</span>
+                    <strong id="resTestName">—</strong>
                 </div>
 
-                <!-- Priority Filter -->
-                <div class="custom-select" id="filterPriorityWrapper">
-                    <div class="cs-toggle" data-value="">
-                        <span class="cs-text">All Priorities</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                <div class="notice notice-info">
+                    <span class="ico" data-icon="file-text" data-icon-size="15"></span>
+                    <div>
+                        <strong>Clinician instructions</strong>
+                        <span id="resDoctorNote">—</span>
                     </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="">All Priorities</li>
-                        <li class="cs-option" data-value="Urgent">Urgent / STAT</li>
-                        <li class="cs-option" data-value="Routine">Routine</li>
-                    </ul>
                 </div>
 
-                <button class="btn-icon-reset" id="resetFiltersBtn" title="Reset Filters">
-                    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                <div class="form-group">
+                    <label for="inputTechName">Performed by (technologist name) <span class="req">*</span></label>
+                    <input type="text" id="inputTechName" placeholder="Full name of the technologist who ran the test">
+                    <span class="field-hint">Recorded on the result and printed on the pathology report.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="inputTestResults">Test values and findings <span class="req">*</span></label>
+                    <textarea id="inputTestResults" rows="5" placeholder="One analyte per line with units and reference range, e.g. Troponin I 0.02 ng/mL (ref &lt;0.04)" data-autofocus></textarea>
+                    <span class="field-hint">Include units and reference ranges so the clinician can interpret without a second call.</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Result classification <span class="req">*</span></label>
+                    <div class="chip-row" id="resultFlagChips">
+                        <button type="button" class="chip active" data-flag="Normal">
+                            <span class="ico" data-icon="check-circle" data-icon-size="13"></span>
+                            <span>Within range</span>
+                        </button>
+                        <button type="button" class="chip" data-flag="Abnormal">
+                            <span class="ico" data-icon="warning" data-icon-size="13"></span>
+                            <span>Abnormal</span>
+                        </button>
+                        <button type="button" class="chip" data-flag="Critical">
+                            <span class="ico" data-icon="critical" data-icon-size="13"></span>
+                            <span>Critical / panic value</span>
+                        </button>
+                    </div>
+                    <span class="field-hint" id="flagHint">Within range results are logged without interrupting the clinician.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="inputTechRemarks">Technician remarks</label>
+                    <input type="text" id="inputTechRemarks" placeholder="Specimen quality, analyser calibration, repeat testing">
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="saveResultBtn">
+                    <span class="ico" data-icon="send" data-icon-size="15"></span>
+                    <span>Release result</span>
                 </button>
             </div>
         </div>
-
-        <!-- LAB ORDERS CARD GRID -->
-        <div class="lab-card-grid" id="labCardGrid">
-            <!-- Populated dynamically -->
-        </div>
-
-        <div id="noLabData" class="no-data" style="display: none;">No diagnostic laboratory requests match the selected criteria.</div>
     </div>
 
-    <!-- ====================================================================
-         MODAL 1: RECORD / SUBMIT LAB RESULTS
-         ==================================================================== -->
-    <div class="modal-overlay" id="resultModal">
-        <div class="modal-box">
-            <div class="modal-header">
-                <div>
-                    <h3>Record Laboratory Findings</h3>
-                    <p class="modal-subtitle">Enter specimen test values, biochemical readings, and technician remarks</p>
+    <!-- ==================================================================
+         Pathology report
+         ================================================================== -->
+    <div class="modal-overlay" id="reportModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-lab"><span class="ico" data-icon="file-text" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="reportModalTitle">Pathology report</h3>
+                    <span>Certified electronic record</span>
                 </div>
-                <button class="modal-close" id="closeResultBtn">&times;</button>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
             </div>
             <div class="modal-body">
-                <div class="patient-summary-box">
-                    <div class="sum-item">
-                        <span class="sum-label">Patient:</span>
-                        <strong class="sum-val" id="resPatientName">John Doe</strong>
-                    </div>
-                    <div class="sum-item">
-                        <span class="sum-label">Tracking ID:</span>
-                        <strong class="sum-val" id="resTrackingId">TRK-10293847</strong>
-                    </div>
-                    <div class="sum-item">
-                        <span class="sum-label">Requested Test:</span>
-                        <strong class="sum-val" id="resTestName" style="color: #0284C7;">Cardiac Enzymes (Troponin I)</strong>
-                    </div>
-                </div>
+                <article class="report-paper" id="reportPrintArea">
+                    <header class="report-head">
+                        <div class="report-org">
+                            <span class="report-org-name">MediTrack Hospital</span>
+                            <span class="report-org-dept">Department of Diagnostic Pathology</span>
+                        </div>
+                        <span class="report-flag" id="repFlag">Within range</span>
+                    </header>
 
-                <div>
-                    <label style="font-size:11px; font-weight:700; color:var(--gray-muted); text-transform:uppercase;">Physician's Instructions:</label>
-                    <div class="doctor-note-readonly" id="resDoctorNote">
-                        Severe chest pain radiating to shoulder. Please expedite STAT.
-                    </div>
-                </div>
+                    <dl class="report-meta">
+                        <div><dt>Patient</dt><dd id="repPatientName">—</dd></div>
+                        <div><dt>Tracking ID</dt><dd class="mono" id="repTrackingId">—</dd></div>
+                        <div><dt>Age / contact</dt><dd id="repAgePhone">—</dd></div>
+                        <div><dt>Referring clinician</dt><dd id="repDoctor">—</dd></div>
+                        <div><dt>Requested</dt><dd id="repRequested">—</dd></div>
+                        <div><dt>Released</dt><dd id="repReleased">—</dd></div>
+                    </dl>
 
-                <div class="form-group">
-                    <label>Laboratory Test Values & Diagnostic Findings *</label>
-                    <textarea id="inputTestResults" rows="4" placeholder="e.g. Troponin I: 0.02 ng/mL (Normal < 0.04), Fasting Blood Glucose: 92 mg/dL, WBC: 7.8 x10^3/uL..."></textarea>
-                </div>
+                    <section class="report-block">
+                        <h4>Investigation</h4>
+                        <p id="repTestName">—</p>
+                    </section>
 
-                <div class="form-group">
-                    <label>Technician Remarks & Quality Control Notes</label>
-                    <input type="text" id="inputTechRemarks" placeholder="e.g. Analyzed within 20 mins of draw. Automated analyzer calibration verified.">
-                </div>
+                    <section class="report-block">
+                        <h4>Findings</h4>
+                        <pre class="report-values" id="repResultsContent">—</pre>
+                    </section>
+
+                    <section class="report-block" id="repRemarksWrap" hidden>
+                        <h4>Technician remarks</h4>
+                        <p id="repRemarksContent">—</p>
+                    </section>
+
+                    <footer class="report-foot">
+                        <div class="report-sign">
+                            <span class="sign-line" aria-hidden="true"></span>
+                            <span id="repTechName">Authorised medical technologist</span>
+                        </div>
+                        <p class="report-note">Electronically certified within MediTrack ERP. Values must be interpreted alongside the clinical presentation.</p>
+                    </footer>
+                </article>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="cancelResultBtn">Cancel</button>
-                <button type="button" class="btn-primary" id="saveResultBtn">
-                    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                    <span>Submit & Complete Results</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ====================================================================
-         MODAL 2: VIEW / PRINT OFFICIAL LAB REPORT
-         ==================================================================== -->
-    <div class="modal-overlay" id="reportModal">
-        <div class="modal-box report-modal-box">
-            <div class="modal-header">
-                <div>
-                    <h3>Diagnostic Pathology Report</h3>
-                    <p class="modal-subtitle">Official certified laboratory report</p>
-                </div>
-                <button class="modal-close" id="closeReportBtn">&times;</button>
-            </div>
-            <div class="modal-body report-modal-body">
-                <div class="report-paper" id="reportPrintArea">
-                    <div class="report-header">
-                        <div class="report-brand">
-                            <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="10"/></svg>
-                            <span>Medi<span>Track</span> Hospital Laboratory</span>
-                        </div>
-                        <p class="report-sub">Department of Diagnostic Pathology & Clinical Analysis</p>
-                        <div class="report-divider"></div>
-                    </div>
-
-                    <div class="report-meta-grid">
-                        <div class="rep-row">
-                            <span class="rep-key">Patient Name:</span>
-                            <strong class="rep-val" id="repPatientName">John Doe</strong>
-                        </div>
-                        <div class="rep-row">
-                            <span class="rep-key">Tracking ID:</span>
-                            <span class="rep-val" id="repTrackingId" style="font-family:monospace;font-weight:700;color:#0369A1;">TRK-10293847</span>
-                        </div>
-                        <div class="rep-row">
-                            <span class="rep-key">Age / Phone:</span>
-                            <span class="rep-val" id="repAgePhone">34 yrs · 0912 345 678</span>
-                        </div>
-                        <div class="rep-row">
-                            <span class="rep-key">Referring Physician:</span>
-                            <span class="rep-val" id="repDoctor">Dr. Sarah Chen</span>
-                        </div>
-                        <div class="rep-row">
-                            <span class="rep-key">Report Date & Time:</span>
-                            <span class="rep-val" id="repDateTime">Oct 24, 2023 · 10:15 AM</span>
-                        </div>
-                    </div>
-
-                    <div class="report-test-section">
-                        <span class="rep-section-title">INVESTIGATION ORDERED</span>
-                        <strong class="rep-test-name" id="repTestName">Complete Blood Count (CBC) & Lipid Panel</strong>
-                    </div>
-
-                    <div class="report-results-section">
-                        <span class="rep-section-title">LABORATORY FINDINGS & TEST VALUES</span>
-                        <div class="rep-results-box" id="repResultsContent">
-                            Troponin I: 0.04 ng/mL (Normal < 0.04)
-                            Normal sinus rhythm.
-                        </div>
-                    </div>
-
-                    <div class="report-remarks-section" id="repRemarksWrap">
-                        <span class="rep-section-title">TECHNICIAN REMARKS</span>
-                        <p id="repRemarksContent" style="font-size:12.5px;color:#475569;margin:0;">Specimen analyzed without complications. Values verified.</p>
-                    </div>
-
-                    <div class="report-footer">
-                        <div class="rep-signature">
-                            <div class="sig-line"></div>
-                            <span>Authorized Medical Technologist / Pathologist</span>
-                        </div>
-                        <p class="rep-disclaimer">Certified Electronic Clinical Report · MediTrack ERP</p>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="closeReportModalBtn">Close</button>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
                 <button type="button" class="btn-primary" id="printReportBtn">
-                    <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                    <span>Print Report</span>
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print report</span>
                 </button>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="../js/notifications.js"></script>
-    <script src="../js/laboratory.js"></script>
+<script src="../js/icons.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/laboratory.js"></script>
 </body>
 </html>

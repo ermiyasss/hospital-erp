@@ -5,146 +5,202 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediTrack · Hospital ERP</title>
     <link rel="stylesheet" href="css/variables.css"/>
+    <!-- components.css first: the shell needs its modal, button and select
+         primitives for confirm dialogs, and common.css overrides the few
+         layout rules that differ. -->
+    <link rel="stylesheet" href="css/components.css"/>
     <link rel="stylesheet" href="css/common.css"/>
     <link rel="stylesheet" href="css/notifications.css"/>
+    <!-- In <head> and before any paint, so dark mode does not flash white. -->
+    <script src="js/theme.js"></script>
 </head>
 <body class="dashboard-body">
+
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            <div class="brand-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="10"/></svg>
-            </div>
-            <span class="brand-text">Medi<span>Track</span></span>
+            <span class="brand-mark"><span class="ico" data-icon="hospital" data-icon-size="18"></span></span>
+            <span class="brand-text">
+                <strong id="brandFacility">MediTrack</strong>
+                <span id="brandDepartment">Hospital ERP</span>
+            </span>
         </div>
-        <nav class="sidebar-nav">
+
+        <!-- Items are hidden by js/common.js when the signed-in role does not
+             cover them. The full list lives here so the markup stays readable. -->
+        <nav class="sidebar-nav" aria-label="Main menu">
             <ul>
-                <li class="nav-item active" data-target="pages/default.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Dashboard</span></a>
+                <li class="nav-section" data-section="Overview">Overview</li>
+                <li class="nav-item" data-page="dashboard" data-target="pages/default.html">
+                    <a href="#"><span class="ico" data-icon="dashboard"></span><span class="nav-label">Dashboard</span></a>
                 </li>
-                <li class="nav-item" data-target="pages/patients.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Patients</span></a>
+
+                <li class="nav-section" data-section="Patient flow">Patients</li>
+                <li class="nav-item" data-page="registry" data-target="pages/patients.html">
+                    <a href="#"><span class="ico" data-icon="patients"></span><span class="nav-label">Patient records</span></a>
                 </li>
-                <li class="nav-item" data-target="pages/queue.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Queue</span></a>
+                <li class="nav-item" data-page="queue" data-target="pages/queue.html">
+                    <a href="#">
+                        <span class="ico" data-icon="queue"></span>
+                        <span class="nav-label">Waiting list</span>
+                        <span class="nav-badge hidden" data-badge="queue">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/track.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span>Tracking</span></a>
+                <li class="nav-item" data-page="consultation" data-target="pages/track.html">
+                    <a href="#">
+                        <span class="ico" data-icon="stethoscope"></span>
+                        <span class="nav-label">Consultation</span>
+                        <span class="nav-badge hidden" data-badge="review">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/storage.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg><span>Storage</span></a>
+
+                <li class="nav-section" data-section="Clinical services">Departments</li>
+                <li class="nav-item" data-page="laboratory" data-target="pages/laboratory.html">
+                    <a href="#">
+                        <span class="ico" data-icon="lab"></span>
+                        <span class="nav-label">Laboratory</span>
+                        <span class="nav-badge hidden" data-badge="lab">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/laboratory.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg><span>Laboratory</span></a>
+                <li class="nav-item" data-page="nurse" data-target="pages/nurse.html">
+                    <a href="#">
+                        <span class="ico" data-icon="nurse"></span>
+                        <span class="nav-label">Nurse station</span>
+                        <span class="nav-badge hidden" data-badge="nurse">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/pharmacy.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 7v6M9 10h6"/></svg><span>Pharmacy</span></a>
+                <li class="nav-item" data-page="pharmacy" data-target="pages/pharmacy.html">
+                    <a href="#">
+                        <span class="ico" data-icon="pill"></span>
+                        <span class="nav-label">Pharmacy</span>
+                        <span class="nav-badge hidden" data-badge="pharmacy">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/nurse.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/><path d="M12 2v4M12 18v4"/></svg><span>Nurse Station</span></a>
+
+                <li class="nav-section" data-section="Front office">Front office</li>
+                <li class="nav-item" data-page="billing" data-target="pages/billing.html">
+                    <a href="#">
+                        <span class="ico" data-icon="receipt"></span>
+                        <span class="nav-label">Billing</span>
+                        <span class="nav-badge hidden" data-badge="billing">0</span>
+                    </a>
                 </li>
-                <li class="nav-item" data-target="pages/staff.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Staff / Members</span></a>
+
+                <li class="nav-section" data-section="Administration">Admin</li>
+                <li class="nav-item" data-page="archive" data-target="pages/storage.html">
+                    <a href="#"><span class="ico" data-icon="layers"></span><span class="nav-label">Past visits</span></a>
                 </li>
-                <li class="nav-item" data-target="pages/settings.html">
-                    <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg><span>Settings</span></a>
+                <li class="nav-item" data-page="staff" data-target="pages/staff.html">
+                    <a href="#"><span class="ico" data-icon="users"></span><span class="nav-label">Staff</span></a>
+                </li>
+                <li class="nav-item" data-page="settings" data-target="pages/settings.html">
+                    <a href="#"><span class="ico" data-icon="settings"></span><span class="nav-label">Settings</span></a>
                 </li>
             </ul>
         </nav>
-        <div class="sidebar-footer">
-            <div class="user-mini">
-                <div class="user-mini-avatar">SC</div>
-                <div class="user-mini-info">
-                    <span class="user-mini-name">Dr. Sarah Chen</span>
-                    <span class="user-mini-role">Administrator</span>
-                </div>
+
+        <div class="sidebar-foot">
+            <div class="offline-note">
+                <span class="ico" data-icon="shield-check" data-icon-size="14"></span>
+                <span>Works offline · everything is saved on this computer</span>
             </div>
-            <button type="button" class="sidebar-logout-btn" id="sidebarLogoutBtn" title="Sign Out">
-                <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            </button>
         </div>
     </aside>
+
+    <div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>
 
     <main class="main-content">
         <header class="topbar">
             <div class="topbar-left">
-                <button class="menu-toggle" id="menuToggle" aria-label="Toggle sidebar">
-                    <svg viewBox="0 0 24 24" width="24" height="24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                <button type="button" class="menu-toggle" id="menuToggle" aria-label="Show or hide the menu">
+                    <span class="ico" data-icon="menu" data-icon-size="20"></span>
                 </button>
-                <span class="topbar-title" id="pageTitle">Dashboard</span>
+                <div class="topbar-heading">
+                    <span class="topbar-title" id="pageTitle">Dashboard</span>
+                    <span class="topbar-section" id="pageBreadcrumb">Overview</span>
+                </div>
             </div>
+
             <div class="topbar-right">
-                <div class="topbar-time">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span id="liveTime">--:-- --</span>
+                <div class="topbar-clock">
+                    <span class="ico" data-icon="clock" data-icon-size="15"></span>
+                    <span id="liveTime">--:--</span>
+                    <span class="clock-date" id="liveDate">—</span>
                 </div>
 
-                <div class="topbar-role">
-                    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    <span>Administrator</span>
-                </div>
+                <span class="topbar-divider" aria-hidden="true"></span>
 
-                <!-- NOTIFICATION CENTER BELL & FLYOUT -->
+                <button type="button" class="topbar-icon-btn" id="themeToggleBtn"
+                        title="Switch between light and dark" aria-label="Switch between light and dark">
+                    <span class="ico" id="themeToggleIcon" data-icon="moon" data-icon-size="18"></span>
+                </button>
+
                 <div class="notif-center-wrapper" id="notifCenterWrap">
-                    <button type="button" class="topbar-notif-btn" id="topbarNotifBtn" title="Notifications" aria-label="View notifications">
-                        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <button type="button" class="topbar-notif-btn" id="topbarNotifBtn" title="Alerts" aria-label="Show alerts">
+                        <span class="ico" data-icon="bell" data-icon-size="18"></span>
                         <span class="notif-badge hidden" id="topbarNotifBadge">0</span>
                     </button>
+
                     <div class="notif-panel" id="topbarNotifPanel">
                         <div class="notif-panel-header">
                             <div class="notif-panel-title">
-                                <h4>Notifications</h4>
-                                <span class="notif-panel-count" id="notifPanelUnreadCount">0 new</span>
+                                <h4>Alerts</h4>
+                                <span class="notif-panel-count" id="notifPanelUnreadCount">Nothing new</span>
                             </div>
                             <div class="notif-panel-actions">
-                                <button type="button" class="notif-action-btn" id="markAllReadBtn">Mark read</button>
+                                <button type="button" class="notif-action-btn" id="markAllReadBtn">Mark as read</button>
                                 <button type="button" class="notif-action-btn" id="clearAllNotifsBtn">Clear</button>
                             </div>
                         </div>
-                        <div class="notif-panel-list" id="notifPanelList">
-                            <!-- Populated dynamically -->
+                        <div class="notif-filter-bar" id="notifFilterBar">
+                            <button type="button" class="notif-filter-chip active" data-notif-filter="all">All</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="critical">Urgent</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="results">Results</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="unread">Unread</button>
                         </div>
+                        <div class="notif-panel-list" id="notifPanelList"></div>
                     </div>
                 </div>
 
-                <!-- PROFILE MENU DROPDOWN -->
                 <div class="topbar-profile-wrap" id="topbarProfileWrap">
-                    <div class="topbar-profile" id="topbarProfileBtn">
-                        <div class="avatar">SC</div>
-                        <div class="profile-info">
-                            <span class="profile-name">Dr. Sarah Chen</span>
-                            <span class="profile-role">Administrator</span>
-                        </div>
-                        <span class="profile-chevron">
-                            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    <button type="button" class="topbar-profile" id="topbarProfileBtn" aria-haspopup="true" aria-expanded="false">
+                        <span class="avatar" id="topbarAvatar">SC</span>
+                        <span class="profile-info">
+                            <span class="profile-name" id="topbarUserName">Dr. Sarah Chen</span>
+                            <span class="profile-role" id="topbarUserRole">Administrator</span>
                         </span>
-                    </div>
+                        <span class="profile-chevron"><span class="ico" data-icon="chevron-down" data-icon-size="14"></span></span>
+                    </button>
 
                     <div class="profile-menu-panel" id="topbarProfilePanel">
                         <div class="profile-menu-header">
-                            <div class="profile-menu-user">Dr. Sarah Chen</div>
-                            <div class="profile-menu-dept">Chief Medical Admin · ERP</div>
+                            <span class="profile-menu-user" id="menuUserName">Dr. Sarah Chen</span>
+                            <span class="profile-menu-dept" id="menuUserDept">Administrator</span>
                         </div>
-                        <a href="#" class="profile-menu-item" id="menuSettingsLink" data-target="pages/settings.html">
-                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
-                            <span>System Settings</span>
-                        </a>
-                        <a href="#" class="profile-menu-item" id="menuQueueLink" data-target="pages/queue.html">
-                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            <span>Patient Queue</span>
-                        </a>
+                        <button type="button" class="profile-menu-item" id="menuSettingsLink" data-page="settings" data-target="pages/settings.html">
+                            <span class="ico" data-icon="settings" data-icon-size="15"></span>
+                            <span>Settings</span>
+                        </button>
+                        <button type="button" class="profile-menu-item" id="menuStaffLink" data-page="staff" data-target="pages/staff.html">
+                            <span class="ico" data-icon="users" data-icon-size="15"></span>
+                            <span>Staff</span>
+                        </button>
                         <div class="profile-menu-divider"></div>
                         <button type="button" class="profile-menu-item logout-item" id="topbarLogoutBtn">
-                            <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                            <span>Sign Out / Log Out</span>
+                            <span class="ico" data-icon="logout" data-icon-size="15"></span>
+                            <span>Sign out</span>
                         </button>
                     </div>
                 </div>
             </div>
         </header>
-        
-        <iframe id="content-frame" src="pages/default.html" class="content-frame"></iframe>
+
+        <iframe id="content-frame" src="pages/default.html" class="content-frame" title="Page content"></iframe>
     </main>
 
+    <script src="js/icons.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/notifications.js"></script>
     <script src="js/common.js"></script>
 </body>

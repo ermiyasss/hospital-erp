@@ -1,18 +1,373 @@
+/* ==========================================================================
+   MediTrack Hospital ERP - Design Tokens
+
+   Every colour, size and timing in the application resolves from here, which
+   is what makes dark mode and the accent choice possible without touching a
+   single page stylesheet.
+
+   Structure:
+     :root                     light theme + shared scales
+     [data-theme="dark"]       dark theme overrides (same token names)
+     [data-accent="..."]       brand accent overrides
+     density / motion          workstation preferences
+
+   Nothing here loads from the network, so the palette is identical offline.
+   ========================================================================== */
+
 :root {
-    --primary-red: #B91C1C;
-    --primary-dark: #991B1B;
-    --primary-light: #FEF2F2;
-    --primary-subtle: #FEE2E2;
+    /* --- Brand (clinical blue by default) -------------------------------- */
+    --primary: #1C5FA8;
+    --primary-red: #1C5FA8;          /* legacy alias, still referenced */
+    --primary-dark: #164A84;
+    --primary-hover: #195496;
+    --primary-light: #EAF2FB;
+    --primary-border: #C7DCF2;
+    --primary-contrast: #FFFFFF;     /* text drawn on top of --primary */
+
+    /* --- Neutral surfaces ----------------------------------------------- */
     --white: #FFFFFF;
-    --gray-light: #F8FAFC;
-    --gray-border: #E2E8F0;
-    --gray-muted: #64748B;
-    --text-dark: #0F172A;
-    --text-body: #334155;
-    --status-urgent-bg: #FEF2F2;
-    --status-urgent-text: #B91C1C;
-    --status-urgent-border: #FECACA;
-    --status-nonurgent-bg: #F1F5F9;
-    --status-nonurgent-text: #475569;
-    --status-nonurgent-border: #CBD5E1;
+    --surface: #FFFFFF;
+    --surface-alt: #F7F8FA;
+    --surface-sunken: #F1F3F6;
+    --gray-light: #F5F6F8;
+    --gray-border: #E3E6EB;
+    --border-strong: #CFD4DC;
+
+    /* --- Text ----------------------------------------------------------- */
+    --text-dark: #16202C;
+    --text-strong: #16202C;
+    --text-body: #38414D;
+    --gray-muted: #6B7480;
+    --text-faint: #8A929C;
+    --text-invert: #FFFFFF;
+
+    /* --- Clinical status colours ---------------------------------------- */
+    --info: #1C5FA8;
+    --info-bg: #EAF2FB;
+    --info-border: #C7DCF2;
+
+    --success: #1D7A4C;
+    --success-bg: #EAF6EF;
+    --success-border: #C3E5D3;
+    --success-dark: #145C39;
+
+    --warning: #9A6206;
+    --warning-bg: #FDF4E3;
+    --warning-border: #F2DFB8;
+
+    --danger: #A31B22;
+    --danger-bg: #FBECEC;
+    --danger-border: #F0CFD0;
+
+    --critical: #8A1220;
+    --critical-bg: #F7E4E6;
+
+    /* --- Department accents --------------------------------------------- */
+    --accent-lab: #1C5FA8;
+    --accent-lab-bg: #EAF2FB;
+    --accent-nurse: #9A6206;
+    --accent-nurse-bg: #FDF4E3;
+    --accent-rx: #6B3FA0;
+    --accent-rx-bg: #F2EDF9;
+    --accent-triage: #0F6E6E;
+    --accent-triage-bg: #E7F3F3;
+    --accent-billing: #1F5F4B;
+    --accent-billing-bg: #E8F4F0;
+
+    /* --- Overlays and washes -------------------------------------------- */
+    --overlay: rgba(22, 32, 44, 0.45);
+    --sidebar-well: #16202C;         /* sign-in panel and dark surfaces */
+    --on-dark: #FFFFFF;
+    --on-dark-muted: rgba(255, 255, 255, 0.68);
+    --on-dark-faint: rgba(255, 255, 255, 0.5);
+    --on-dark-line: rgba(255, 255, 255, 0.14);
+    --on-dark-fill: rgba(255, 255, 255, 0.08);
+
+    /* --- Typography ----------------------------------------------------- */
+    --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+    --fs-xs: 11.5px;
+    --fs-sm: 12.5px;
+    --fs-base: 13.5px;
+    --fs-md: 15px;
+    --fs-lg: 17px;
+    --fs-xl: 20px;
+    --fs-2xl: 24px;
+
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+
+    /* --- Spacing -------------------------------------------------------- */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+
+    /* Both spellings are defined so neither resolves to nothing. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* --- Radii ---------------------------------------------------------- */
+    --radius-xs: 3px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-pill: 999px;
+
+    /* --- Elevation ------------------------------------------------------ */
+    --shadow-xs: 0 1px 2px rgba(22, 32, 44, 0.05);
+    --shadow-sm: 0 1px 3px rgba(22, 32, 44, 0.07);
+    --shadow-md: 0 4px 12px rgba(22, 32, 44, 0.08);
+    --shadow-lg: 0 10px 28px rgba(22, 32, 44, 0.12);
+
+    /* --- Layout --------------------------------------------------------- */
+    --sidebar-width: 248px;
+    --topbar-height: 56px;
+
+    /* --- Motion --------------------------------------------------------- */
+    --t-fast: 120ms ease;
+    --t-base: 180ms ease;
 }
+
+/* ==========================================================================
+   Dark theme
+
+   Not an inversion: surfaces are lifted rather than darkened further as they
+   come forward, and the status colours are re-picked so they stay legible on
+   a dark background instead of glowing.
+   ========================================================================== */
+[data-theme="dark"] {
+    --white: #1B2430;
+    --surface: #1B2430;
+    --surface-alt: #151D27;
+    --surface-sunken: #222D3B;
+    --gray-light: #111821;
+    --gray-border: #2C3846;
+    --border-strong: #3E4C5D;
+
+    --text-dark: #E8ECF1;
+    --text-strong: #E8ECF1;
+    --text-body: #C3CBD6;
+    --gray-muted: #94A0AE;
+    --text-faint: #7C8896;
+    --text-invert: #10161E;
+
+    --primary-light: #14263A;
+    --primary-border: #22405E;
+
+    --info: #6BA6E8;
+    --info-bg: #16283C;
+    --info-border: #27425F;
+
+    --success: #57C08A;
+    --success-bg: #142D22;
+    --success-border: #21462F;
+    --success-dark: #7BD3A4;
+
+    --warning: #E0A93F;
+    --warning-bg: #2E2415;
+    --warning-border: #4A3A1C;
+
+    --danger: #E8737A;
+    --danger-bg: #33181B;
+    --danger-border: #4E2226;
+
+    --critical: #F08A90;
+    --critical-bg: #3A1B1F;
+
+    --accent-lab: #6BA6E8;
+    --accent-lab-bg: #16283C;
+    --accent-nurse: #E0A93F;
+    --accent-nurse-bg: #2E2415;
+    --accent-rx: #B394E0;
+    --accent-rx-bg: #251E38;
+    --accent-triage: #55BDB8;
+    --accent-triage-bg: #122E2D;
+    --accent-billing: #5FBF9E;
+    --accent-billing-bg: #122C25;
+
+    --overlay: rgba(6, 10, 15, 0.66);
+    --sidebar-well: #10161E;
+
+    /* Shadows read as depth only if they are darker than the surface. */
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.36);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.42);
+    --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+[data-accent="crimson"] {
+    --primary: #A31B22;
+    --primary-red: #A31B22;
+    --primary-dark: #7F1418;
+    --primary-hover: #8E171D;
+    --primary-light: #FBECEC;
+    --primary-border: #F0CFD0;
+}
+[data-theme="dark"][data-accent="crimson"] {
+    --primary: #D4535A;
+    --primary-red: #D4535A;
+    --primary-dark: #A83840;
+    --primary-hover: #E2646B;
+    --primary-light: #33181B;
+    --primary-border: #4E2226;
+}
+
+/* ==========================================================================
+   Accent themes
+
+   Only the brand ramp changes. Clinical status colours are never re-themed:
+   red must always mean danger regardless of the chosen accent.
+   ========================================================================== */
+[data-accent="teal"] {
+    --primary: #0F6E6E;
+    --primary-red: #0F6E6E;
+    --primary-dark: #0A5252;
+    --primary-hover: #0C6060;
+    --primary-light: #E7F3F3;
+    --primary-border: #C2DFDF;
+}
+[data-theme="dark"][data-accent="teal"] {
+    --primary: #2E9E9B;
+    --primary-red: #2E9E9B;
+    --primary-dark: #247D7B;
+    --primary-hover: #35B0AD;
+    --primary-light: #10302F;
+    --primary-border: #1C4746;
+}
+
+[data-accent="blue"] {
+    --primary: #1C5FA8;
+    --primary-red: #1C5FA8;
+    --primary-dark: #164A84;
+    --primary-hover: #195496;
+    --primary-light: #EAF2FB;
+    --primary-border: #C7DCF2;
+}
+[data-theme="dark"][data-accent="blue"] {
+    --primary: #4E90D8;
+    --primary-red: #4E90D8;
+    --primary-dark: #3B72AE;
+    --primary-hover: #5C9FE5;
+    --primary-light: #14263A;
+    --primary-border: #22405E;
+}
+
+[data-accent="indigo"] {
+    --primary: #4B3F9E;
+    --primary-red: #4B3F9E;
+    --primary-dark: #3A3080;
+    --primary-hover: #43388C;
+    --primary-light: #EDEBF8;
+    --primary-border: #D0CBEC;
+}
+[data-theme="dark"][data-accent="indigo"] {
+    --primary: #8B7DE0;
+    --primary-red: #8B7DE0;
+    --primary-dark: #6C60B8;
+    --primary-hover: #9A8DE8;
+    --primary-light: #201C38;
+    --primary-border: #332C56;
+}
+
+[data-accent="slate"] {
+    --primary: #3B4A5C;
+    --primary-red: #3B4A5C;
+    --primary-dark: #2C3846;
+    --primary-hover: #344252;
+    --primary-light: #EEF1F4;
+    --primary-border: #D3DAE2;
+}
+[data-theme="dark"][data-accent="slate"] {
+    --primary: #7E90A6;
+    --primary-red: #7E90A6;
+    --primary-dark: #63738A;
+    --primary-hover: #8C9DB2;
+    --primary-light: #1E2833;
+    --primary-border: #2F3D4C;
+}
+
+/* ==========================================================================
+   Workstation preferences
+   ========================================================================== */
+
+/* Compact spacing: smaller monitors fit more rows without scrolling. */
+[data-density="compact"] {
+    --space-3: 10px;
+    --space-4: 12px;
+    --space-5: 16px;
+    --space-6: 18px;
+    --space-8: 24px;
+    --topbar-height: 50px;
+}
+
+/* Motion can be reduced by preference or by the operating system. */
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+/* Themed form controls and scrollbars, so native widgets follow dark mode. */
+:root { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
+/* ==========================================================================
+   Icon primitives (paired with js/icons.js)
+   ========================================================================== */
+.ico,
+.mt-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 0;
+    color: currentColor;
+}
+
+.mt-icon {
+    display: block;
+    width: 1em;
+    height: 1em;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.ico { font-size: 18px; }
+.ico > .mt-icon { width: 1em; height: 1em; }
+
+.ico-xs { font-size: 13px; }
+.ico-sm { font-size: 15px; }
+.ico-md { font-size: 18px; }
+.ico-lg { font-size: 22px; }
+.ico-xl { font-size: 28px; }
+
+/* Utility: hide an element for one role or state without inline styles. */
+.is-hidden { display: none !important; }

@@ -3,166 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
+    <title>Dashboard · MediTrack</title>
+    <script src="../js/theme.js"></script>
     <link rel="stylesheet" href="../css/variables.css">
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/components.css">
     <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
 </head>
 <body>
-    <div class="dash-container">
-        <div class="welcome-banner">
-            <div>
-                <h1>Welcome back, Dr. Chen</h1>
-                <p>Real-time clinic dashboard synchronized with live patient queues and lab requests.</p>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Clinical Overview</h1>
+            <p>Live position across triage, consultation, diagnostics, nursing and dispensing.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="calendar" data-icon-size="15"></span>
+                <span id="dashDate">—</span>
             </div>
-            <div class="banner-date">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <span id="dashBannerDate">Live Workstation</span>
+            <div class="meta-pill meta-pill-live">
+                <span class="live-dot" aria-hidden="true"></span>
+                <span>Live</span>
             </div>
         </div>
+    </header>
 
-        <div class="stats-grid">
-            <div class="stat-card" id="cardTotalPatients" style="cursor: pointer;">
-                <div class="stat-icon bg-red"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-                <div class="stat-info">
-                    <span class="stat-number" id="statTotalPatients">4</span>
-                    <span class="stat-label">Total Patients</span>
-                </div>
-            </div>
-            <div class="stat-card" id="cardActiveQueue" style="cursor: pointer;">
-                <div class="stat-icon bg-yellow"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-                <div class="stat-info">
-                    <span class="stat-number" id="statActiveQueue">2</span>
-                    <span class="stat-label">In Queue</span>
-                </div>
-            </div>
-            <div class="stat-card" id="cardInConsultation" style="cursor: pointer;">
-                <div class="stat-icon bg-green"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-                <div class="stat-info">
-                    <span class="stat-number" id="statInConsultation">1</span>
-                    <span class="stat-label">In Consultation</span>
-                </div>
-            </div>
-            <div class="stat-card" id="cardPendingLabs" style="cursor: pointer;">
-                <div class="stat-icon bg-blue"><svg viewBox="0 0 24 24"><path d="M6 18h12"/><path d="M10 22h4"/><path d="M12 18v4"/><path d="M9 3h6"/><path d="M10 3v5l-4 7h12l-4-7V3"/></svg></div>
-                <div class="stat-info">
-                    <span class="stat-number" id="statPendingLabs">2</span>
-                    <span class="stat-label">Pending Labs</span>
-                </div>
-            </div>
-        </div>
+    <!-- Attention strip: only rendered when something needs acting on --- -->
+    <section class="attention-stack" id="attentionStack"></section>
 
-        <div class="main-grid">
-            <div class="card large-card">
-                <div class="card-header">
-                    <h3>Active Queue & Consultations</h3>
-                    <button class="btn-text" id="btnViewAllPatients">View Patients &rarr;</button>
-                </div>
-                <div class="list-group" id="dashPatientsList">
-                    <!-- Dynamic live patients -->
-                </div>
-            </div>
+    <!-- Key figures ----------------------------------------------------- -->
+    <section class="stats-grid" aria-label="Key figures">
+        <button type="button" class="stat-card" data-go="pages/queue.html">
+            <span class="stat-top">
+                <span class="stat-icon tone-warning"><span class="ico" data-icon="queue" data-icon-size="18"></span></span>
+                <span class="stat-trend" id="trendQueue">Waiting</span>
+            </span>
+            <span class="stat-number" id="statQueue">0</span>
+            <span class="stat-label">In triage queue</span>
+            <span class="stat-foot" id="footQueue">Longest wait —</span>
+        </button>
 
-            <div class="card">
-                <div class="card-header">
-                    <h3>Pinned Clinical Notes</h3>
-                </div>
-                <div class="list-group">
-                    <div class="note-item">
-                        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                        <p>Restock Amoxicillin 500mg capsules in Pharmacy.</p>
-                    </div>
-                    <div class="note-item">
-                        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                        <p>Emergency generator load test at 3:00 PM today.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <button type="button" class="stat-card" data-go="pages/track.html">
+            <span class="stat-top">
+                <span class="stat-icon tone-success"><span class="ico" data-icon="stethoscope" data-icon-size="18"></span></span>
+                <span class="stat-trend" id="trendConsult">Active</span>
+            </span>
+            <span class="stat-number" id="statConsulting">0</span>
+            <span class="stat-label">In consultation</span>
+            <span class="stat-foot" id="footConsult">With a clinician now</span>
+        </button>
 
-        <div class="card">
+        <button type="button" class="stat-card" data-go="pages/track.html">
+            <span class="stat-top">
+                <span class="stat-icon tone-neutral"><span class="ico" data-icon="hourglass" data-icon-size="18"></span></span>
+                <span class="stat-trend" id="trendAwaiting">Parked</span>
+            </span>
+            <span class="stat-number" id="statAwaiting">0</span>
+            <span class="stat-label">Awaiting results</span>
+            <span class="stat-foot" id="footAwaiting">Diagnostics in progress</span>
+        </button>
+
+        <button type="button" class="stat-card" data-go="pages/laboratory.html">
+            <span class="stat-top">
+                <span class="stat-icon tone-info"><span class="ico" data-icon="lab" data-icon-size="18"></span></span>
+                <span class="stat-trend" id="trendLab">Laboratory</span>
+            </span>
+            <span class="stat-number" id="statLab">0</span>
+            <span class="stat-label">Open lab requests</span>
+            <span class="stat-foot" id="footLab">Awaiting analysis or release</span>
+        </button>
+
+        <button type="button" class="stat-card" data-go="pages/storage.html">
+            <span class="stat-top">
+                <span class="stat-icon tone-neutral"><span class="ico" data-icon="check-circle" data-icon-size="18"></span></span>
+                <span class="stat-trend">Today</span>
+            </span>
+            <span class="stat-number" id="statCompleted">0</span>
+            <span class="stat-label">Visits completed</span>
+            <span class="stat-foot" id="footCompleted">Median stay —</span>
+        </button>
+    </section>
+
+    <!-- Main grid ------------------------------------------------------- -->
+    <div class="dash-grid">
+
+        <section class="card">
             <div class="card-header">
-                <h3>Hospital Announcements</h3>
+                <div class="card-header-text">
+                    <h3>Next in queue</h3>
+                    <span class="card-sub" id="queuePolicyNote">Ordered by triage priority, then arrival time</span>
+                </div>
+                <button type="button" class="btn-text" data-go="pages/queue.html">
+                    <span>Open queue</span>
+                    <span class="ico" data-icon="arrow-right" data-icon-size="14"></span>
+                </button>
             </div>
-            <div class="announcement-box">
-                <h4>Cardiology Wing Expansion</h4>
-                <p>New digital ECG and Troponin rapid analyzers have been deployed to the 2nd floor laboratory.</p>
-                <span class="ann-time">Broadcasted Today</span>
-            </div>
+            <div class="list-group" id="queuePreview"></div>
+        </section>
+
+        <div class="dash-side">
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>Department load</h3>
+                        <span class="card-sub">Open items per service</span>
+                    </div>
+                </div>
+                <div class="dept-load" id="deptLoad"></div>
+            </section>
+
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>Triage mix</h3>
+                        <span class="card-sub">Active patients by priority</span>
+                    </div>
+                </div>
+                <div class="triage-mix" id="triageMix"></div>
+            </section>
         </div>
     </div>
 
-    <script src="../js/notifications.js"></script>
-    <script>
-        function loadDashboardData() {
-            var pRaw = localStorage.getItem('clinic_patients_data');
-            var lRaw = localStorage.getItem('clinic_lab_requests');
-            var patients = pRaw ? JSON.parse(pRaw) : [];
-            var labs = lRaw ? JSON.parse(lRaw) : [];
+    <!-- Recent clinical activity ---------------------------------------- -->
+    <section class="card">
+        <div class="card-header">
+            <div class="card-header-text">
+                <h3>Recent clinical activity</h3>
+                <span class="card-sub">Notes, orders and released results across all departments</span>
+            </div>
+        </div>
+        <div class="activity-list" id="activityList"></div>
+    </section>
+</div>
 
-            var total = patients.length;
-            var inQueue = patients.filter(function(p) { return p.status === 'Pending'; }).length;
-            var inTreatment = patients.filter(function(p) { return p.status === 'In Treatment'; }).length;
-            var pendingLabs = labs.filter(function(l) { return l.status !== 'Completed'; }).length;
-
-            document.getElementById('statTotalPatients').textContent = total;
-            document.getElementById('statActiveQueue').textContent = inQueue;
-            document.getElementById('statInConsultation').textContent = inTreatment;
-            document.getElementById('statPendingLabs').textContent = pendingLabs;
-
-            var listContainer = document.getElementById('dashPatientsList');
-            if (listContainer) {
-                if (patients.length === 0) {
-                    listContainer.innerHTML = '<div style="padding:16px; color:var(--gray-muted); font-size:13px;">No patient records found.</div>';
-                } else {
-                    listContainer.innerHTML = patients.slice(0, 4).map(function(p) {
-                        var initials = p.name ? p.name.split(' ').map(function(n){return n[0];}).join('').toUpperCase() : 'PT';
-                        var badgeClass = p.status === 'In Treatment' ? 'status-treatment' : (p.status === 'Finished' ? 'status-finished' : 'status-pending');
-                        return '<div class="list-item" style="cursor:pointer;" onclick="selectPatientAndTrack(' + p.id + ')">' +
-                            '<div class="list-avatar">' + initials + '</div>' +
-                            '<div class="list-content">' +
-                                '<span class="list-title">' + p.name + ' (' + p.trackingId + ')</span>' +
-                                '<span class="list-subtitle">' + (p.description || 'Clinical Consultation') + '</span>' +
-                            '</div>' +
-                            '<span class="badge ' + badgeClass + '">' + p.status + '</span>' +
-                        '</div>';
-                    }).join('');
-                }
-            }
-        }
-
-        window.selectPatientAndTrack = function(id) {
-            sessionStorage.setItem('selected_tracking_patient_id', id);
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ action: 'navigate', target: 'pages/track.html', title: 'Tracking' }, '*');
-            } else {
-                window.location.href = 'track.html';
-            }
-        };
-
-        document.getElementById('btnViewAllPatients').addEventListener('click', function() {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ action: 'navigate', target: 'pages/patients.html', title: 'Patients' }, '*');
-            }
-        });
-        document.getElementById('cardActiveQueue').addEventListener('click', function() {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ action: 'navigate', target: 'pages/queue.html', title: 'Queue' }, '*');
-            }
-        });
-        document.getElementById('cardInConsultation').addEventListener('click', function() {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ action: 'navigate', target: 'pages/track.html', title: 'Tracking' }, '*');
-            }
-        });
-        document.getElementById('cardPendingLabs').addEventListener('click', function() {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ action: 'navigate', target: 'pages/laboratory.html', title: 'Laboratory' }, '*');
-            }
-        });
-
-        loadDashboardData();
-        window.addEventListener('storage', loadDashboardData);
-    </script>
+<script src="../js/icons.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/dashboard.js"></script>
 </body>
 </html>
