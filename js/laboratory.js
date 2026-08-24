@@ -1,533 +1,489 @@
-/**
- * MediTrack Hospital ERP - Diagnostic Laboratory & Pathology Logic
- * Synchronized with clinic_lab_requests, clinic_lab_archive & clinic_patients_data in localStorage.
- * Handles specimen testing progression, auto-clearing completed results into archive & storage,
- * modal dialogs, and official pathology report printing.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Laboratory
 
-(function() {
+   Two responsibilities:
+     - work the analysis queue (requested -> in progress -> released)
+     - classify each released result, because that classification is what
+       decides whether the clinician is interrupted.
+
+   Results are written back to both the global lab list and the patient record
+   so the consultation desk workbench stays accurate.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_KEY_LAB = 'clinic_lab_requests';
-    var STORAGE_KEY_ARCHIVE = 'clinic_lab_archive';
-    var STORAGE_KEY_PATIENTS = 'clinic_patients_data';
+    var store = window.MediStore;
+    var ui = window.MediUI;
 
-    var activeLabOrders = [];
-    var archivedLabOrders = [];
-    var currentTab = 'active'; // 'active' or 'archive'
+    var active = [];      /* not yet released */
+    var archive = [];     /* released */
+    var currentTab = 'active';
 
     var searchTerm = '';
     var statusFilter = '';
     var priorityFilter = '';
-    var activeOrder = null;
 
-    /* --------------------------------------------------------------------------
-       LocalStorage Synchronization
-       -------------------------------------------------------------------------- */
-    function loadLabData() {
-        // Load active
+    var editingId = null;
+    var resultFlag = 'Normal';
+
+    /* The signed-in staff member is the default technologist; the name is
+       confirmed (or corrected) on every result. */
+    function currentStaffName() {
         try {
-            var raw = localStorage.getItem(STORAGE_KEY_LAB);
-            activeLabOrders = raw ? JSON.parse(raw) : [];
-        } catch (e) {
-            activeLabOrders = [];
-        }
+            var s = window.MediSession && window.MediSession.read();
+            if (s && s.name) return s.name;
+        } catch (e) {}
+        return '';
+    }
 
-        // Load archive
-        try {
-            var rawArchive = localStorage.getItem(STORAGE_KEY_ARCHIVE);
-            archivedLabOrders = rawArchive ? JSON.parse(rawArchive) : [];
-        } catch (e) {
-            archivedLabOrders = [];
-        }
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
 
-        // If active has completed items from legacy, move them to archive
-        var stillActive = [];
-        activeLabOrders.forEach(function(order) {
-            if (order.status === 'Completed') {
-                if (!archivedLabOrders.some(function(a) { return a.id === order.id; })) {
-                    archivedLabOrders.unshift(order);
-                }
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value === null || value === undefined || value === '' ? '—' : value;
+    }
+
+    function isStat(order) {
+        var p = String(order.priority || '').toLowerCase();
+        return p === 'stat' || p === 'urgent';
+    }
+
+    /* ==================================================================
+       Load / save
+       ================================================================== */
+    function load() {
+        var all = store.read(store.KEYS.labRequests);
+        var archived = store.read(store.KEYS.labArchive);
+
+        /* Released orders belong in the archive, wherever they were written. */
+        var open = [];
+        all.forEach(function (o) {
+            if (String(o.status) === 'Completed') {
+                if (!archived.some(function (a) { return String(a.id) === String(o.id); })) archived.unshift(o);
             } else {
-                stillActive.push(order);
+                open.push(o);
             }
         });
-        activeLabOrders = stillActive;
 
-        // If completely empty initially, seed sample
-        if (activeLabOrders.length === 0 && archivedLabOrders.length === 0) {
-            activeLabOrders = [
-                {
-                    id: 1001,
-                    patientId: 1,
-                    trackingId: 'TRK-10293847',
-                    patientName: 'John Doe',
-                    age: 34,
-                    phone: '0912 345 678',
-                    test: 'Cardiac Enzymes (Troponin I) & 12-Lead ECG',
-                    priority: 'Urgent',
-                    note: 'Severe chest pain radiating to shoulder. Please expedite STAT.',
-                    doctor: 'Dr. Sarah Chen',
-                    time: new Date(Date.now() - 25 * 60000).toISOString(),
-                    status: 'In Progress',
-                    results: ''
-                },
-                {
-                    id: 1002,
-                    patientId: 2,
-                    trackingId: 'TRK-77123901',
-                    patientName: 'Alice Smith',
-                    age: 28,
-                    phone: '0987 654 321',
-                    test: 'Complete Blood Count (CBC) & Sputum Analysis',
-                    priority: 'Routine',
-                    note: 'Persistent cough for 3 days. Check WBC count.',
-                    doctor: 'Dr. Sarah Chen',
-                    time: new Date(Date.now() - 15 * 60000).toISOString(),
-                    status: 'Requested',
-                    results: ''
-                }
-            ];
-            archivedLabOrders = [
-                {
-                    id: 1003,
-                    patientId: 3,
-                    trackingId: 'TRK-33418721',
-                    patientName: 'Bob Johnson',
-                    age: 45,
-                    phone: '0911 222 333',
-                    test: 'Fasting Lipid Profile & Blood Glucose',
-                    priority: 'Routine',
-                    note: 'Annual checkup routine diagnostic screen.',
-                    doctor: 'Dr. Sarah Chen',
-                    time: new Date(Date.now() - 120 * 60000).toISOString(),
-                    status: 'Completed',
-                    results: 'Total Cholesterol: 185 mg/dL, Triglycerides: 140 mg/dL, HDL: 52 mg/dL, LDL: 105 mg/dL. Fasting Blood Glucose: 92 mg/dL.'
-                }
-            ];
-            saveLabData();
+        active = open;
+        archive = archived;
+        save();
+        render();
+    }
+
+    function save() {
+        store.write(store.KEYS.labRequests, active);
+        store.write(store.KEYS.labArchive, archive);
+    }
+
+    function findOrder(id) {
+        var hit = null;
+        active.concat(archive).forEach(function (o) {
+            if (String(o.id) === String(id)) hit = o;
+        });
+        return hit;
+    }
+
+    /* The patient record is the clinical source of truth for the workbench. */
+    function syncToPatient(order) {
+        var patients = store.readPatients();
+        var p = store.findPatient(patients, order.patientId);
+        if (!p && order.trackingId) {
+            patients.forEach(function (x) { if (x.trackingId === order.trackingId) p = x; });
+        }
+        if (!p) return;
+
+        var existing = null;
+        (p.labOrders || []).forEach(function (o) {
+            if (String(o.id) === String(order.id)) existing = o;
+        });
+
+        if (existing) {
+            existing.status = order.status;
+            existing.results = order.results;
+            existing.techRemarks = order.techRemarks;
+            existing.flag = order.flag;
+            existing.completedAt = order.completedAt;
+            if (order.status === 'Completed') existing.reviewed = false;
+        } else {
+            p.labOrders.push(order);
         }
 
-        updateHeaderCounts();
-        renderCards();
+        /* Once nothing is outstanding the patient is ready to be seen again. */
+        if (order.status === 'Completed' &&
+            p.status === store.STATUS.AWAITING &&
+            store.openOrderCount(p) === 0) {
+            p.status = store.STATUS.PENDING;
+        }
+
+        store.writePatients(patients);
     }
 
-    function saveLabData() {
-        localStorage.setItem(STORAGE_KEY_LAB, JSON.stringify(activeLabOrders));
-        localStorage.setItem(STORAGE_KEY_ARCHIVE, JSON.stringify(archivedLabOrders));
-    }
+    /* ==================================================================
+       Render
+       ================================================================== */
+    function render() {
+        var statCount = active.filter(isStat).length;
 
-    function updateHeaderCounts() {
-        var activeCountEl = document.getElementById('labActiveCount');
-        var compCountEl = document.getElementById('labCompletedCount');
-        var tabActiveEl = document.getElementById('tabActiveCount');
-        var tabArchEl = document.getElementById('tabArchiveCount');
+        setText('labActiveCount', active.length);
+        setText('labCompletedCount', archive.length);
+        setText('tabActiveCount', active.length);
+        setText('tabArchiveCount', archive.length);
 
-        if (activeCountEl) activeCountEl.textContent = activeLabOrders.length;
-        if (compCountEl) compCountEl.textContent = archivedLabOrders.length;
-        if (tabActiveEl) tabActiveEl.textContent = activeLabOrders.length;
-        if (tabArchEl) tabArchEl.textContent = archivedLabOrders.length;
-    }
+        var statPill = byId('labStatPill');
+        if (statPill) {
+            statPill.hidden = statCount === 0;
+            setText('labStatCount', statCount);
+        }
 
-    function syncResultToPatientFile(labOrder) {
-        var raw = localStorage.getItem(STORAGE_KEY_PATIENTS);
-        if (!raw) return;
-        try {
-            var patients = JSON.parse(raw);
-            var patient = patients.find(function(p) { return p.id === labOrder.patientId || p.trackingId === labOrder.trackingId; });
-            if (patient) {
-                if (!patient.labOrders) patient.labOrders = [];
-                var existingOrder = patient.labOrders.find(function(o) { return o.id === labOrder.id; });
-                if (existingOrder) {
-                    existingOrder.status = 'Completed';
-                    existingOrder.results = labOrder.results;
-                    existingOrder.techRemarks = labOrder.techRemarks;
-                } else {
-                    patient.labOrders.push(labOrder);
-                }
-                localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(patients));
+        var source = currentTab === 'active' ? active : archive;
+
+        var rows = source.filter(function (o) {
+            if (statusFilter && o.status !== statusFilter) return false;
+            if (priorityFilter && String(o.priority) !== priorityFilter) return false;
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return [o.patientName, o.trackingId, o.test, o.doctor].some(function (f) {
+                return String(f || '').toLowerCase().indexOf(q) !== -1;
+            });
+        });
+
+        /* STAT first, then oldest, so the queue reads as a worklist. */
+        rows.sort(function (a, b) {
+            if (currentTab === 'active') {
+                var d = (isStat(b) ? 1 : 0) - (isStat(a) ? 1 : 0);
+                if (d !== 0) return d;
+                return new Date(a.time) - new Date(b.time);
             }
-        } catch (e) {}
-    }
+            return new Date(b.completedAt || b.time) - new Date(a.completedAt || a.time);
+        });
 
-    /* --------------------------------------------------------------------------
-       Render Lab Cards
-       -------------------------------------------------------------------------- */
-    function formatDate(isoString) {
-        if (!isoString) return '-';
-        return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function formatTime12h(isoString) {
-        if (!isoString) return '-';
-        var d = new Date(isoString);
-        var h = d.getHours();
-        var m = String(d.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return h + ':' + m + ' ' + ampm;
-    }
-
-    function renderCards() {
-        var grid = document.getElementById('labCardGrid');
-        var noData = document.getElementById('noLabData');
+        var grid = byId('labCardGrid');
         if (!grid) return;
 
-        var sourceList = currentTab === 'active' ? activeLabOrders : archivedLabOrders;
-
-        var filtered = sourceList.filter(function(order) {
-            var matchesStatus = !statusFilter || order.status === statusFilter;
-            var matchesPriority = !priorityFilter || order.priority === priorityFilter;
-            var matchesSearch = true;
-            if (searchTerm) {
-                var q = searchTerm.toLowerCase();
-                matchesSearch = (order.patientName && order.patientName.toLowerCase().includes(q)) ||
-                                (order.trackingId && order.trackingId.toLowerCase().includes(q)) ||
-                                (order.test && order.test.toLowerCase().includes(q)) ||
-                                (order.doctor && order.doctor.toLowerCase().includes(q));
-            }
-            return matchesStatus && matchesPriority && matchesSearch;
-        });
-
-        if (filtered.length === 0) {
-            grid.innerHTML = '';
-            if (noData) noData.style.display = 'block';
+        if (!rows.length) {
+            grid.innerHTML = ui.emptyState({
+                icon: currentTab === 'active' ? 'check-circle' : 'layers',
+                title: currentTab === 'active' ? 'No open requests' : 'No released results',
+                text: currentTab === 'active'
+                    ? 'Requests appear here the moment a clinician sends them from the consultation desk.'
+                    : 'Released results are archived here with their full report.'
+            });
             return;
         }
 
-        if (noData) noData.style.display = 'none';
-
-        grid.innerHTML = filtered.map(function(order) {
-            var statusClass = order.status === 'Completed' ? 'status-completed' : (order.status === 'In Progress' ? 'status-inprogress' : 'status-requested');
-            var urgencyClass = order.priority === 'Urgent' ? 'urgency-urgent' : 'urgency-routine';
-            var isUrgentCard = order.priority === 'Urgent' ? ' urgent-card' : '';
-
-            var actionsHtml = '';
-            if (order.status === 'Requested') {
-                actionsHtml =
-                    '<button type="button" class="btn-lab-action btn-start-test" data-id="' + order.id + '">' +
-                        '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>' +
-                        '<span>Start Analysis</span>' +
-                    '</button>' +
-                    '<button type="button" class="btn-lab-action btn-enter-results" data-id="' + order.id + '">' +
-                        '<span>Enter Results</span>' +
-                    '</button>';
-            } else if (order.status === 'In Progress') {
-                actionsHtml =
-                    '<button type="button" class="btn-lab-action btn-enter-results" data-id="' + order.id + '">' +
-                        '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
-                        '<span>Enter Results</span>' +
-                    '</button>';
-            } else {
-                actionsHtml =
-                    '<button type="button" class="btn-lab-action btn-view-report" data-id="' + order.id + '">' +
-                        '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
-                        '<span>View Pathology Report</span>' +
-                    '</button>';
-            }
-
-            return '<div class="lab-card' + isUrgentCard + '">' +
-                '<div class="lcard-top">' +
-                    '<div class="lcard-patient-info">' +
-                        '<h4 class="lcard-pname">' + order.patientName + '</h4>' +
-                        '<span class="lcard-pmeta">' + order.age + ' yrs · <span class="tid">' + order.trackingId + '</span> · ' + (order.phone || '') + '</span>' +
-                    '</div>' +
-                    '<div class="lcard-badges">' +
-                        '<span class="badge ' + statusClass + '">' + order.status + '</span>' +
-                        '<span class="badge ' + urgencyClass + '">' + order.priority + '</span>' +
-                    '</div>' +
-                '</div>' +
-
-                '<div class="lcard-test-box">' +
-                    '<span class="lcard-test-label">Investigation</span>' +
-                    '<strong class="lcard-test-name">' + order.test + '</strong>' +
-                '</div>' +
-
-                (order.note ? '<div class="lcard-note"><strong>Dr. Instruction:</strong> ' + order.note + '</div>' : '') +
-                (order.results ? '<div class="lcard-result-preview"><strong>Findings:</strong> ' + order.results + '</div>' : '') +
-
-                '<div class="lcard-footer">' +
-                    '<span class="lcard-time">' + formatTime12h(order.time) + ' · ' + formatDate(order.time) + '</span>' +
-                    '<div class="lcard-actions">' + actionsHtml + '</div>' +
-                '</div>' +
-            '</div>';
-        }).join('');
-
-        // Attach action handlers
-        grid.querySelectorAll('.btn-start-test').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                updateOrderStatus(id, 'In Progress');
-            });
-        });
-
-        grid.querySelectorAll('.btn-enter-results').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                openResultModal(id);
-            });
-        });
-
-        grid.querySelectorAll('.btn-view-report').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                openReportModal(id);
-            });
-        });
+        grid.innerHTML = rows.map(cardHtml).join('');
+        bindCards(grid);
     }
 
-    function updateOrderStatus(orderId, newStatus) {
-        var order = activeLabOrders.find(function(o) { return o.id === orderId; });
-        if (order) {
-            order.status = newStatus;
-            saveLabData();
-            syncResultToPatientFile(order);
-            renderCards();
+    function cardHtml(o) {
+        var flag = String(o.flag || '').toLowerCase();
+        var stat = isStat(o);
+        var frame = flag === 'critical' ? ' is-critical' : (stat && o.status !== 'Completed' ? ' is-stat' : '');
 
-            if (window.MediTrackNotify) {
-                window.MediTrackNotify.push(
-                    'Test Status: ' + newStatus,
-                    order.test + ' for ' + order.patientName + ' is now ' + newStatus.toLowerCase() + '.',
-                    'info',
-                    'Lab'
-                );
-            }
-        }
-    }
+        var statusBadge = o.status === 'Completed'
+            ? '<span class="badge status-finished">Released</span>'
+            : (o.status === 'In Progress'
+                ? '<span class="badge status-consulting">In progress</span>'
+                : '<span class="badge status-pending">Requested</span>');
 
-    /* --------------------------------------------------------------------------
-       Modal 1: Enter / Submit Lab Results
-       -------------------------------------------------------------------------- */
-    function openResultModal(orderId) {
-        var order = activeLabOrders.find(function(o) { return o.id === orderId; }) ||
-                    archivedLabOrders.find(function(o) { return o.id === orderId; });
-        if (!order) return;
+        var priorityBadge = stat
+            ? '<span class="badge ' + (String(o.priority).toLowerCase() === 'stat' ? 'status-critical' : 'urgency-urgent') + '">' +
+              esc(o.priority) + '</span>'
+            : '<span class="badge urgency-routine">Routine</span>';
 
-        activeOrder = order;
-
-        document.getElementById('resPatientName').textContent = order.patientName;
-        document.getElementById('resTrackingId').textContent = order.trackingId;
-        document.getElementById('resTestName').textContent = order.test;
-        document.getElementById('resDoctorNote').textContent = order.note || 'Routine test request.';
-        document.getElementById('inputTestResults').value = order.results || '';
-        document.getElementById('inputTechRemarks').value = order.techRemarks || '';
-
-        var modal = document.getElementById('resultModal');
-        if (modal) modal.classList.add('active');
-    }
-
-    function closeResultModal() {
-        var modal = document.getElementById('resultModal');
-        if (modal) modal.classList.remove('active');
-        activeOrder = null;
-    }
-
-    function saveResults() {
-        if (!activeOrder) return;
-
-        var resultsVal = document.getElementById('inputTestResults').value.trim();
-        var remarksVal = document.getElementById('inputTechRemarks').value.trim();
-
-        if (!resultsVal) {
-            alert('Please document laboratory test values / clinical findings.');
-            return;
-        }
-
-        activeOrder.results = resultsVal;
-        activeOrder.techRemarks = remarksVal;
-        activeOrder.status = 'Completed';
-
-        // Remove from active list and place in archive
-        activeLabOrders = activeLabOrders.filter(function(o) { return o.id !== activeOrder.id; });
-        if (!archivedLabOrders.some(function(a) { return a.id === activeOrder.id; })) {
-            archivedLabOrders.unshift(activeOrder);
-        }
-
-        saveLabData();
-        syncResultToPatientFile(activeOrder);
-        updateHeaderCounts();
-        renderCards();
-        closeResultModal();
-
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push(
-                'Lab Results Ready',
-                activeOrder.test + ' results for ' + activeOrder.patientName + ' (' + activeOrder.trackingId + ') completed & dispatched to doctor.',
-                'success',
-                'Lab'
-            );
-        }
-    }
-
-    /* --------------------------------------------------------------------------
-       Modal 2: View & Print Pathology Report
-       -------------------------------------------------------------------------- */
-    function openReportModal(orderId) {
-        var order = archivedLabOrders.find(function(o) { return o.id === orderId; }) ||
-                    activeLabOrders.find(function(o) { return o.id === orderId; });
-        if (!order) return;
-
-        document.getElementById('repPatientName').textContent = order.patientName;
-        document.getElementById('repTrackingId').textContent = order.trackingId;
-        document.getElementById('repAgePhone').textContent = order.age + ' yrs · ' + (order.phone || '-');
-        document.getElementById('repDoctor').textContent = order.doctor || 'Dr. Sarah Chen';
-        document.getElementById('repDateTime').textContent = formatDate(order.time) + ' · ' + formatTime12h(order.time);
-        document.getElementById('repTestName').textContent = order.test;
-        document.getElementById('repResultsContent').textContent = order.results || 'No test values documented.';
-
-        var remarksWrap = document.getElementById('repRemarksWrap');
-        var remarksContent = document.getElementById('repRemarksContent');
-        if (order.techRemarks) {
-            if (remarksWrap) remarksWrap.style.display = 'flex';
-            if (remarksContent) remarksContent.textContent = order.techRemarks;
+        var actions;
+        if (o.status === 'Requested') {
+            actions =
+                '<button type="button" class="btn-secondary btn-sm" data-start="' + esc(o.id) + '">' +
+                    icon('play', 14) + '<span>Start analysis</span>' +
+                '</button>' +
+                '<button type="button" class="btn-primary btn-sm" data-enter="' + esc(o.id) + '">' +
+                    icon('edit', 14) + '<span>Enter results</span>' +
+                '</button>';
+        } else if (o.status === 'In Progress') {
+            actions =
+                '<button type="button" class="btn-primary btn-sm" data-enter="' + esc(o.id) + '">' +
+                    icon('edit', 14) + '<span>Enter results</span>' +
+                '</button>';
         } else {
-            if (remarksWrap) remarksWrap.style.display = 'none';
+            actions =
+                '<button type="button" class="btn-secondary btn-sm" data-amend="' + esc(o.id) + '">' +
+                    icon('edit', 14) + '<span>Amend</span>' +
+                '</button>' +
+                '<button type="button" class="btn-primary btn-sm" data-report="' + esc(o.id) + '">' +
+                    icon('file-text', 14) + '<span>Report</span>' +
+                '</button>';
         }
 
-        var modal = document.getElementById('reportModal');
-        if (modal) modal.classList.add('active');
+        return '<article class="lab-card' + frame + '">' +
+            '<header class="lc-head">' +
+                '<div class="lc-identity">' +
+                    '<span class="lc-name">' + esc(o.patientName) + '</span>' +
+                    '<span class="lc-sub">' +
+                        '<span class="mono">' + esc(o.trackingId) + '</span>' +
+                        (o.age ? '<span>' + esc(o.age) + ' yrs</span>' : '') +
+                        (o.doctor ? '<span>' + icon('stethoscope', 11) + ' ' + esc(o.doctor) + '</span>' : '') +
+                        (o.status === 'Completed' && o.technician
+                            ? '<span>' + icon('user', 11) + ' ' + esc(o.technician) + '</span>' : '') +
+                    '</span>' +
+                '</div>' +
+                '<div class="lc-badges">' + statusBadge + priorityBadge + '</div>' +
+            '</header>' +
+
+            '<div class="lc-test">' +
+                '<span class="lc-test-label">Investigation</span>' +
+                '<strong>' + esc(o.test) + '</strong>' +
+            '</div>' +
+
+            (o.note
+                ? '<div class="lc-note">' + icon('file-text', 13) +
+                  '<span><strong>Clinician:</strong> ' + esc(o.note) + '</span></div>'
+                : '') +
+
+            (o.results
+                ? '<div class="lc-result' + (flag === 'critical' ? ' is-critical' : (flag === 'abnormal' ? ' is-abnormal' : '')) + '">' +
+                    '<span class="lc-result-label">' +
+                        (flag === 'critical' ? 'Critical result' : (flag === 'abnormal' ? 'Abnormal result' : 'Findings')) +
+                    '</span>' +
+                    '<span>' + esc(o.results) + '</span>' +
+                  '</div>'
+                : '') +
+
+            '<footer class="lc-foot">' +
+                '<span class="lc-time">' + icon('clock', 13) +
+                    '<span>' + esc(o.status === 'Completed'
+                        ? 'Released ' + store.relativeTime(o.completedAt || o.time)
+                        : 'Waiting ' + store.elapsed(o.time)) + '</span>' +
+                '</span>' +
+                '<div class="lc-actions">' + actions + '</div>' +
+            '</footer>' +
+        '</article>';
     }
 
-    function closeReportModal() {
-        var modal = document.getElementById('reportModal');
-        if (modal) modal.classList.remove('active');
+    function bindCards(grid) {
+        ui.qsa('[data-start]', grid).forEach(function (b) {
+            b.addEventListener('click', function () { startAnalysis(b.getAttribute('data-start')); });
+        });
+        ui.qsa('[data-enter]', grid).forEach(function (b) {
+            b.addEventListener('click', function () { openResultModal(b.getAttribute('data-enter')); });
+        });
+        ui.qsa('[data-amend]', grid).forEach(function (b) {
+            b.addEventListener('click', function () { openResultModal(b.getAttribute('data-amend')); });
+        });
+        ui.qsa('[data-report]', grid).forEach(function (b) {
+            b.addEventListener('click', function () { openReport(b.getAttribute('data-report')); });
+        });
     }
 
-    function printReport() {
-        window.print();
+    /* ==================================================================
+       Actions
+       ================================================================== */
+    function startAnalysis(id) {
+        var o = findOrder(id);
+        if (!o) return;
+        o.status = 'In Progress';
+        o.startedAt = new Date().toISOString();
+        save();
+        syncToPatient(o);
+        render();
+        window.MediTrackNotify.flash('Analysis started', o.test + ' for ' + o.patientName + '.');
     }
 
-    /* --------------------------------------------------------------------------
-       Custom Select Initializer
-       -------------------------------------------------------------------------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
+    function openResultModal(id) {
+        var o = findOrder(id);
+        if (!o) return;
+        editingId = o.id;
 
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
-            });
-            wrapper.classList.toggle('active');
+        setText('resPatientName', o.patientName);
+        setText('resTrackingId', o.trackingId);
+        setText('resPriority', o.priority);
+        setText('resDoctor', o.doctor);
+        setText('resTestName', o.test);
+        setText('resDoctorNote', o.note || 'No specific instructions given.');
+
+        byId('inputTestResults').value = o.results || '';
+        byId('inputTechRemarks').value = o.techRemarks || '';
+        byId('inputTechName').value = o.technician || currentStaffName();
+        ui.clearFieldError('inputTestResults');
+        ui.clearFieldError('inputTechName');
+
+        setFlag(o.flag || 'Normal');
+        ui.openModal('resultModal');
+    }
+
+    function setFlag(flag) {
+        resultFlag = flag;
+        ui.qsa('#resultFlagChips [data-flag]').forEach(function (chip) {
+            chip.classList.toggle('active', chip.getAttribute('data-flag') === flag);
         });
 
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                var text = this.textContent;
-                toggle.querySelector('.cs-text').textContent = text;
-                toggle.setAttribute('data-value', val);
-
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
-            });
-        });
+        var hint = byId('flagHint');
+        if (!hint) return;
+        if (flag === 'Critical') {
+            hint.textContent = 'Critical results raise a sticky alert that stays until the clinician acknowledges it.';
+        } else if (flag === 'Abnormal') {
+            hint.textContent = 'Abnormal results alert the requesting clinician and are listed first in their review queue.';
+        } else {
+            hint.textContent = 'Within range results are logged without interrupting the clinician.';
+        }
     }
 
-    /* --------------------------------------------------------------------------
-       Initialization
-       -------------------------------------------------------------------------- */
+    function releaseResult() {
+        var o = findOrder(editingId);
+        if (!o) return;
+
+        if (!ui.requireFields([
+            { id: 'inputTechName', message: 'Enter the name of the technologist who performed the test.' },
+            { id: 'inputTestResults', message: 'Record the test values before releasing the result.' }
+        ])) return;
+
+        var reReleasing = o.status === 'Completed';
+
+        o.results = byId('inputTestResults').value.trim();
+        o.techRemarks = byId('inputTechRemarks').value.trim();
+        o.flag = resultFlag;
+        o.status = 'Completed';
+        o.completedAt = new Date().toISOString();
+        o.technician = byId('inputTechName').value.trim() || currentStaffName();
+
+        active = active.filter(function (x) { return String(x.id) !== String(o.id); });
+        if (!archive.some(function (a) { return String(a.id) === String(o.id); })) archive.unshift(o);
+
+        save();
+        syncToPatient(o);
+        ui.closeModal('resultModal');
+        render();
+
+        if (resultFlag === 'Critical') {
+            window.MediTrackNotify.event('lab.result.critical', {
+                key: 'labresult:' + o.id,
+                title: 'Critical Lab Result',
+                message: o.test + ' for ' + o.patientName + ' (' + o.trackingId +
+                         ') returned a panic value. Immediate clinician review required.'
+            });
+        } else if (resultFlag === 'Abnormal') {
+            window.MediTrackNotify.event('lab.result.ready', {
+                key: 'labresult:' + o.id,
+                title: 'Abnormal Lab Result',
+                message: o.test + ' for ' + o.patientName + ' is outside the reference range and ready for review.',
+                type: 'warning'
+            });
+        } else {
+            window.MediTrackNotify.event('lab.result.ready', {
+                key: 'labresult:' + o.id,
+                title: reReleasing ? 'Result Amended' : 'Lab Result Released',
+                message: o.test + ' for ' + o.patientName + ' is ready for review.'
+            });
+        }
+    }
+
+    function openReport(id) {
+        var o = findOrder(id);
+        if (!o) return;
+
+        var flag = String(o.flag || 'Normal');
+        setText('repPatientName', o.patientName);
+        setText('repTrackingId', o.trackingId);
+        setText('repAgePhone', (o.age ? o.age + ' yrs' : '—') + ' · ' + (o.phone || '—'));
+        setText('repDoctor', o.doctor);
+        setText('repRequested', store.formatDateTime(o.time));
+        setText('repReleased', store.formatDateTime(o.completedAt));
+        setText('repTestName', o.test);
+        setText('repResultsContent', o.results || 'No values recorded.');
+
+        var flagEl = byId('repFlag');
+        if (flagEl) {
+            flagEl.textContent = flag === 'Normal' ? 'Within range' : flag;
+            flagEl.className = 'report-flag flag-' + flag.toLowerCase();
+        }
+
+        var wrap = byId('repRemarksWrap');
+        if (wrap) {
+            wrap.hidden = !o.techRemarks;
+            setText('repRemarksContent', o.techRemarks || '');
+        }
+
+        setText('repTechName', o.technician
+            ? 'Performed & authorised by ' + o.technician
+            : 'Authorised medical technologist');
+
+        ui.openModal('reportModal');
+    }
+
+    /* ==================================================================
+       Init
+       ================================================================== */
     function init() {
-        loadLabData();
+        load();
 
-        // Tab Switching
-        var tabBtns = document.querySelectorAll('.lab-tab-btn');
-        tabBtns.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                tabBtns.forEach(function(b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                currentTab = this.getAttribute('data-tab');
-                renderCards();
-            });
+        ui.initTabs({
+            buttonSelector: '[data-labtab]',
+            panelSelector: '.tab-panel',
+            attribute: 'data-labtab',
+            onChange: function (value) {
+                currentTab = value;
+                render();
+            }
         });
 
-        // Filters
-        initCustomSelect('filterStatusWrapper', function(val) {
-            statusFilter = val;
-            renderCards();
-        });
+        ui.initSelect('filterStatusWrapper', function (v) { statusFilter = v; render(); });
+        ui.initSelect('filterPriorityWrapper', function (v) { priorityFilter = v; render(); });
+        ui.bindLiveValidation(['inputTestResults', 'inputTechName']);
 
-        initCustomSelect('filterPriorityWrapper', function(val) {
-            priorityFilter = val;
-            renderCards();
-        });
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                el.classList.remove('active');
-            });
-        });
-
-        var searchInput = document.getElementById('labSearch');
-        var clearSearchBtn = document.getElementById('clearSearchBtn');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                searchTerm = e.target.value;
-                if (clearSearchBtn) clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
-                renderCards();
-            });
-        }
-        if (clearSearchBtn) {
-            clearSearchBtn.addEventListener('click', function() {
-                if (searchInput) {
-                    searchInput.value = '';
-                    searchTerm = '';
-                    clearSearchBtn.style.display = 'none';
-                    renderCards();
-                }
+        var chips = byId('resultFlagChips');
+        if (chips) {
+            chips.addEventListener('click', function (e) {
+                var chip = e.target.closest ? e.target.closest('[data-flag]') : null;
+                if (chip) setFlag(chip.getAttribute('data-flag'));
             });
         }
 
-        var resetBtn = document.getElementById('resetFiltersBtn');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', function() {
+        var saveBtn = byId('saveResultBtn');
+        if (saveBtn) saveBtn.addEventListener('click', releaseResult);
+
+        var printBtn = byId('printReportBtn');
+        if (printBtn) printBtn.addEventListener('click', function () { ui.printNode('reportPrintArea'); });
+
+        var search = byId('labSearch');
+        var clear = byId('labSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                render();
+            });
+        }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                render();
+            });
+        }
+
+        var reset = byId('resetFiltersBtn');
+        if (reset) {
+            reset.addEventListener('click', function () {
                 searchTerm = '';
                 statusFilter = '';
                 priorityFilter = '';
-                if (searchInput) searchInput.value = '';
-                renderCards();
+                if (search) search.value = '';
+                if (clear) clear.classList.remove('visible');
+                ui.setSelectValue('filterStatusWrapper', '', 'All statuses');
+                ui.setSelectValue('filterPriorityWrapper', '', 'All priorities');
+                render();
             });
         }
 
-        // Modal Listeners
-        var closeResBtn = document.getElementById('closeResultBtn');
-        var cancelResBtn = document.getElementById('cancelResultBtn');
-        var saveResBtn = document.getElementById('saveResultBtn');
-        var closeRepBtn = document.getElementById('closeReportBtn');
-        var closeRepModalBtn = document.getElementById('closeReportModalBtn');
-        var printRepBtn = document.getElementById('printReportBtn');
-
-        if (closeResBtn) closeResBtn.addEventListener('click', closeResultModal);
-        if (cancelResBtn) cancelResBtn.addEventListener('click', closeResultModal);
-        if (saveResBtn) saveResBtn.addEventListener('click', saveResults);
-        if (closeRepBtn) closeRepBtn.addEventListener('click', closeReportModal);
-        if (closeRepModalBtn) closeRepModalBtn.addEventListener('click', closeReportModal);
-        if (printRepBtn) printRepBtn.addEventListener('click', printReport);
-
-        // Background click to close modals
-        document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.classList.remove('active');
-                }
-            });
+        window.addEventListener('storage', function (e) {
+            if (!e.key || e.key === store.KEYS.labRequests || e.key === store.KEYS.labArchive) load();
         });
-
-        window.addEventListener('storage', function(e) {
-            if (e.key === STORAGE_KEY_LAB) {
-                loadLabData();
-            }
-        });
+        window.addEventListener('meditrack:patients-updated', load);
     }
 
     if (document.readyState === 'loading') {
@@ -535,4 +491,4 @@
     } else {
         init();
     }
-})();
+})(window, document);

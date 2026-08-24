@@ -3,138 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Queue Tracking</title>
+    <title>Triage Queue · MediTrack</title>
+    <script src="../js/theme.js"></script>
     <link rel="stylesheet" href="../css/variables.css">
-    <link rel="stylesheet" href="../css/queue.css">
+    <link rel="stylesheet" href="../css/components.css">
     <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/queue.css">
 </head>
 <body>
-    <div class="queue-page">
-        <div class="queue-header">
-            <div>
-                <h2>Patient Queue Tracking</h2>
-                <p class="subtitle">Real-time patient calling sequence for active and pending patients</p>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Triage Queue</h1>
+            <p>The calling order set here governs the consultation desk. Clinicians cannot reorder or hand-pick patients.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="queue" data-icon-size="15"></span>
+                <span>Waiting <strong id="queueTotalCount">0</strong></span>
             </div>
-            <div class="queue-summary-tag">
-                <span class="tag-label">Active Waiting:</span>
-                <strong class="tag-val" id="queueTotalCount">0</strong>
+            <div class="meta-pill meta-pill-warn" id="queueEmergencyPill" hidden>
+                <span class="ico" data-icon="critical" data-icon-size="15"></span>
+                <span>Emergency <strong id="queueEmergencyCount">0</strong></span>
+            </div>
+            <div class="meta-pill">
+                <span class="ico" data-icon="stethoscope" data-icon-size="15"></span>
+                <span>In consultation <strong id="queueConsultingCount">0</strong></span>
             </div>
         </div>
+    </header>
 
-        <div class="queue-toolbar">
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="queueSearch" placeholder="Search by Tracking ID, Name, or Phone...">
-                <button id="clearSearchBtn" class="clear-search-btn" style="display:none;">&times;</button>
+    <!-- Calling policy -------------------------------------------------- -->
+    <section class="policy-bar">
+        <div class="policy-text">
+            <span class="policy-label">Calling policy</span>
+            <strong id="policyName">Triage priority</strong>
+            <span id="policyExplain">Emergency, then Urgent, then Routine. Within the same priority, whoever arrived first is called first.</span>
+        </div>
+        <div class="policy-control">
+            <label class="field-label" for="queuePolicySelect">Change policy</label>
+            <div class="custom-select" id="queuePolicySelect">
+                <button type="button" class="cs-toggle" data-value="priority_first">
+                    <span class="cs-text">Triage priority</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="priority_first" data-label="Triage priority">Triage priority (clinical default)</li>
+                    <li class="cs-option" data-value="arrival_order" data-label="Arrival order">Arrival order (strict FIFO)</li>
+                </ul>
             </div>
-            <div class="filters-wrapper">
-                <div class="custom-select" id="filterUrgencyWrapper">
-                    <div class="cs-toggle" data-value="">
-                        <span class="cs-text">All Urgencies</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                    </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="">All Urgencies</li>
-                        <li class="cs-option" data-value="Urgent">Urgent</li>
-                        <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
-                    </ul>
+        </div>
+    </section>
+
+    <!-- Toolbar --------------------------------------------------------- -->
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="queueSearch" placeholder="Search name, tracking ID or phone" aria-label="Search the queue">
+            <button type="button" class="search-clear" id="queueSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterUrgencyWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All priorities</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All priorities</li>
+                    <li class="cs-option" data-value="Emergency">Emergency</li>
+                    <li class="cs-option" data-value="Urgent">Urgent</li>
+                    <li class="cs-option" data-value="Routine">Routine</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="notice notice-info">
+        <span class="ico" data-icon="info" data-icon-size="15"></span>
+        <div>
+            <strong>Search and filters are for lookup only</strong>
+            They never change the calling order. Position numbers always reflect the active policy across the whole queue.
+        </div>
+    </div>
+
+    <div class="card-grid" id="queueCardGrid"></div>
+
+    <!-- Ticket ---------------------------------------------------------- -->
+    <div class="modal-overlay" id="ticketModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="print" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="ticketModalTitle">Queue ticket</h3>
+                    <span>Hand this slip to the patient</span>
                 </div>
-                <div class="custom-select order-select-highlight" id="queueOrderWrapper">
-                    <div class="cs-toggle" data-value="urgent_first">
-                        <span class="cs-text">Order: Urgent First</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="ticket" id="ticketPaper">
+                    <div class="ticket-head">
+                        <span class="ticket-org">MediTrack Hospital</span>
+                        <span class="ticket-dept">Outpatient Reception</span>
                     </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="urgent_first">Urgent First (Default)</li>
-                        <li class="cs-option" data-value="registry_order">Registry Order (FIFO)</li>
-                    </ul>
+                    <div class="ticket-position">
+                        <span class="ticket-pos-label">Queue position</span>
+                        <span class="ticket-pos-value" id="ticketQueueNumber">01</span>
+                    </div>
+                    <div class="ticket-token">
+                        <span class="ticket-token-label">Tracking ID</span>
+                        <span class="ticket-token-value" id="ticketTrackingId">—</span>
+                    </div>
+                    <dl class="ticket-rows">
+                        <div><dt>Patient</dt><dd id="ticketPatientName">—</dd></div>
+                        <div><dt>Age</dt><dd id="ticketAge">—</dd></div>
+                        <div><dt>Priority</dt><dd id="ticketUrgency">—</dd></div>
+                        <div><dt>Registered</dt><dd id="ticketRegistered">—</dd></div>
+                    </dl>
+                    <p class="ticket-foot">Please keep this slip. You will be called by tracking ID. Priority cases are seen first.</p>
                 </div>
-                <button class="btn-icon-reset" id="resetFiltersBtn" title="Reset Filters">
-                    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                <button type="button" class="btn-primary" id="printTicketBtn">
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print slip</span>
                 </button>
             </div>
         </div>
-
-        <div class="order-notice-bar" id="orderNoticeBar">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            <span id="orderNoticeText">Current Order: <strong>Urgent First</strong> (Urgent patients prioritized, then registration time).</span>
-        </div>
-
-        <!-- Card Grid (replaces table) -->
-        <div class="queue-card-grid" id="queueCardGrid">
-            <!-- Populated dynamically -->
-        </div>
-        <div id="noQueueData" class="no-data" style="display: none;">No active patients in queue matching criteria.</div>
     </div>
+</div>
 
-    <!-- QUEUE ORDER CHANGE WARNING MODAL -->
-    <div class="modal-overlay" id="orderWarningModal">
-        <div class="modal-box order-warning-box">
-            <div class="modal-header warning-header">
-                <div class="warning-title-wrap">
-                    <div class="warning-icon-badge">
-                        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    </div>
-                    <div>
-                        <h3>Confirm Queue Order Change</h3>
-                        <p class="modal-subtitle">Altering queue order affects patient calling sequence</p>
-                    </div>
-                </div>
-                <button class="modal-close" id="closeOrderWarningBtn">&times;</button>
-            </div>
-            <div class="modal-body warning-body">
-                <div class="warning-alert-card">
-                    <p><strong>Warning:</strong> You are about to change the active queue ordering rule to <strong id="newOrderModeText" style="color: var(--primary-red);">Registry Order</strong>.</p>
-                    <p>Changing the ordering policy re-sorts waiting patients in real-time.</p>
-                    <p style="margin-bottom: 0;">Are you sure you want to apply this change?</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="cancelOrderChangeBtn">Cancel</button>
-                <button type="button" class="btn-danger" id="confirmOrderChangeBtn">Yes, Change Order</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- TICKET PRINT MODAL -->
-    <div class="modal-overlay" id="ticketModal">
-        <div class="modal-box ticket-modal-box">
-            <div class="modal-header">
-                <h3>Patient Queue Ticket</h3>
-                <button class="modal-close" id="closeTicketBtn">&times;</button>
-            </div>
-            <div class="modal-body ticket-modal-body">
-                <div class="ticket-paper" id="ticketPaper">
-                    <div class="ticket-header">
-                        <div class="ticket-logo"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 6v12M6 12h12"/><circle cx="12" cy="12" r="10"/></svg><span>Medi<span>Track</span> Hospital</span></div>
-                        <p class="ticket-sub">Patient Reception Voucher</p>
-                        <div class="ticket-divider"></div>
-                    </div>
-                    <div class="ticket-queue-pos-block"><span class="ticket-pos-label">QUEUE NUMBER</span><div class="ticket-pos-number" id="ticketQueueNumber">#01</div></div>
-                    <div class="ticket-token-block"><span class="ticket-token-label">TRACKING ID</span><div class="ticket-token-number" id="ticketTrackingId">TRK-10293847</div><span class="ticket-urgency-tag" id="ticketUrgencyTag">URGENCY: URGENT</span></div>
-                    <div class="ticket-meta-grid">
-                        <div class="meta-row"><span class="meta-key">Patient:</span><strong class="meta-val" id="ticketPatientName">John Doe</strong></div>
-                        <div class="meta-row"><span class="meta-key">Age:</span><span class="meta-val" id="ticketAge">34</span></div>
-                        <div class="meta-row"><span class="meta-key">Phone:</span><span class="meta-val" id="ticketPhone">0912 345 678</span></div>
-                        <div class="meta-row"><span class="meta-key">Status:</span><span class="meta-val" id="ticketStatus">Pending</span></div>
-                        <div class="meta-row"><span class="meta-key">Registered:</span><span class="meta-val" id="ticketRegistered">-</span></div>
-                        <div class="meta-row"><span class="meta-key">Description:</span><span class="meta-val" id="ticketDesc" style="text-align:right;max-width:160px;">-</span></div>
-                    </div>
-                    <div class="ticket-barcode-wrap">
-                        <svg class="ticket-barcode" viewBox="0 0 200 36" width="160" height="30"><rect x="10" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="16" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="22" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="30" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="35" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="42" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="47" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="56" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="62" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="67" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="74" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="82" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="87" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="93" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="102" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="107" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="114" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="120" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="128" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="133" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="140" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="149" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="154" y="0" width="5" height="36" fill="#1a1a1a"/><rect x="162" y="0" width="3" height="36" fill="#1a1a1a"/><rect x="168" y="0" width="2" height="36" fill="#1a1a1a"/><rect x="173" y="0" width="4" height="36" fill="#1a1a1a"/><rect x="180" y="0" width="6" height="36" fill="#1a1a1a"/><rect x="189" y="0" width="2" height="36" fill="#1a1a1a"/></svg>
-                        <span class="barcode-num" id="ticketBarcodeText">TRK-10293847</span>
-                    </div>
-                    <div class="ticket-footer"><p>Please wait for your Tracking ID to be called.</p><p>MediTrack Hospital · Reception</p></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="closeTicketModalBtn">Close</button>
-                <button type="button" class="btn-primary" id="printTicketActionBtn"><svg viewBox="0 0 24 24" width="15" height="15"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>Print Slip</span></button>
-            </div>
-        </div>
-    </div>
-
-    <script src="../js/notifications.js"></script>
-    <script src="../js/queue.js"></script>
+<script src="../js/icons.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/queue.js"></script>
 </body>
 </html>

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing · MediTrack</title>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/billing.css">
+    <script src="../js/theme.js"></script>
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Billing</h1>
+            <p>Create a bill for a visit, take payment and print a receipt. Charges for the consultation, tests, nursing and medicines can be pulled straight from the patient's record.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill meta-pill-warn" id="pillOutstandingWrap" hidden>
+                <span class="ico" data-icon="receipt" data-icon-size="15"></span>
+                <span>Not yet paid <strong id="pillOutstanding">0</strong></span>
+            </div>
+            <button type="button" class="btn-secondary" id="btnPriceList">
+                <span class="ico" data-icon="list" data-icon-size="15"></span>
+                <span>Prices</span>
+            </button>
+            <button type="button" class="btn-primary" id="btnNewInvoice">
+                <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                <span>New bill</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Summary --------------------------------------------------------- -->
+    <section class="bill-stats" aria-label="Billing summary">
+        <div class="bs-box">
+            <span class="bs-label">Still owed</span>
+            <strong class="bs-value tone-warning" id="statOutstandingAmount">—</strong>
+            <span class="bs-foot" id="statOutstandingCount">No unpaid bills</span>
+        </div>
+        <div class="bs-box">
+            <span class="bs-label">Taken today</span>
+            <strong class="bs-value tone-success" id="statCollectedToday">—</strong>
+            <span class="bs-foot" id="statCollectedCount">No payments yet today</span>
+        </div>
+        <div class="bs-box">
+            <span class="bs-label">Bills today</span>
+            <strong class="bs-value" id="statInvoicesToday">0</strong>
+            <span class="bs-foot">Created since midnight</span>
+        </div>
+        <div class="bs-box">
+            <span class="bs-label">Average bill</span>
+            <strong class="bs-value" id="statAverageInvoice">—</strong>
+            <span class="bs-foot">Across all bills</span>
+        </div>
+    </section>
+
+    <!-- Toolbar --------------------------------------------------------- -->
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="billSearch" placeholder="Search bill number, patient name, tracking ID or phone" aria-label="Search bills">
+            <button type="button" class="search-clear" id="billSearchClear" aria-label="Clear the search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterStatusWrapper">
+                <button type="button" class="cs-toggle" data-value="active">
+                    <span class="cs-text">Active</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="active" data-label="Active">Active</li>
+                    <li class="cs-option" data-value="open" data-label="Not fully paid">Not fully paid</li>
+                    <li class="cs-option" data-value="Unpaid" data-label="Unpaid">Unpaid</li>
+                    <li class="cs-option" data-value="Partly Paid" data-label="Part paid">Part paid</li>
+                    <li class="cs-option" data-value="Paid" data-label="Paid">Paid</li>
+                    <li class="cs-option" data-value="Discharged" data-label="Discharged">Discharged</li>
+                    <li class="cs-option" data-value="Cancelled" data-label="Cancelled">Cancelled</li>
+                    <li class="cs-option" data-value="all" data-label="All bills">All bills</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="filterPeriodWrapper">
+                <button type="button" class="cs-toggle" data-value="all">
+                    <span class="cs-text">Any date</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="all" data-label="Any date">Any date</li>
+                    <li class="cs-option" data-value="today" data-label="Today">Today</li>
+                    <li class="cs-option" data-value="7" data-label="Last 7 days">Last 7 days</li>
+                    <li class="cs-option" data-value="30" data-label="Last 30 days">Last 30 days</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Clear the search and filters" aria-label="Clear the search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="card" id="invoiceTableCard">
+        <div class="card-header">
+            <div class="card-header-text">
+                <h3>Bills</h3>
+                <span class="card-sub" id="invoiceResultCount">0 bills</span>
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table class="data-table" id="invoiceTable">
+                <thead>
+                    <tr>
+                        <th>Bill</th>
+                        <th>Patient</th>
+                        <th>Created</th>
+                        <th class="num">Total</th>
+                        <th class="num">Paid</th>
+                        <th class="num">Left to pay</th>
+                        <th>Status</th>
+                        <th aria-label="Actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="invoiceTableBody"></tbody>
+            </table>
+        </div>
+        <div id="invoiceEmptyHost"></div>
+    </div>
+
+    <!-- ==================================================================
+         Create / edit a bill
+         ================================================================== -->
+    <div class="modal-overlay" id="invoiceModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="invoiceModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-billing"><span class="ico" data-icon="receipt" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="invoiceModalTitle">New bill</h3>
+                    <span id="invoiceModalSub">Choose the patient, then add what they are being charged for</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="user" data-icon-size="14"></span>
+                        <span>Patient</span>
+                    </h4>
+                    <div class="form-row">
+                        <div class="form-group form-group-grow">
+                            <label>Who is this bill for? <span class="req">*</span></label>
+                            <div class="custom-select" id="invPatientWrapper">
+                                <button type="button" class="cs-toggle" data-value="">
+                                    <span class="cs-text">Choose a patient</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu" id="invPatientMenu"></ul>
+                            </div>
+                            <span class="field-hint">Only patients on file appear here. Register the patient first if they are missing.</span>
+                        </div>
+                        <div class="form-group form-group-narrow">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn-secondary btn-block" id="btnPullCharges">
+                                <span class="ico" data-icon="download" data-icon-size="15"></span>
+                                <span>Add from record</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="notice" id="invPatientSummary" hidden>
+                        <span class="ico" data-icon="info" data-icon-size="15"></span>
+                        <div>
+                            <strong id="invPatientName">—</strong>
+                            <span id="invPatientMeta">—</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="list" data-icon-size="14"></span>
+                        <span>What is being charged</span>
+                    </h4>
+
+                    <div class="line-items" id="lineItems"></div>
+
+                    <div class="add-line">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <div class="custom-select" id="newItemCategoryWrapper">
+                                <button type="button" class="cs-toggle" data-value="Consultation">
+                                    <span class="cs-text">Consultation cost</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option selected" data-value="Consultation">Consultation cost</li>
+                                    <li class="cs-option" data-value="Pharmacy">Pharmacy</li>
+                                    <li class="cs-option" data-value="Queue card">Queue card</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="form-group form-group-tiny">
+                            <label for="newItemQty">Qty</label>
+                            <input type="number" id="newItemQty" min="0.5" step="0.5" value="1">
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="newItemPrice">Unit price</label>
+                            <input type="number" id="newItemPrice" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group form-group-narrow">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn-secondary btn-block" id="btnAddItem">
+                                <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                                <span>Add</span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="percent" data-icon-size="14"></span>
+                        <span>Discount and notes</span>
+                    </h4>
+                    <div class="form-row">
+                        <div class="form-group form-group-small">
+                            <label for="invDiscount">Discount</label>
+                            <div class="input-suffix">
+                                <input type="number" id="invDiscount" min="0" step="0.01" value="0">
+                                <span class="unit" id="discountUnit">%</span>
+                            </div>
+                        </div>
+                        <div class="form-group form-group-narrow">
+                            <label>Discount type</label>
+                            <div class="custom-select" id="invDiscountTypeWrapper">
+                                <button type="button" class="cs-toggle" data-value="percent">
+                                    <span class="cs-text">Percentage</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option selected" data-value="percent" data-label="Percentage">Percentage of the total</li>
+                                    <li class="cs-option" data-value="amount" data-label="Fixed amount">A fixed amount off</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="form-group form-group-grow">
+                            <label for="invNote">Note on the bill</label>
+                            <input type="text" id="invNote" placeholder="for example: staff family discount approved by the matron">
+                        </div>
+                    </div>
+                </section>
+
+                <div class="totals-box" id="invoiceTotals"></div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="saveInvoiceBtn">
+                    <span class="ico" data-icon="save" data-icon-size="15"></span>
+                    <span id="saveInvoiceLabel">Save bill</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Bill detail, payments and receipt
+         ================================================================== -->
+    <div class="modal-overlay" id="detailModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-billing"><span class="ico" data-icon="receipt" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="detailModalTitle">Bill</h3>
+                    <span id="detailModalSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body" id="detailModalBody"></div>
+
+            <div class="modal-foot modal-foot-split">
+                <button type="button" class="btn-danger" id="cancelInvoiceBtn">
+                    <span class="ico" data-icon="close" data-icon-size="15"></span>
+                    <span>Cancel bill</span>
+                </button>
+                <div class="toolbar-group">
+                    <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                    <button type="button" class="btn-secondary" id="editInvoiceBtn">
+                        <span class="ico" data-icon="edit" data-icon-size="15"></span>
+                        <span>Edit</span>
+                    </button>
+                    <button type="button" class="btn-secondary" id="printReceiptBtn">
+                        <span class="ico" data-icon="print" data-icon-size="15"></span>
+                        <span>Receipt</span>
+                    </button>
+                    <button type="button" class="btn-secondary" id="dischargeBtn" hidden>
+                        <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                        <span>Final payment &amp; discharge</span>
+                    </button>
+                    <button type="button" class="btn-primary" id="takePaymentBtn">
+                        <span class="ico" data-icon="cash" data-icon-size="15"></span>
+                        <span>Take payment</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Take payment
+         ================================================================== -->
+    <div class="modal-overlay" id="paymentModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-success"><span class="ico" data-icon="cash" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="paymentModalTitle">Take payment</h3>
+                    <span id="paymentModalSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="pay-due">
+                    <span class="pd-label">Left to pay</span>
+                    <strong class="pd-value" id="payBalanceValue">—</strong>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="payAmount">Amount received <span class="req">*</span></label>
+                        <input type="number" id="payAmount" min="0.01" step="0.01" placeholder="0.00" data-autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label>Payment method</label>
+                        <div class="custom-select" id="payMethodWrapper">
+                            <button type="button" class="cs-toggle" data-value="Telebirr">
+                                <span class="cs-text">Telebirr</span>
+                                <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                            </button>
+                            <ul class="cs-menu">
+                                <li class="cs-option selected" data-value="Telebirr" data-label="Telebirr">Telebirr</li>
+                                <li class="cs-option" data-value="CBE" data-label="CBE">CBE</li>
+                                <li class="cs-option" data-value="BOA" data-label="BOA">BOA</li>
+                                <li class="cs-option" data-value="Awash" data-label="Awash">Awash</li>
+                                <li class="cs-option" data-value="Cash" data-label="Cash">Cash</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Telebirr wallet payment (simulated on the front end) -->
+                <div class="telebirr-box" id="payTelebirrBox">
+                    <div class="tb-brand">
+                        <span class="tb-logo"><span class="ico" data-icon="phone" data-icon-size="16"></span></span>
+                        <div>
+                            <strong>Telebirr mobile money</strong>
+                            <span>Telebirr sends a confirmation code to the payer's phone. Enter the code below to verify the payment.</span>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: wallet number -->
+                    <div class="tb-step" id="tbStepNumber">
+                        <div class="form-group">
+                            <label for="payPhone">Telebirr number <span class="req">*</span></label>
+                            <input type="tel" id="payPhone" inputmode="numeric" placeholder="09XX XXX XXX" maxlength="13">
+                            <span class="field-hint" id="payPhoneHint">Enter the Telebirr number that will approve the payment.</span>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: confirmation code -->
+                    <div class="tb-step" id="tbStepCode" hidden>
+                        <div class="tb-sms" id="tbSmsPreview">
+                            <span class="tb-sims-label">Simulated SMS — demo only, no real charge is made</span>
+                            <p id="tbSmsText">—</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="payTbCode">Confirmation code <span class="req">*</span></label>
+                            <input type="text" id="payTbCode" inputmode="numeric" maxlength="6" placeholder="- - - - - -" autocomplete="one-time-code" class="tb-code-input">
+                            <span class="field-hint">Ask the payer for the 6-digit code Telebirr sent them.</span>
+                        </div>
+                        <button type="button" class="link-btn" id="tbResendBtn">Send the code again</button>
+                    </div>
+                </div>
+
+                <div class="form-group" id="payReferenceGroup" hidden>
+                    <label for="payReference">Transfer reference (optional)</label>
+                    <input type="text" id="payReference" placeholder="Bank transaction reference number">
+                </div>
+
+                <div class="notice notice-success" id="paySuccessNotice" hidden>
+                    <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                    <div>
+                        <strong>Payment confirmed</strong>
+                        <span id="paySuccessText">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmPaymentBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span id="confirmPaymentBtnLabel">Verify with Telebirr</span>
+                </button>
+            </div>
+
+            <!-- Verified / declined animation overlay -->
+            <div class="pay-anim-overlay" id="payAnimOverlay" hidden>
+                <div class="pay-anim-card" id="payAnimCard">
+                    <div class="pay-anim-ring"><span class="ico" id="payAnimIconWrap"></span></div>
+                    <h3 id="payAnimTitle">Payment verified</h3>
+                    <p id="payAnimText">—</p>
+                    <div class="pay-anim-bar"><span id="payAnimBarFill"></span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+          Final payment & discharge
+          ================================================================== -->
+    <div class="modal-overlay" id="dischargeModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="dischargeModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-success"><span class="ico" data-icon="check-circle" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="dischargeModalTitle">Final payment · discharge</h3>
+                    <span id="dischargeModalSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="notice notice-info">
+                    <span class="ico" data-icon="info" data-icon-size="15"></span>
+                    <div>
+                        <strong>Patient is leaving the hospital</strong>
+                        Enter how much was finally paid in total. The bill then leaves the billing list.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="dischargeAmount">Final amount paid (total) <span class="req">*</span></label>
+                    <input type="number" id="dischargeAmount" min="0" step="0.01" placeholder="0.00" data-autofocus>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmDischargeBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Record &amp; remove from billing</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Receipt
+         ================================================================== -->
+    <div class="modal-overlay" id="receiptModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-billing"><span class="ico" data-icon="print" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="receiptModalTitle">Receipt</h3>
+                    <span>Give this to the patient</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <article class="receipt-paper" id="receiptPrintArea"></article>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                <button type="button" class="btn-primary" id="doPrintReceiptBtn">
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Price list
+         ================================================================== -->
+    <div class="modal-overlay" id="priceModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="priceModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="list" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="priceModalTitle">Prices</h3>
+                    <span>Used to fill in the amount when charges are added from a patient's record</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="notice">
+                    <span class="ico" data-icon="info" data-icon-size="15"></span>
+                    <div>
+                        <strong>These are only starting amounts</strong>
+                        You can always change the price on an individual bill. Anything not on this list falls back to the standard amount for its type.
+                    </div>
+                </div>
+
+                <div class="price-rows" id="priceRows"></div>
+
+                <div class="add-line add-line-price">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <div class="custom-select" id="newPriceCategoryWrapper">
+                            <button type="button" class="cs-toggle" data-value="Laboratory">
+                                <span class="cs-text">Laboratory test</span>
+                                <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                            </button>
+                            <ul class="cs-menu">
+                                <li class="cs-option" data-value="Consultation">Consultation</li>
+                                <li class="cs-option selected" data-value="Laboratory">Laboratory test</li>
+                                <li class="cs-option" data-value="Pharmacy">Medicine</li>
+                                <li class="cs-option" data-value="Nursing">Nursing</li>
+                                <li class="cs-option" data-value="Other">Something else</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="form-group form-group-grow">
+                        <label for="newPriceName">Name</label>
+                        <input type="text" id="newPriceName" placeholder="for example: Malaria blood film">
+                    </div>
+                    <div class="form-group form-group-small">
+                        <label for="newPriceAmount">Price</label>
+                        <input type="number" id="newPriceAmount" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group form-group-narrow">
+                        <label>&nbsp;</label>
+                        <button type="button" class="btn-secondary btn-block" id="btnAddPrice">
+                            <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" id="btnResetPrices">
+                    <span class="ico" data-icon="reset" data-icon-size="15"></span>
+                    <span>Back to defaults</span>
+                </button>
+                <button type="button" class="btn-primary" data-modal-close>Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/billing.js"></script>
+</body>
+</html>

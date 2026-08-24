@@ -1,16 +1,32 @@
-/**
- * MediTrack Hospital ERP - Global Real-time Notification System
- * Unified notification hub accessible across all frames and pages.
- * Handles toast popups, persistent notification logging, unread badge sync,
- * and automated triggers for labs, patient updates, queue shifts, and doctor orders.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Notification Service
 
-(function(window) {
+   Design goal: the bell is a clinical alert channel, not an activity log.
+   Every event is assigned a priority, and only events that a clinician must
+   act on are allowed to interrupt with a toast:
+
+     critical  -> toast + persisted + sticky (no auto-dismiss)   e.g. panic labs, abnormal vitals
+     high      -> toast + persisted                              e.g. lab/imaging results released
+     normal    -> persisted only (visible in the bell panel)     e.g. patient registered
+     low       -> transient toast, never persisted               e.g. "saved", "copied"
+
+   Routine CRUD confirmations therefore no longer pile up in the panel.
+
+   Alerts are also filtered by role (js/session.js): a receptionist has no use
+   for a panic potassium, and a nurse has no use for a billing notice. Critical
+   alerts still reach every role that is clinically involved, because the point
+   of a critical alert is that somebody acts on it.
+   ========================================================================== */
+
+(function (window) {
     'use strict';
 
     var STORAGE_NOTIFS_KEY = 'clinic_notifications_log';
     var STORAGE_KEY_PATIENTS = 'clinic_patients_data';
     var STORAGE_KEY_LAB = 'clinic_lab_requests';
+
+    var MAX_LOG = 60;
+    var DEDUPE_WINDOW_MS = 20000;   /* identical alert inside this window is dropped */
 
     var container = null;
     var prevPatientCount = 0;
@@ -18,288 +34,500 @@
     var prevLabCompletedCount = 0;
     var prevLabCount = 0;
 
-    var icons = {
-        info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-        success: '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-        warning: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-        error: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+    /* This module also loads on the sign-in screen, where js/store.js is not
+       present, so it carries its own guarded storage access. localStorage is
+       unavailable on opaque origins (file://) and in some private windows. */
+    var memory = {};
+
+    function lsGet(key) {
+        if (window.MediStore) return window.MediStore.rawGet(key);
+        try { return window.localStorage.getItem(key); }
+        catch (e) { return memory[key] === undefined ? null : memory[key]; }
+    }
+
+    function lsSet(key, value) {
+        if (window.MediStore) return window.MediStore.rawSet(key, value);
+        try { window.localStorage.setItem(key, value); }
+        catch (e) { memory[key] = value; }
+    }
+
+    /* Event catalogue: single source of truth for how each event behaves.
+       Pages should prefer MediTrackNotify.event('lab.result.ready', {...}). */
+    var EVENTS = {
+        'vitals.critical':      { type: 'error',   priority: 'critical', category: 'Vitals' },
+        'vitals.abnormal':      { type: 'warning', priority: 'high',     category: 'Vitals' },
+        'lab.result.critical':  { type: 'error',   priority: 'critical', category: 'Lab' },
+        'lab.result.ready':     { type: 'success', priority: 'high',     category: 'Lab' },
+        'lab.request.urgent':   { type: 'warning', priority: 'high',     category: 'Lab' },
+        'lab.request.created':  { type: 'info',    priority: 'normal',   category: 'Lab' },
+        'pharmacy.dispensed':   { type: 'success', priority: 'normal',   category: 'Pharmacy' },
+        'pharmacy.stock.low':   { type: 'warning', priority: 'high',     category: 'Inventory' },
+        'queue.emergency':      { type: 'error',   priority: 'critical', category: 'Queue' },
+        'queue.called':         { type: 'info',    priority: 'normal',   category: 'Queue' },
+        'patient.registered':   { type: 'info',    priority: 'normal',   category: 'Patient' },
+        'consult.completed':    { type: 'success', priority: 'normal',   category: 'Doctor' },
+        'record.saved':         { type: 'success', priority: 'low',      category: 'System' }
     };
 
+    /* Only these priorities interrupt the user with a toast. */
+    var TOAST_PRIORITIES = { critical: true, high: true, low: true };
+    /* Only these priorities are written to the persistent bell log. */
+    var LOG_PRIORITIES = { critical: true, high: true, normal: true };
+
+    var TYPE_ICON = { info: 'info', success: 'check-circle', warning: 'warning', error: 'critical' };
+
+    /* ------------------------------------------------------------- routing */
+    /* Settings (pages/settings.html) can mute categories of alert. Critical
+       events are deliberately absent from this map: a panic laboratory value
+       or a critical observation must never be silenceable from a preferences
+       screen. */
+    var ROUTING_KEY = 'clinic_settings';
+
+    var EVENT_SETTING = {
+        'lab.result.ready':    'alertLabResults',
+        'vitals.abnormal':     'alertAbnormalVitals',
+        'lab.request.urgent':  'alertStatRequests',
+        'pharmacy.stock.low':  'alertLowStock'
+    };
+
+    var ROUTING_DEFAULTS = {
+        alertLabResults: true,
+        alertAbnormalVitals: true,
+        alertStatRequests: true,
+        alertLowStock: true,
+        alertRoutineLog: true,
+        alertConfirmations: true,
+        toastDuration: '6000'
+    };
+
+    function routing() {
+        try {
+            var raw = lsGet(ROUTING_KEY);
+            var parsed = raw ? JSON.parse(raw) : null;
+            if (!parsed || typeof parsed !== 'object') return ROUTING_DEFAULTS;
+            var out = {};
+            Object.keys(ROUTING_DEFAULTS).forEach(function (k) {
+                out[k] = parsed[k] === undefined ? ROUTING_DEFAULTS[k] : parsed[k];
+            });
+            return out;
+        } catch (e) {
+            return ROUTING_DEFAULTS;
+        }
+    }
+
+    /* Returns 'allow', 'log-only' or 'drop' for a prepared item. */
+    function routeFor(item, cfg) {
+        /* Role comes first. An alert a role has no use for is not logged for
+           them at all, otherwise the panel fills with other people's work. */
+        if (window.MediSession && !window.MediSession.wantsAlert(item.category)) {
+            return 'drop';
+        }
+
+        if (item.priority === 'critical') return 'allow';
+
+        if (item.priority === 'low') {
+            return cfg.alertConfirmations ? 'allow' : 'drop';
+        }
+
+        if (item.priority === 'normal') {
+            return cfg.alertRoutineLog ? 'allow' : 'drop';
+        }
+
+        /* high: muted categories fall back to a silent log entry rather than
+           vanishing, so nothing is lost from the audit trail. */
+        var key = item.event ? EVENT_SETTING[item.event] : null;
+        if (key && cfg[key] === false) return 'log-only';
+        return 'allow';
+    }
+
+    function icon(name, size) {
+        return window.MediIcons ? window.MediIcons.svg(name, size || 18) : '';
+    }
+
+    function escapeHtml(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function ensureContainer() {
-        if (container && document.body.contains(container)) return container;
+        if (container && document.body && document.body.contains(container)) return container;
         container = document.createElement('div');
         container.className = 'notification-container';
+        container.setAttribute('role', 'status');
+        container.setAttribute('aria-live', 'polite');
         document.body.appendChild(container);
         return container;
     }
 
     function getStoredNotifications() {
         try {
-            var raw = localStorage.getItem(STORAGE_NOTIFS_KEY);
-            return raw ? JSON.parse(raw) : [];
+            var raw = lsGet(STORAGE_NOTIFS_KEY);
+            var parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
         } catch (e) {
             return [];
         }
     }
 
     function saveStoredNotifications(notifs) {
-        try {
-            var trimmed = notifs.slice(0, 60);
-            localStorage.setItem(STORAGE_NOTIFS_KEY, JSON.stringify(trimmed));
-        } catch (e) {}
+        lsSet(STORAGE_NOTIFS_KEY, JSON.stringify(notifs.slice(0, MAX_LOG)));
     }
 
-    function showToast(title, message, type, category, id) {
-        type = type || 'info';
-        category = category || 'System';
-        var c = ensureContainer();
-
-        var toast = document.createElement('div');
-        toast.className = 'notification-toast type-' + type;
-        if (id) toast.dataset.id = id;
-
-        var catBadge = '<span class="notif-cat notif-cat-' + category.toLowerCase() + '">' + category + '</span>';
-
-        toast.innerHTML =
-            '<div class="notif-icon">' + (icons[type] || icons.info) + '</div>' +
-            '<div class="notif-body">' +
-                '<div class="notif-head-row">' +
-                    '<span class="notif-title">' + title + '</span>' +
-                    catBadge +
-                '</div>' +
-                '<span class="notif-message">' + message + '</span>' +
-            '</div>' +
-            '<button class="notif-dismiss" title="Dismiss" aria-label="Close notification">&times;</button>';
-
-        c.appendChild(toast);
-
-        // Slide in
-        requestAnimationFrame(function() {
-            requestAnimationFrame(function() {
-                toast.classList.add('visible');
-            });
-        });
-
-        // Auto dismiss after 7 seconds if not interacted with
-        var autoTimer = setTimeout(function() {
-            dismissToast(toast);
-        }, 7000);
-
-        // Dismiss on click
-        var dismissBtn = toast.querySelector('.notif-dismiss');
-        dismissBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            clearTimeout(autoTimer);
-            dismissToast(toast);
-        });
-
-        toast.addEventListener('mouseenter', function() {
-            clearTimeout(autoTimer);
-        });
+    /* ------------------------------------------------------------------ sound */
+    /* js/theme.js owns the audio. Pages run inside an iframe, and browsers
+       only allow audio in a frame the user has actually interacted with, so
+       the request is also relayed to the shell — which the user has clicked
+       on to navigate — giving it a second chance to be heard. */
+    function playSound(priority) {
+        if (window.MediTheme) {
+            try { window.MediTheme.playAlert(priority); } catch (e) {}
+        }
+        if (window.parent && window.parent !== window) {
+            try {
+                window.parent.postMessage({ action: 'play_alert_sound', kind: priority }, '*');
+            } catch (e) {}
+        }
     }
 
+    /* ------------------------------------------------------------------ toast */
     function dismissToast(toast) {
         if (!toast) return;
         toast.classList.remove('visible');
-        setTimeout(function() {
+        setTimeout(function () {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
-        }, 300);
+        }, 260);
     }
 
-    function MediTrackNotify(title, message, type, category) {
-        return MediTrackNotify.push(title, message, type, category);
+    function showToast(item) {
+        var c = ensureContainer();
+
+        /* Cap simultaneous toasts so the corner never becomes a wall of cards. */
+        var existing = c.querySelectorAll('.notification-toast');
+        if (existing.length >= 3) dismissToast(existing[0]);
+
+        var toast = document.createElement('div');
+        toast.className = 'notification-toast type-' + item.type +
+            (item.priority === 'critical' ? ' is-critical' : '');
+        toast.dataset.id = item.id;
+
+        toast.innerHTML =
+            '<span class="notif-icon">' + icon(TYPE_ICON[item.type] || 'info', 18) + '</span>' +
+            '<div class="notif-body">' +
+                '<div class="notif-head-row">' +
+                    '<span class="notif-title">' + escapeHtml(item.title) + '</span>' +
+                    '<span class="notif-cat">' + escapeHtml(item.category) + '</span>' +
+                '</div>' +
+                '<span class="notif-message">' + escapeHtml(item.message) + '</span>' +
+            '</div>' +
+            '<button type="button" class="notif-dismiss" aria-label="Dismiss notification">' +
+                icon('close', 14) +
+            '</button>';
+
+        c.appendChild(toast);
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () { toast.classList.add('visible'); });
+        });
+
+        /* Critical alerts stay until acknowledged. */
+        var autoTimer = null;
+        if (item.priority !== 'critical') {
+            var configured = parseInt(routing().toastDuration, 10);
+            if (isNaN(configured) || configured < 1500) configured = 6000;
+            var life = item.priority === 'low' ? Math.min(3000, configured) : configured;
+            autoTimer = setTimeout(function () { dismissToast(toast); }, life);
+        }
+
+        toast.querySelector('.notif-dismiss').addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (autoTimer) clearTimeout(autoTimer);
+            dismissToast(toast);
+        });
+        toast.addEventListener('mouseenter', function () {
+            if (autoTimer) clearTimeout(autoTimer);
+        });
     }
 
-    MediTrackNotify.push = function(title, message, type, category) {
-        type = type || 'info';
-        category = category || 'System';
+    /* ------------------------------------------------------------ dispatching */
+    /* Pages raise their own events, and the storage watchers below raise the
+       same events for other frames/tabs. Without a stable key the two paths
+       produce near-identical duplicates, which is exactly the noise this
+       module exists to prevent. Every alert therefore carries a dedupe key. */
+    function isDuplicate(notifs, item) {
+        var cutoff = Date.now() - DEDUPE_WINDOW_MS;
+        for (var i = 0; i < notifs.length; i++) {
+            var n = notifs[i];
+            if (new Date(n.timestamp).getTime() < cutoff) break;
+            if (item.key && n.key && n.key === item.key) return true;
+            if (n.title === item.title && n.message === item.message) return true;
+        }
+        return false;
+    }
 
+    function dispatch(opts) {
         var item = {
-            id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-            title: title,
-            message: message,
-            type: type,
-            category: category,
+            id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            title: opts.title || 'Notification',
+            message: opts.message || '',
+            type: opts.type || 'info',
+            priority: opts.priority || 'normal',
+            category: opts.category || 'System',
+            event: opts.event || null,
+            key: opts.key || null,
             timestamp: new Date().toISOString(),
             read: false
         };
 
-        var notifs = getStoredNotifications();
-        notifs.unshift(item);
-        saveStoredNotifications(notifs);
+        var decision = routeFor(item, routing());
+        if (decision === 'drop') return null;
 
-        // Display toast in current frame
-        showToast(title, message, type, category, item.id);
+        var shouldLog = !!LOG_PRIORITIES[item.priority];
 
-        // Notify parent window if in iframe
-        if (window.parent && window.parent !== window) {
-            try {
-                window.parent.postMessage({
-                    action: 'new_notification',
-                    notification: item
-                }, '*');
-            } catch (e) {}
+        if (shouldLog) {
+            var notifs = getStoredNotifications();
+            if (isDuplicate(notifs, item)) return null;
+            notifs.unshift(item);
+            saveStoredNotifications(notifs);
         }
 
-        // Dispatch a local custom event for topbar UI components
+        if (decision === 'allow' && TOAST_PRIORITIES[item.priority]) showToast(item);
+
+        /* Sound is tied to the toast: if it was not important enough to
+           interrupt visually, it is not important enough to make a noise. */
+        if (decision === 'allow' && TOAST_PRIORITIES[item.priority] && item.priority !== 'low') {
+            playSound(item.priority);
+        }
+
+        if (window.parent && window.parent !== window) {
+            try {
+                window.parent.postMessage({ action: 'new_notification', notification: item }, '*');
+            } catch (e) {}
+        }
         window.dispatchEvent(new CustomEvent('meditrack:notification', { detail: item }));
-
         return item;
+    }
+
+    /* --------------------------------------------------------------- public API */
+    function MediTrackNotify(title, message, type, category) {
+        return MediTrackNotify.push(title, message, type, category);
+    }
+
+    /* Legacy signature. Priority is inferred from the type so existing call
+       sites immediately benefit from the new gating rules. */
+    var TYPE_TO_PRIORITY = { error: 'critical', warning: 'high', success: 'normal', info: 'normal' };
+
+    MediTrackNotify.push = function (title, message, type, category, priority) {
+        type = type || 'info';
+        return dispatch({
+            title: title,
+            message: message,
+            type: type,
+            category: category || 'System',
+            priority: priority || TYPE_TO_PRIORITY[type] || 'normal'
+        });
     };
 
-    MediTrackNotify.getAll = function() {
-        return getStoredNotifications();
+    /* Preferred entry point: semantic event key + payload. */
+    MediTrackNotify.event = function (eventKey, payload) {
+        var def = EVENTS[eventKey];
+        payload = payload || {};
+        if (!def) return MediTrackNotify.push(payload.title, payload.message, payload.type, payload.category);
+        return dispatch({
+            title: payload.title || eventKey,
+            message: payload.message || '',
+            type: payload.type || def.type,
+            priority: payload.priority || def.priority,
+            category: payload.category || def.category,
+            event: eventKey,
+            key: payload.key || null
+        });
     };
 
-    MediTrackNotify.getUnreadCount = function() {
+    /* Transient confirmation: toast only, never stored in the bell panel. */
+    MediTrackNotify.flash = function (title, message, type) {
+        return dispatch({
+            title: title,
+            message: message || '',
+            type: type || 'success',
+            priority: 'low',
+            category: 'System'
+        });
+    };
+
+    /* Back-compat alias kept so older pages keep working. */
+    MediTrackNotify.toast = MediTrackNotify.push;
+
+    MediTrackNotify.getAll = getStoredNotifications;
+
+    MediTrackNotify.getUnreadCount = function () {
+        return getStoredNotifications().filter(function (n) { return !n.read; }).length;
+    };
+
+    MediTrackNotify.getCriticalCount = function () {
+        return getStoredNotifications().filter(function (n) {
+            return !n.read && n.priority === 'critical';
+        }).length;
+    };
+
+    MediTrackNotify.markAsRead = function (id) {
         var notifs = getStoredNotifications();
-        return notifs.filter(function(n) { return !n.read; }).length;
-    };
-
-    MediTrackNotify.markAllAsRead = function() {
-        var notifs = getStoredNotifications();
-        notifs.forEach(function(n) { n.read = true; });
+        var changed = false;
+        for (var i = 0; i < notifs.length; i++) {
+            if (notifs[i].id === id) { notifs[i].read = true; changed = true; break; }
+        }
+        if (!changed) return;
         saveStoredNotifications(notifs);
         window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
-        if (window.parent && window.parent !== window) {
-            try {
-                window.parent.postMessage({ action: 'notifications_read' }, '*');
-            } catch (e) {}
-        }
+        relayToParent('notifications_read');
     };
 
-    MediTrackNotify.markAsRead = function(id) {
+    MediTrackNotify.markAllAsRead = function () {
         var notifs = getStoredNotifications();
-        var target = notifs.find(function(n) { return n.id === id; });
-        if (target) {
-            target.read = true;
-            saveStoredNotifications(notifs);
-            window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
-        }
+        notifs.forEach(function (n) { n.read = true; });
+        saveStoredNotifications(notifs);
+        window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
+        relayToParent('notifications_read');
     };
 
-    MediTrackNotify.clearAll = function() {
+    MediTrackNotify.clearAll = function () {
         saveStoredNotifications([]);
         window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
+        relayToParent('notifications_cleared');
+    };
+
+    function relayToParent(action) {
         if (window.parent && window.parent !== window) {
-            try {
-                window.parent.postMessage({ action: 'notifications_cleared' }, '*');
-            } catch (e) {}
+            try { window.parent.postMessage({ action: action }, '*'); } catch (e) {}
         }
-    };
+    }
 
-    MediTrackNotify.toast = function(title, message, type, category) {
-        return MediTrackNotify.push(title, message, type, category);
-    };
-
-    // Global alias
     window.MediTrackNotify = MediTrackNotify;
 
-    /* --------------------------------------------------------------------------
-       Automated Storage Watchers
-       -------------------------------------------------------------------------- */
+    /* ==================================================================
+       Storage watchers
+       Only meaningful clinical transitions raise alerts. Plain edits,
+       re-saves and re-orderings are intentionally ignored.
+       ================================================================== */
     function snapshotCounts() {
         try {
-            var pData = localStorage.getItem(STORAGE_KEY_PATIENTS);
-            if (pData) {
-                var patients = JSON.parse(pData);
-                prevPatientCount = patients.length;
-                prevPatientsState = {};
-                patients.forEach(function(p) {
-                    prevPatientsState[p.id] = { status: p.status, urgency: p.urgency };
-                });
-            }
-        } catch (e) { prevPatientCount = 0; }
+            var patients = JSON.parse(lsGet(STORAGE_KEY_PATIENTS) || '[]');
+            prevPatientCount = patients.length;
+            prevPatientsState = {};
+            patients.forEach(function (p) {
+                prevPatientsState[p.id] = { status: p.status, urgency: p.urgency };
+            });
+        } catch (e) {
+            prevPatientCount = 0;
+            prevPatientsState = {};
+        }
 
         try {
-            var lData = localStorage.getItem(STORAGE_KEY_LAB);
-            if (lData) {
-                var labs = JSON.parse(lData);
-                prevLabCount = labs.length;
-                prevLabCompletedCount = labs.filter(function(l) { return l.status === 'Completed'; }).length;
-            }
+            var labs = JSON.parse(lsGet(STORAGE_KEY_LAB) || '[]');
+            prevLabCount = labs.length;
+            prevLabCompletedCount = labs.filter(function (l) { return l.status === 'Completed'; }).length;
         } catch (e) {
             prevLabCount = 0;
             prevLabCompletedCount = 0;
         }
     }
 
+    function handlePatientChange(newValue) {
+        var patients;
+        try { patients = JSON.parse(newValue || '[]'); } catch (e) { return; }
+
+        if (patients.length > prevPatientCount) {
+            var latest = patients[patients.length - 1] || {};
+            /* Emergency arrivals interrupt; routine registrations only log. */
+            if (String(latest.urgency || '').toLowerCase() === 'emergency') {
+                MediTrackNotify.event('queue.emergency', {
+                    key: 'emergency:' + latest.id,
+                    title: 'Emergency Arrival',
+                    message: (latest.name || 'Patient') + ' (' + (latest.trackingId || '—') + ') requires immediate assessment.'
+                });
+            } else {
+                MediTrackNotify.event('patient.registered', {
+                    key: 'registered:' + latest.id,
+                    title: 'Patient Registered',
+                    message: (latest.name || 'Patient') + ' added to the registry as ' + (latest.urgency || 'Routine') + '.'
+                });
+            }
+        } else {
+            patients.forEach(function (p) {
+                var old = prevPatientsState[p.id];
+                if (!old) return;
+
+                if (old.urgency !== p.urgency && String(p.urgency).toLowerCase() === 'emergency') {
+                    MediTrackNotify.event('queue.emergency', {
+                        key: 'escalated:' + p.id,
+                        title: 'Escalated to Emergency',
+                        message: p.name + ' (' + (p.trackingId || '—') + ') escalated to emergency priority.'
+                    });
+                    return;
+                }
+                if (old.status !== p.status && p.status === 'Finished') {
+                    MediTrackNotify.event('consult.completed', {
+                        key: 'completed:' + p.id,
+                        title: 'Consultation Closed',
+                        message: p.name + ' has completed the care pathway.'
+                    });
+                }
+            });
+        }
+
+        prevPatientCount = patients.length;
+        prevPatientsState = {};
+        patients.forEach(function (p) {
+            prevPatientsState[p.id] = { status: p.status, urgency: p.urgency };
+        });
+    }
+
+    function handleLabChange(newValue) {
+        var labs;
+        try { labs = JSON.parse(newValue || '[]'); } catch (e) { return; }
+
+        var completed = labs.filter(function (l) { return l.status === 'Completed'; });
+
+        if (completed.length > prevLabCompletedCount) {
+            var order = completed[completed.length - 1] || {};
+            var flag = String(order.flag || '');
+            var critical = flag === 'Critical';
+            var abnormal = critical || flag === 'Abnormal';
+
+            MediTrackNotify.event(critical ? 'lab.result.critical' : 'lab.result.ready', {
+                key: 'labresult:' + order.id,
+                type: abnormal && !critical ? 'warning' : undefined,
+                title: critical ? 'Critical Lab Result' : (abnormal ? 'Abnormal Lab Result' : 'Lab Result Released'),
+                message: (order.test || 'Diagnostic panel') + ' for ' + (order.patientName || 'patient') +
+                         (abnormal ? ' is outside the reference range — review now.' : ' is ready for review.')
+            });
+        } else if (labs.length > prevLabCount) {
+            /* New orders only interrupt when marked urgent/STAT. */
+            var newOrder = labs[labs.length - 1] || {};
+            var priority = String(newOrder.priority || 'Routine').toLowerCase();
+            if (priority === 'urgent' || priority === 'stat') {
+                MediTrackNotify.event('lab.request.urgent', {
+                    key: 'laborder:' + newOrder.id,
+                    title: newOrder.priority + ' Lab Request',
+                    message: (newOrder.test || 'Test') + ' for ' + (newOrder.patientName || 'patient') +
+                             ' flagged ' + newOrder.priority + '.'
+                });
+            }
+        }
+
+        prevLabCount = labs.length;
+        prevLabCompletedCount = completed.length;
+    }
+
     function init() {
         snapshotCounts();
 
-        // Listen for cross-tab or cross-frame storage events
-        window.addEventListener('storage', function(e) {
+        window.addEventListener('storage', function (e) {
             if (e.key === STORAGE_NOTIFS_KEY) {
                 window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
-            }
-
-            if (e.key === STORAGE_KEY_PATIENTS) {
-                try {
-                    var newPatients = JSON.parse(e.newValue || '[]');
-                    if (newPatients.length > prevPatientCount) {
-                        var latest = newPatients[newPatients.length - 1];
-                        MediTrackNotify.push(
-                            'New Patient Registered',
-                            (latest.name || 'Patient') + ' (' + (latest.trackingId || '') + ') added to clinical registry.',
-                            'info',
-                            'Patient'
-                        );
-                    } else {
-                        // Check for status transitions
-                        newPatients.forEach(function(p) {
-                            var old = prevPatientsState[p.id];
-                            if (old && old.status !== p.status) {
-                                if (p.status === 'In Treatment') {
-                                    MediTrackNotify.push(
-                                        'Patient In Consultation',
-                                        p.name + ' (' + p.trackingId + ') called into treatment room.',
-                                        'info',
-                                        'Queue'
-                                    );
-                                } else if (p.status === 'Finished') {
-                                    MediTrackNotify.push(
-                                        'Consultation Completed',
-                                        p.name + ' consultation finished and archived to storage.',
-                                        'success',
-                                        'Doctor'
-                                    );
-                                }
-                            }
-                        });
-                    }
-
-                    prevPatientCount = newPatients.length;
-                    prevPatientsState = {};
-                    newPatients.forEach(function(p) {
-                        prevPatientsState[p.id] = { status: p.status, urgency: p.urgency };
-                    });
-                } catch (ex) {}
-            }
-
-            if (e.key === STORAGE_KEY_LAB) {
-                try {
-                    var newLabs = JSON.parse(e.newValue || '[]');
-                    var newCompleted = newLabs.filter(function(l) { return l.status === 'Completed'; }).length;
-                    if (newCompleted > prevLabCompletedCount) {
-                        var completedOrder = newLabs.filter(function(l) { return l.status === 'Completed'; }).pop();
-                        MediTrackNotify.push(
-                            'Laboratory Result Ready',
-                            (completedOrder.test || 'Diagnostic test') + ' results for ' + (completedOrder.patientName || 'patient') + ' are ready for review.',
-                            'success',
-                            'Lab'
-                        );
-                    } else if (newLabs.length > prevLabCount) {
-                        var newOrder = newLabs[newLabs.length - 1];
-                        MediTrackNotify.push(
-                            'New Lab Request Dispatched',
-                            newOrder.test + ' ordered for ' + (newOrder.patientName || 'patient') + ' (' + (newOrder.priority || 'Routine') + ').',
-                            'info',
-                            'Lab'
-                        );
-                    }
-                    prevLabCount = newLabs.length;
-                    prevLabCompletedCount = newCompleted;
-                } catch (ex) {}
+            } else if (e.key === STORAGE_KEY_PATIENTS) {
+                handlePatientChange(e.newValue);
+            } else if (e.key === STORAGE_KEY_LAB) {
+                handleLabChange(e.newValue);
             }
         });
     }

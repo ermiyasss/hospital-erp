@@ -1,412 +1,651 @@
-(function() {
+/* ==========================================================================
+   MediTrack Hospital ERP - Patient Registry
+
+   Registration is where triage quality is decided, so this screen does two
+   things the old version did not:
+
+     - it interprets the observations as they are typed (js/clinical.js) and
+     - it challenges the operator when the recorded priority is lower than the
+       observations suggest.
+
+   All data access goes through js/store.js, so field names, urgency spellings
+   and statuses stay canonical.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_KEY = 'clinic_patients_data';
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var clinical = window.MediClinical;
+    var STATUS = store.STATUS;
+
     var patients = [];
     var searchTerm = '';
     var urgencyFilter = '';
-    var sortValue = 'default';
-    var pendingDeleteId = null;
-    var viewingPatient = null;
+    var statusFilter = 'active';
+    var sortOrder = 'reg_desc';
 
-    function toggleBlur(state) {
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ action: 'toggleBlur', state: state }, '*');
+    var editingId = null;       /* null = registering a new patient */
+    var detailId = null;
+    var suggestedUrgency = null;
+
+    var VITAL_FIELDS = [
+        ['inputSystolic', 'systolic'],
+        ['inputDiastolic', 'diastolic'],
+        ['inputPulse', 'pulse'],
+        ['inputTemp', 'temperature'],
+        ['inputSpo2', 'spo2'],
+        ['inputRespRate', 'respRate'],
+        ['inputGlucose', 'glucose'],
+        ['inputWeight', 'weight'],
+        ['inputHeight', 'height']
+    ];
+
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value;
+    }
+
+    function val(id) {
+        var el = byId(id);
+        return el ? el.value.trim() : '';
+    }
+
+    function urgencyClass(u) {
+        return 'urgency-' + String(store.normalizeUrgency(u)).toLowerCase();
+    }
+
+    function statusClass(s) {
+        switch (store.normalizeStatus(s)) {
+            case STATUS.CONSULTING:        return 'status-consulting';
+            case STATUS.AWAITING:          return 'status-awaiting';
+            case STATUS.AWAITING_PAYMENT:  return 'status-awaiting-payment';
+            case STATUS.FINISHED:          return 'status-finished';
+            default:                       return 'status-pending';
         }
     }
 
-    function generateTrackingId() {
-        return 'TRK-' + Math.floor(10000000 + Math.random() * 90000000);
-    }
+    /* ==================================================================
+       List
+       ================================================================== */
+    function render() {
+        setText('statTotal', patients.length);
+        setText('statActive', store.activePatients(patients).length);
 
-    function loadFromStorage() {
-        var data = localStorage.getItem(STORAGE_KEY);
-        if (!data) {
-            patients = [
-                { id: 1, trackingId: generateTrackingId(), name: 'John Doe', age: 34, phone: '0912 345 678', weight: 70, height: 175, bp: '135/88', hr: 82, urgency: 'Urgent', status: 'In Treatment', description: 'Severe chest pain, undergoing diagnostic tests.', registered: new Date().toISOString(), clinicalNotes: [], labOrders: [], nurseOrders: [] },
-                { id: 2, trackingId: generateTrackingId(), name: 'Alice Smith', age: 28, phone: '0987 654 321', weight: 60, height: 160, bp: '118/76', hr: 74, urgency: 'Non-Urgent', status: 'Pending', description: 'Persistent cough and low grade fever for 3 days.', registered: new Date().toISOString(), clinicalNotes: [], labOrders: [], nurseOrders: [] },
-                { id: 3, trackingId: generateTrackingId(), name: 'Bob Johnson', age: 45, phone: '0911 222 333', weight: 85, height: 180, bp: '122/80', hr: 68, urgency: 'Non-Urgent', status: 'Finished', description: 'Routine annual checkup completed.', registered: '2023-10-20T11:15:00Z', clinicalNotes: [], labOrders: [], nurseOrders: [] }
-            ];
-            saveToStorage();
-        } else {
-            try {
-                patients = JSON.parse(data);
-                patients.forEach(function(p) {
-                    if (p.urgency === 'High') p.urgency = 'Urgent';
-                    else if (p.urgency === 'Medium' || p.urgency === 'Low') p.urgency = 'Non-Urgent';
-                    if (!p.bp) p.bp = '120/80';
-                    if (!p.hr) p.hr = 72;
-                    if (!p.clinicalNotes) p.clinicalNotes = [];
-                    if (!p.labOrders) p.labOrders = [];
-                    if (!p.nurseOrders) p.nurseOrders = [];
-                });
-            } catch (e) { patients = []; }
-        }
-    }
-
-    function saveToStorage() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(patients));
-    }
-
-    function formatPhone(value) {
-        var digits = value.replace(/\D/g, '');
-        if (digits.startsWith('251')) digits = '0' + digits.substring(3);
-        if (digits.startsWith('0')) {
-            var formatted = digits.substring(0, 4);
-            if (digits.length > 4) formatted += ' ' + digits.substring(4, 7);
-            if (digits.length > 7) formatted += ' ' + digits.substring(7, 10);
-            return formatted;
-        }
-        return digits;
-    }
-
-    function isValidPhone(phone) {
-        if (!phone) return false;
-        var digits = phone.replace(/\D/g, '');
-        if (digits.startsWith('251')) digits = '0' + digits.substring(3);
-        return /^0(9|7)\d{8}$/.test(digits);
-    }
-
-    // Filter out Finished patients (they go to Storage)
-    function getActivePatients() {
-        return patients.filter(function(p) { return p.status !== 'Finished'; });
-    }
-
-    function getFilteredSortedPatients() {
-        var active = getActivePatients();
-        var filtered = active.filter(function(p) {
-            var matchesSearch = true;
-            if (searchTerm.trim()) {
-                var term = searchTerm.toLowerCase().trim();
-                matchesSearch = p.name.toLowerCase().includes(term) ||
-                                p.trackingId.toLowerCase().includes(term) ||
-                                (p.phone && p.phone.includes(term));
-            }
-            var matchesUrgency = (urgencyFilter === '') || (p.urgency === urgencyFilter);
-            return matchesSearch && matchesUrgency;
+        var rows = patients.filter(function (p) {
+            if (statusFilter === 'active' && p.status === STATUS.FINISHED) return false;
+            if (statusFilter !== 'active' && statusFilter !== 'all' && p.status !== statusFilter) return false;
+            if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return String(p.name || '').toLowerCase().indexOf(q) !== -1 ||
+                String(p.trackingId || '').toLowerCase().indexOf(q) !== -1 ||
+                String(p.phone || '').replace(/\s+/g, '').indexOf(q.replace(/\s+/g, '')) !== -1;
         });
 
-        if (sortValue === 'age_asc') filtered.sort(function(a, b) { return a.age - b.age; });
-        else if (sortValue === 'age_desc') filtered.sort(function(a, b) { return b.age - a.age; });
-        else if (sortValue === 'alpha_asc') filtered.sort(function(a, b) { return a.name.localeCompare(b.name); });
-        else if (sortValue === 'alpha_desc') filtered.sort(function(a, b) { return b.name.localeCompare(a.name); });
-        else if (sortValue === 'reg_desc') filtered.sort(function(a, b) { return new Date(b.registered) - new Date(a.registered); });
-        else if (sortValue === 'reg_asc') filtered.sort(function(a, b) { return new Date(a.registered) - new Date(b.registered); });
+        rows.sort(comparator(sortOrder));
 
-        return filtered;
-    }
-
-    function formatDate(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function formatDateTime(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        var dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        var h = date.getHours(); var m = String(date.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
-        return dateStr + ' at ' + h + ':' + m + ' ' + ampm;
-    }
-
-    function renderCards() {
-        var grid = document.getElementById('patientsCardGrid');
-        var noPatientsDiv = document.getElementById('noPatients');
+        var grid = byId('patientsCardGrid');
         if (!grid) return;
 
-        var data = getFilteredSortedPatients();
-
-        if (data.length === 0) {
-            grid.innerHTML = '';
-            if (noPatientsDiv) noPatientsDiv.style.display = 'block';
+        if (!rows.length) {
+            grid.innerHTML = ui.emptyState({
+                icon: patients.length ? 'search' : 'patients',
+                title: patients.length ? 'No records match these filters' : 'No patients registered',
+                text: patients.length
+                    ? 'Adjust the search or filters to widen the results.'
+                    : 'Use “Register patient” to add the first arrival of the session.'
+            });
             return;
         }
 
-        if (noPatientsDiv) noPatientsDiv.style.display = 'none';
+        grid.innerHTML = rows.map(cardHtml).join('');
+        bindCards(grid);
+    }
 
-        grid.innerHTML = data.map(function(p) {
-            var urgencyClass = (p.urgency === 'Urgent') ? 'urgency-urgent' : 'urgency-nonurgent';
-            var statusClass = (p.status === 'In Treatment') ? 'status-treatment' : 'status-pending';
-            var initials = p.name.split(' ').map(function(n) { return n[0]; }).join('').toUpperCase().substring(0, 2);
+    function comparator(mode) {
+        return function (a, b) {
+            switch (mode) {
+                case 'reg_asc':  return new Date(a.registered) - new Date(b.registered);
+                case 'name_asc': return String(a.name).localeCompare(String(b.name));
+                case 'age_asc':  return (a.age === null ? 999 : a.age) - (b.age === null ? 999 : b.age);
+                case 'age_desc': return (b.age === null ? -1 : b.age) - (a.age === null ? -1 : a.age);
+                default:         return new Date(b.registered) - new Date(a.registered);
+            }
+        };
+    }
 
-            return '<div class="patient-card" data-id="' + p.id + '">' +
-                '<div class="pcard-top">' +
-                    '<div class="pcard-avatar">' + initials + '</div>' +
-                    '<div class="pcard-main">' +
-                        '<h4 class="pcard-name">' + p.name + '</h4>' +
-                        '<span class="pcard-tid">' + p.trackingId + '</span>' +
-                    '</div>' +
-                    '<span class="badge ' + urgencyClass + '">' + p.urgency + '</span>' +
+    function cardHtml(p) {
+        var urgency = store.normalizeUrgency(p.urgency);
+        var assessment = clinical.assess(p.vitals);
+        var flagged = assessment.flagged.length;
+
+        return '<article class="patient-card ' + urgencyClass(urgency) + '" data-id="' + esc(p.id) + '">' +
+            '<header class="pc-head">' +
+                '<span class="avatar-sq avatar-lg ' + urgencyClass(urgency) + '">' + esc(store.initials(p.name)) + '</span>' +
+                '<div class="pc-identity">' +
+                    '<span class="pc-name">' + esc(p.name) + '</span>' +
+                    '<span class="pc-sub">' +
+                        '<span class="mono">' + esc(p.trackingId) + '</span>' +
+                        (p.age !== null ? '<span>' + esc(p.age) + ' yrs</span>' : '') +
+                        (p.sex ? '<span>' + esc(p.sex) + '</span>' : '') +
+                    '</span>' +
+                    '<span class="pc-badges">' +
+                        '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
+                        '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                    '</span>' +
                 '</div>' +
-                '<div class="pcard-meta">' +
-                    '<div class="pcard-meta-item"><span class="meta-label">Age</span><strong>' + p.age + '</strong></div>' +
-                    '<div class="pcard-meta-item"><span class="meta-label">Phone</span><strong>' + (p.phone || '-') + '</strong></div>' +
-                    '<div class="pcard-meta-item"><span class="meta-label">BP</span><strong>' + (p.bp || '-') + '</strong></div>' +
-                    '<div class="pcard-meta-item"><span class="meta-label">HR</span><strong>' + (p.hr || '-') + ' bpm</strong></div>' +
+            '</header>' +
+
+            (flagged
+                ? '<div class="pc-flag ' + (assessment.overall === 'critical' ? 'is-critical' : '') + '">' +
+                    icon(assessment.overall === 'critical' ? 'critical' : 'warning', 13) +
+                    '<span>' + esc(assessment.summary) + '</span>' +
+                  '</div>'
+                : '') +
+
+            '<p class="pc-complaint">' + esc(p.description || 'No complaint recorded.') + '</p>' +
+
+            '<footer class="pc-foot">' +
+                '<span class="pc-registered">' + icon('calendar', 13) +
+                    '<span>' + esc(store.formatDateTime(p.registered)) + '</span>' +
+                '</span>' +
+                '<div class="pc-actions">' +
+                    '<button type="button" class="btn-icon" data-edit="' + esc(p.id) + '" title="Edit record" aria-label="Edit record">' +
+                        icon('edit', 15) +
+                    '</button>' +
+                    '<button type="button" class="btn-secondary btn-sm" data-view="' + esc(p.id) + '">' +
+                        icon('eye', 14) + '<span>Open</span>' +
+                    '</button>' +
                 '</div>' +
-                '<div class="pcard-bottom">' +
-                    '<span class="badge ' + statusClass + '">' + p.status + '</span>' +
-                    '<span class="pcard-date">' + formatDate(p.registered) + '</span>' +
-                '</div>' +
-            '</div>';
+            '</footer>' +
+        '</article>';
+    }
+
+    function bindCards(grid) {
+        ui.qsa('[data-view]', grid).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openDetail(btn.getAttribute('data-view'));
+            });
+        });
+        ui.qsa('[data-edit]', grid).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openForm(btn.getAttribute('data-edit'));
+            });
+        });
+        ui.qsa('.patient-card', grid).forEach(function (card) {
+            card.addEventListener('click', function () {
+                openDetail(card.getAttribute('data-id'));
+            });
+        });
+    }
+
+    /* ==================================================================
+       Register / edit form
+       ================================================================== */
+    function openForm(id) {
+        editingId = id === undefined || id === null ? null : id;
+        var p = editingId === null ? null : store.findPatient(patients, editingId);
+        if (editingId !== null && !p) return;
+
+        setText('patientModalTitle', p ? 'Edit patient record' : 'Register patient');
+        setText('patientModalSub', p ? p.trackingId : 'Demographics, baseline observations and triage priority');
+        setText('savePatientLabel', p ? 'Save changes' : 'Register patient');
+
+        ['inputName', 'inputAge', 'inputPhone', 'inputDesc'].forEach(function (f) {
+            byId(f).value = '';
+            ui.clearFieldError(f);
+        });
+        VITAL_FIELDS.forEach(function (pair) { byId(pair[0]).value = ''; });
+
+        if (p) {
+            byId('inputName').value = p.name;
+            byId('inputAge').value = p.age === null ? '' : p.age;
+            byId('inputPhone').value = p.phone;
+            byId('inputDesc').value = p.description;
+            VITAL_FIELDS.forEach(function (pair) {
+                var v = p.vitals[pair[1]];
+                byId(pair[0]).value = v === null || v === undefined ? '' : v;
+            });
+            ui.setSelectValue('inputSexWrapper', p.sex || '', p.sex || 'Not stated');
+            ui.setSelectValue('inputUrgencyWrapper', store.normalizeUrgency(p.urgency));
+            ui.setSelectValue('inputStatusWrapper',
+                p.status === STATUS.CONSULTING ? STATUS.CONSULTING :
+                p.status === STATUS.PENDING ? STATUS.PENDING : STATUS.AWAITING_PAYMENT,
+                p.status === STATUS.CONSULTING ? 'In consultation' :
+                p.status === STATUS.PENDING ? 'Waiting in queue' : 'Awaiting payment');
+        } else {
+            ui.setSelectValue('inputSexWrapper', '', 'Not stated');
+            ui.setSelectValue('inputUrgencyWrapper', store.URGENCY.ROUTINE, 'Routine');
+            ui.setSelectValue('inputStatusWrapper', STATUS.AWAITING_PAYMENT, 'Awaiting payment');
+        }
+
+        refreshReadout();
+        ui.openModal('patientModal');
+    }
+
+    function readVitalsFromForm() {
+        var v = {};
+        VITAL_FIELDS.forEach(function (pair) {
+            v[pair[1]] = store.toNumber(val(pair[0]));
+        });
+        return v;
+    }
+
+    /* Live interpretation under the observation inputs. */
+    function refreshReadout() {
+        var host = byId('vitalsReadout');
+        if (!host) return;
+
+        var assessment = clinical.assess(readVitalsFromForm());
+
+        if (!assessment.recordedCount) {
+            host.innerHTML =
+                '<div class="notice">' +
+                    '<span class="ico" data-icon="info" data-icon-size="15"></span>' +
+                    '<div><strong>Automatic interpretation</strong>' +
+                    'Enter observations above and each value is checked against adult reference ranges.</div>' +
+                '</div>';
+            if (window.MediIcons) window.MediIcons.hydrate(host);
+            updateTriageAdvice(null);
+            return;
+        }
+
+        var chips = assessment.results.map(function (r) {
+            var unit = r.key === 'bloodPressure' ? '' : ' ' + r.unit;
+            return '<span class="readout-chip level-' + r.level + '">' +
+                '<strong>' + esc(r.label) + '</strong>' +
+                '<span>' + esc(r.display) + esc(unit) + '</span>' +
+                '<em>' + esc(r.levelLabel) + '</em>' +
+            '</span>';
         }).join('');
 
-        // Click handler on cards
-        grid.querySelectorAll('.patient-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-                var pId = parseInt(this.getAttribute('data-id'), 10);
-                openDetailModal(pId);
-            });
-        });
-    }
+        var noteClass = assessment.overall === 'critical' ? 'notice-danger'
+            : (assessment.overall === 'abnormal' ? 'notice-warning'
+            : (assessment.overall === 'borderline' ? 'notice-warning' : 'notice-success'));
 
-    /* ---------- Detail Modal ---------- */
-    function openDetailModal(patientId) {
-        var p = patients.find(function(x) { return x.id === patientId; });
-        if (!p) return;
-        viewingPatient = p;
-
-        document.getElementById('detailModalTitle').textContent = p.name + ' — Patient Details';
-
-        var bmi = '-';
-        if (p.weight && p.height && p.height > 0) {
-            var hm = p.height / 100;
-            var bmiVal = (p.weight / (hm * hm)).toFixed(1);
-            var cat = 'Normal';
-            if (bmiVal < 18.5) cat = 'Underweight';
-            else if (bmiVal >= 25 && bmiVal < 30) cat = 'Overweight';
-            else if (bmiVal >= 30) cat = 'Obese';
-            bmi = bmiVal + ' (' + cat + ')';
-        }
-
-        var urgencyClass = (p.urgency === 'Urgent') ? 'urgency-urgent' : 'urgency-nonurgent';
-        var statusClass = (p.status === 'Finished') ? 'status-finished' : ((p.status === 'In Treatment') ? 'status-treatment' : 'status-pending');
-
-        document.getElementById('detailModalBody').innerHTML =
-            '<div class="detail-grid">' +
-                '<div class="detail-row"><span class="dlabel">Tracking ID</span><span class="dval"><span class="tracking-id">' + p.trackingId + '</span></span></div>' +
-                '<div class="detail-row"><span class="dlabel">Full Name</span><span class="dval"><strong>' + p.name + '</strong></span></div>' +
-                '<div class="detail-row"><span class="dlabel">Age</span><span class="dval">' + p.age + ' years</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Phone</span><span class="dval">' + (p.phone || '-') + '</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Urgency</span><span class="dval"><span class="badge ' + urgencyClass + '">' + p.urgency + '</span></span></div>' +
-                '<div class="detail-row"><span class="dlabel">Status</span><span class="dval"><span class="badge ' + statusClass + '">' + p.status + '</span></span></div>' +
-                '<div class="detail-row"><span class="dlabel">Blood Pressure</span><span class="dval">' + (p.bp || '-') + ' mmHg</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Heart Rate</span><span class="dval">' + (p.hr || '-') + ' bpm</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Weight</span><span class="dval">' + (p.weight || '-') + ' kg</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Height</span><span class="dval">' + (p.height || '-') + ' cm</span></div>' +
-                '<div class="detail-row"><span class="dlabel">BMI</span><span class="dval">' + bmi + '</span></div>' +
-                '<div class="detail-row"><span class="dlabel">Registered</span><span class="dval">' + formatDateTime(p.registered) + '</span></div>' +
+        host.innerHTML =
+            '<div class="readout-chips">' + chips + '</div>' +
+            '<div class="notice ' + noteClass + '">' +
+                '<span class="ico" data-icon="' +
+                    (assessment.overall === 'normal' ? 'check-circle' : 'warning') + '" data-icon-size="15"></span>' +
+                '<div><strong>' + esc(assessment.overallLabel) + ' observations</strong>' +
+                esc(assessment.summary) + '</div>' +
             '</div>' +
-            '<div class="detail-desc-section">' +
-                '<span class="dlabel">Chief Complaint / Description</span>' +
-                '<p class="detail-desc">' + (p.description || 'No description provided.') + '</p>' +
-            '</div>';
+            (assessment.flagged.length
+                ? '<ul class="readout-notes">' + assessment.flagged.map(function (f) {
+                    return '<li><strong>' + esc(f.label) + ':</strong> ' + esc(f.note) + '</li>';
+                  }).join('') + '</ul>'
+                : '');
 
-        document.getElementById('detailModal').classList.add('active');
-        toggleBlur(true);
+        if (window.MediIcons) window.MediIcons.hydrate(host);
+        updateTriageAdvice(assessment);
     }
 
-    function closeDetailModal() {
-        document.getElementById('detailModal').classList.remove('active');
-        toggleBlur(false);
-        viewingPatient = null;
-    }
+    /* The operator keeps control; the system only argues its case. */
+    function updateTriageAdvice(assessment) {
+        var box = byId('triageAdvice');
+        if (!box) return;
 
-    /* ---------- Custom Select ---------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
+        if (!assessment) { box.hidden = true; suggestedUrgency = null; return; }
 
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
-            });
-            wrapper.classList.toggle('active');
-        });
+        var chosen = ui.getSelectValue('inputUrgencyWrapper') || store.URGENCY.ROUTINE;
+        var suggested = assessment.suggestedUrgency;
 
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                toggle.querySelector('.cs-text').textContent = this.textContent;
-                toggle.setAttribute('data-value', val);
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
-            });
-        });
-    }
-
-    document.addEventListener('click', function() {
-        document.querySelectorAll('.custom-select.active').forEach(function(el) { el.classList.remove('active'); });
-    });
-
-    /* ---------- Add Patient Modal ---------- */
-    function openModal() { document.getElementById('patientModal').classList.add('active'); toggleBlur(true); }
-    function closeModal() { document.getElementById('patientModal').classList.remove('active'); toggleBlur(false); clearForm(); }
-
-    function clearForm() {
-        ['inputName','inputAge','inputPhone','inputWeight','inputHeight','inputBP','inputHR','inputDesc'].forEach(function(id) {
-            var el = document.getElementById(id); if (el) el.value = '';
-        });
-        var urgWrap = document.getElementById('inputUrgencyWrapper');
-        if (urgWrap) { urgWrap.querySelector('.cs-text').textContent = 'Non-Urgent'; urgWrap.querySelector('.cs-toggle').setAttribute('data-value', 'Non-Urgent'); }
-        var statWrap = document.getElementById('inputStatusWrapper');
-        if (statWrap) { statWrap.querySelector('.cs-text').textContent = 'Pending'; statWrap.querySelector('.cs-toggle').setAttribute('data-value', 'Pending'); }
-        ['errName','errAge','errPhone','errDesc'].forEach(function(id) {
-            var el = document.getElementById(id); if (el) el.classList.remove('visible');
-        });
-        ['inputName','inputAge','inputPhone','inputDesc'].forEach(function(id) {
-            var el = document.getElementById(id); if (el) el.classList.remove('input-error');
-        });
-    }
-
-    function showError(errId, inputId, msg) {
-        var el = document.getElementById(errId); var input = document.getElementById(inputId);
-        if (el) { el.textContent = msg; el.classList.add('visible'); }
-        if (input) input.classList.add('input-error');
-    }
-
-    function hideError(errId, inputId) {
-        var el = document.getElementById(errId); var input = document.getElementById(inputId);
-        if (el) el.classList.remove('visible');
-        if (input) input.classList.remove('input-error');
-    }
-
-    function validateForm() {
-        var isValid = true;
-        var name = document.getElementById('inputName').value.trim();
-        var age = document.getElementById('inputAge').value.trim();
-        var desc = document.getElementById('inputDesc').value.trim();
-        var phone = document.getElementById('inputPhone').value.trim();
-
-        if (!name) { showError('errName', 'inputName', 'Patient full name is required'); isValid = false; } else hideError('errName', 'inputName');
-        if (!age || isNaN(age) || parseInt(age) <= 0) { showError('errAge', 'inputAge', 'Valid age is required'); isValid = false; } else hideError('errAge', 'inputAge');
-        if (!desc) { showError('errDesc', 'inputDesc', 'Chief complaint / description is required'); isValid = false; } else hideError('errDesc', 'inputDesc');
-        if (!phone || !isValidPhone(phone)) { showError('errPhone', 'inputPhone', 'Valid Ethiopian phone number is required (09... or 07...)'); isValid = false; } else hideError('errPhone', 'inputPhone');
-
-        return isValid;
-    }
-
-    /* ---------- Delete ---------- */
-    function openConfirmModal(id) {
-        pendingDeleteId = id;
-        var patient = patients.find(function(p) { return p.id === id; });
-        if (patient) document.getElementById('confirmText').textContent = 'Are you sure you want to delete patient record ' + patient.name + ' (' + patient.trackingId + ')?';
-        document.getElementById('confirmModal').classList.add('active');
-        toggleBlur(true);
-    }
-
-    function closeConfirmModal() {
-        pendingDeleteId = null;
-        document.getElementById('confirmModal').classList.remove('active');
-        toggleBlur(false);
-    }
-
-    function confirmDelete() {
-        if (pendingDeleteId !== null) {
-            patients = patients.filter(function(p) { return p.id !== pendingDeleteId; });
-            saveToStorage();
-            renderCards();
-            closeConfirmModal();
-            closeDetailModal();
+        if (store.urgencyRank(suggested) >= store.urgencyRank(chosen)) {
+            box.hidden = true;
+            suggestedUrgency = null;
+            return;
         }
+
+        suggestedUrgency = suggested;
+        box.hidden = false;
+        setText('triageAdviceTitle', 'Observations suggest ' + suggested);
+        setText('triageAdviceText',
+            assessment.summary + ' Recorded priority is ' + chosen + '.');
     }
 
     function savePatient() {
-        if (!validateForm()) return;
+        var ok = ui.requireFields([
+            { id: 'inputName', message: 'Enter the patient\u2019s full name.' },
+            {
+                id: 'inputAge',
+                message: 'Enter an age between 0 and 130.',
+                test: function (v) {
+                    var n = Number(v);
+                    return !isNaN(n) && n >= 0 && n <= 130;
+                }
+            },
+            {
+                id: 'inputPhone',
+                message: 'Enter a contact number with at least 9 digits.',
+                test: function (v) { return v.replace(/\D/g, '').length >= 9; }
+            },
+            { id: 'inputDesc', message: 'Record the presenting complaint.' }
+        ]);
+        if (!ok) return;
 
-        var phone = document.getElementById('inputPhone').value.trim();
-        var bp = document.getElementById('inputBP').value.trim() || '120/80';
-        var hr = document.getElementById('inputHR').value.trim() || '72';
-        var urgency = document.getElementById('inputUrgencyWrapper').querySelector('.cs-toggle').getAttribute('data-value') || 'Non-Urgent';
-        var status = document.getElementById('inputStatusWrapper').querySelector('.cs-toggle').getAttribute('data-value') || 'Pending';
-        var newId = patients.length > 0 ? Math.max.apply(null, patients.map(function(p) { return p.id; })) + 1 : 1;
+        var urgency = ui.getSelectValue('inputUrgencyWrapper') || store.URGENCY.ROUTINE;
+        var status = ui.getSelectValue('inputStatusWrapper') || STATUS.AWAITING_PAYMENT;
 
-        patients.push({
-            id: newId,
-            trackingId: generateTrackingId(),
-            name: document.getElementById('inputName').value.trim(),
-            age: parseInt(document.getElementById('inputAge').value, 10),
-            phone: phone,
-            weight: document.getElementById('inputWeight').value.trim() ? parseFloat(document.getElementById('inputWeight').value) : null,
-            height: document.getElementById('inputHeight').value.trim() ? parseFloat(document.getElementById('inputHeight').value) : null,
-            bp: bp,
-            hr: parseInt(hr, 10),
+        var payload = {
+            name: val('inputName'),
+            age: store.toNumber(val('inputAge')),
+            sex: ui.getSelectValue('inputSexWrapper'),
+            phone: val('inputPhone'),
+            description: val('inputDesc'),
             urgency: urgency,
             status: status,
-            description: document.getElementById('inputDesc').value.trim(),
-            registered: new Date().toISOString(),
-            clinicalNotes: [],
-            labOrders: [],
-            nurseOrders: []
-        });
+            vitals: readVitalsFromForm()
+        };
 
-        saveToStorage();
-        renderCards();
-        closeModal();
+        var existing = editingId === null ? null : store.findPatient(patients, editingId);
 
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify('Patient Registered', document.getElementById('inputName').value.trim() + ' has been added to the registry.', 'success');
-        }
-    }
-
-    function init() {
-        loadFromStorage();
-        renderCards();
-
-        initCustomSelect('filterUrgencyWrapper', function(val) { urgencyFilter = val; renderCards(); });
-        initCustomSelect('sortOrderWrapper', function(val) { sortValue = val; renderCards(); });
-        initCustomSelect('inputUrgencyWrapper');
-        initCustomSelect('inputStatusWrapper');
-
-        document.getElementById('patientSearch').addEventListener('input', function(e) { searchTerm = e.target.value; renderCards(); });
-
-        // Phone: numbers only
-        document.getElementById('inputPhone').addEventListener('keydown', function(e) {
-            if (e.key.length === 1 && !/\d/.test(e.key) && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
+        if (existing) {
+            Object.keys(payload).forEach(function (k) { existing[k] = payload[k]; });
+            /* Re-run the vitals alert if the numbers changed materially. */
+            existing.vitalsAlerted = null;
+            if (status === STATUS.CONSULTING && !existing.calledAt) {
+                existing.calledAt = new Date().toISOString();
             }
-        });
-        document.getElementById('inputPhone').addEventListener('input', function(e) {
-            e.target.value = formatPhone(e.target.value);
-        });
+        } else {
+            payload.id = store.nextPatientId(patients);
+            payload.trackingId = store.generateTrackingId();
+            payload.registered = new Date().toISOString();
+            if (status === STATUS.CONSULTING) payload.calledAt = payload.registered;
+            patients.push(store.normalizePatient(payload));
+        }
 
-        // BP: only digits and slash
-        var bpInput = document.getElementById('inputBP');
-        if (bpInput) {
-            bpInput.addEventListener('keydown', function(e) {
-                if (e.key.length === 1 && !/[\d\/]/.test(e.key) && !e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                }
+        store.writePatients(patients);
+        patients = store.readPatients();
+
+        var saved = existing || patients[patients.length - 1];
+        var assessment = clinical.assess(saved.vitals);
+
+        ui.closeModal('patientModal');
+        render();
+
+        if (existing) {
+            window.MediTrackNotify.flash('Record updated', saved.name + ' saved.');
+        } else if (store.normalizeUrgency(saved.urgency) === store.URGENCY.EMERGENCY) {
+            window.MediTrackNotify.event('queue.emergency', {
+                key: 'emergency:' + saved.id,
+                title: 'Emergency Arrival',
+                message: saved.name + ' (' + saved.trackingId + ') registered as Emergency and placed at the front of the queue.'
+            });
+        } else {
+            window.MediTrackNotify.event('patient.registered', {
+                key: 'registered:' + saved.id,
+                title: 'Patient Registered',
+                message: saved.name + ' added as ' + store.normalizeUrgency(saved.urgency) +
+                         '. Tracking ID ' + saved.trackingId + '.'
             });
         }
 
-        document.getElementById('addPatientBtn').addEventListener('click', openModal);
-        document.getElementById('savePatientBtn').addEventListener('click', savePatient);
-        document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-        document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+        /* Abnormal baseline observations are a clinical event in their own right. */
+        if (assessment.flagged.length) {
+            var stamp = assessment.overall + ':' + assessment.flagged.length;
+            clinical.notifyVitals(saved.name, assessment, saved.id + ':' + stamp);
+            saved.vitalsAlerted = stamp;
+            store.writePatients(patients);
+        }
+    }
 
-        document.getElementById('closeDetailBtn').addEventListener('click', closeDetailModal);
-        document.getElementById('closeDetailBtn2').addEventListener('click', closeDetailModal);
-        document.getElementById('deleteFromDetailBtn').addEventListener('click', function() {
-            if (viewingPatient) openConfirmModal(viewingPatient.id);
+    /* ==================================================================
+       Detail
+       ================================================================== */
+    function openDetail(id) {
+        var p = store.findPatient(patients, id);
+        if (!p) return;
+        detailId = p.id;
+
+        setText('detailModalTitle', p.name);
+        setText('detailModalSub', p.trackingId + ' · registered ' + store.formatDateTime(p.registered));
+
+        var assessment = clinical.assess(p.vitals);
+        var b = store.bmi(p.vitals.weight, p.vitals.height);
+        var urgency = store.normalizeUrgency(p.urgency);
+
+        var vitalsBlock = assessment.results.length
+            ? '<div class="detail-vitals">' + assessment.results.map(function (r) {
+                var unit = r.key === 'bloodPressure' ? 'mmHg' : r.unit;
+                return '<div class="detail-vital level-' + r.level + '">' +
+                    '<span class="dv-label">' + esc(r.label) + '</span>' +
+                    '<span class="dv-value">' + esc(r.display) + '<small>' + esc(unit) + '</small></span>' +
+                    '<span class="dv-state">' + esc(r.levelLabel) + '</span>' +
+                    (r.range ? '<span class="dv-range">Normal ' + esc(r.range) + '</span>' : '') +
+                '</div>';
+              }).join('') + '</div>'
+            : '<div class="notice"><span class="ico" data-icon="info" data-icon-size="15"></span>' +
+              '<div><strong>No observations recorded</strong>Baseline vitals were not captured at registration.</div></div>';
+
+        var orders = [];
+        [['labOrders', 'Laboratory'], ['nurseOrders', 'Nursing'], ['prescriptions', 'Pharmacy']].forEach(function (pair) {
+            (p[pair[0]] || []).forEach(function (o) {
+                orders.push({
+                    dept: pair[1],
+                    title: o.test || o.task || o.medication || 'Order',
+                    status: o.status || (store.isOrderOpen(o) ? 'Outstanding' : 'Completed'),
+                    open: store.isOrderOpen(o),
+                    time: o.time
+                });
+            });
         });
 
-        document.getElementById('closeConfirmBtn').addEventListener('click', closeConfirmModal);
-        document.getElementById('cancelDeleteBtn').addEventListener('click', closeConfirmModal);
-        document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
+        byId('detailModalBody').innerHTML =
+            '<div class="detail-badges">' +
+                '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
+                '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                (assessment.flagged.length
+                    ? '<span class="badge ' + (assessment.overall === 'critical' ? 'status-critical' : 'status-awaiting') + '">' +
+                      esc(assessment.overallLabel) + ' vitals</span>'
+                    : '') +
+            '</div>' +
 
-        window.addEventListener('storage', function(e) {
-            if (e.key === STORAGE_KEY) { loadFromStorage(); renderCards(); }
+            '<dl class="detail-grid">' +
+                detailItem('Age', p.age === null ? '—' : p.age + ' years') +
+                detailItem('Sex', p.sex || '—') +
+                detailItem('Phone', p.phone || '—') +
+                detailItem('Tracking ID', p.trackingId) +
+                detailItem('BMI', b ? b.value + ' (' + b.category + ')' : '—') +
+                detailItem('Time in department', store.elapsed(p.registered, p.completedAt)) +
+            '</dl>' +
+
+            section('Presenting complaint', 'file-text',
+                '<p class="detail-text">' + esc(p.description || 'Not recorded.') + '</p>') +
+
+            section('Observations and interpretation', 'pulse', vitalsBlock) +
+
+            (assessment.flagged.length
+                ? section('Automatic findings', 'warning',
+                    '<ul class="detail-notes">' + assessment.flagged.map(function (f) {
+                        return '<li class="level-' + f.level + '"><strong>' + esc(f.label) + ':</strong> ' + esc(f.note) + '</li>';
+                    }).join('') + '</ul>')
+                : '') +
+
+            ((p.clinicalNotes || []).length
+                ? section('Clinical notes', 'edit',
+                    '<div class="history-list">' + p.clinicalNotes.slice().reverse().map(function (n) {
+                        return '<div class="history-item">' +
+                            '<div class="history-item-head">' +
+                                '<strong class="history-item-title">' + esc(n.diagnosis || 'Clinical note') + '</strong>' +
+                                '<span class="history-item-time">' + esc(store.formatDateTime(n.time)) + '</span>' +
+                            '</div>' +
+                            '<div class="history-item-body">' + esc(n.note) + '</div>' +
+                        '</div>';
+                    }).join('') + '</div>')
+                : '') +
+
+            (orders.length
+                ? section('Orders', 'layers',
+                    '<div class="history-list">' + orders.map(function (o) {
+                        return '<div class="history-item ' + (o.open ? 'is-open' : 'is-complete') + '">' +
+                            '<div class="history-item-head">' +
+                                '<strong class="history-item-title">' + esc(o.dept) + ': ' + esc(o.title) + '</strong>' +
+                                '<span class="badge ' + (o.open ? 'status-awaiting' : 'status-finished') + '">' + esc(o.status) + '</span>' +
+                            '</div>' +
+                            '<div class="history-item-head" style="margin-top:5px">' +
+                                '<span class="history-item-time">' + esc(store.formatDateTime(o.time)) + '</span>' +
+                            '</div>' +
+                        '</div>';
+                    }).join('') + '</div>')
+                : '');
+
+        var openBtn = byId('openConsultationBtn');
+        if (openBtn) openBtn.disabled = p.status === STATUS.FINISHED;
+
+        if (window.MediIcons) window.MediIcons.hydrate(byId('detailModalBody'));
+        ui.openModal('detailModal');
+    }
+
+    function detailItem(label, value) {
+        return '<div class="detail-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>';
+    }
+
+    function section(title, iconName, body) {
+        return '<section class="detail-section">' +
+            '<h4 class="detail-section-title">' +
+                '<span class="ico" data-icon="' + iconName + '" data-icon-size="14"></span>' +
+                '<span>' + esc(title) + '</span>' +
+            '</h4>' + body +
+        '</section>';
+    }
+
+    function deleteRecord() {
+        var p = store.findPatient(patients, detailId);
+        if (!p) return;
+
+        ui.confirmAction({
+            title: 'Delete patient record',
+            subtitle: p.name + ' · ' + p.trackingId,
+            message: 'This permanently removes the record, including clinical notes and order history. It cannot be undone.',
+            confirmLabel: 'Delete permanently',
+            tone: 'danger',
+            icon: 'trash'
+        }, function () {
+            patients = patients.filter(function (x) { return String(x.id) !== String(p.id); });
+            store.writePatients(patients);
+            patients = store.readPatients();
+            ui.closeModal('detailModal');
+            render();
+            window.MediTrackNotify.push(
+                'Record Deleted',
+                p.name + ' (' + p.trackingId + ') was removed from the registry.',
+                'warning', 'Patient', 'normal'
+            );
         });
     }
 
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
-})();
+    /* ==================================================================
+       Init
+       ================================================================== */
+    function init() {
+        patients = store.seedIfEmpty();
+        if (!patients.length) patients = store.readPatients();
+        render();
+
+        var addBtn = byId('addPatientBtn');
+        if (addBtn) addBtn.addEventListener('click', function () { openForm(null); });
+
+        var saveBtn = byId('savePatientBtn');
+        if (saveBtn) saveBtn.addEventListener('click', savePatient);
+
+        ui.initSelect('inputSexWrapper');
+        ui.initSelect('inputStatusWrapper');
+        ui.initSelect('inputUrgencyWrapper', function () { refreshReadout(); });
+
+        ui.initSelect('filterUrgencyWrapper', function (v) { urgencyFilter = v; render(); });
+        ui.initSelect('filterStatusWrapper', function (v) { statusFilter = v; render(); });
+        ui.initSelect('sortOrderWrapper', function (v) { sortOrder = v; render(); });
+
+        ui.bindLiveValidation(['inputName', 'inputAge', 'inputPhone', 'inputDesc']);
+
+        VITAL_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.addEventListener('input', refreshReadout);
+        });
+
+        var apply = byId('triageAdviceApply');
+        if (apply) {
+            apply.addEventListener('click', function () {
+                if (!suggestedUrgency) return;
+                ui.setSelectValue('inputUrgencyWrapper', suggestedUrgency, suggestedUrgency);
+                refreshReadout();
+            });
+        }
+
+        var search = byId('patientSearch');
+        var clear = byId('patientSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                render();
+            });
+        }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                render();
+            });
+        }
+
+        var reset = byId('resetFiltersBtn');
+        if (reset) {
+            reset.addEventListener('click', function () {
+                searchTerm = '';
+                urgencyFilter = '';
+                statusFilter = 'active';
+                sortOrder = 'reg_desc';
+                if (search) search.value = '';
+                if (clear) clear.classList.remove('visible');
+                ui.setSelectValue('filterUrgencyWrapper', '', 'All priorities');
+                ui.setSelectValue('filterStatusWrapper', 'active', 'Active visits');
+                ui.setSelectValue('sortOrderWrapper', 'reg_desc', 'Newest first');
+                render();
+            });
+        }
+
+        var del = byId('deleteFromDetailBtn');
+        if (del) del.addEventListener('click', deleteRecord);
+
+        var edit = byId('editFromDetailBtn');
+        if (edit) {
+            edit.addEventListener('click', function () {
+                var id = detailId;
+                ui.closeModal('detailModal');
+                setTimeout(function () { openForm(id); }, 180);
+            });
+        }
+
+        var consult = byId('openConsultationBtn');
+        if (consult) {
+            consult.addEventListener('click', function () {
+                if (detailId === null) return;
+                store.sessionSet('selected_tracking_patient_id', detailId);
+                ui.closeModal('detailModal');
+                store.navigate('pages/track.html');
+            });
+        }
+
+        store.onPatientsChanged(function () {
+            patients = store.readPatients();
+            render();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})(window, document);

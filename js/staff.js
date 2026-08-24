@@ -1,376 +1,451 @@
-/**
- * MediTrack Hospital ERP - Staff & User Management Logic
- * Manages role-based staff directory, admin password changes,
- * new member registration, and password reset request inbox.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Staff Directory
 
-(function() {
+   Personnel records only. This build has no backend, so it deliberately does
+   not pretend to manage credentials: storing passwords in localStorage would be
+   security theatre. Access requests are recorded for an administrator to action
+   through whatever real identity system is in place.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STAFF_KEY = 'clinic_staff_members';
-    var ADMIN_PW_KEY = 'clinic_admin_password';
-    var RESET_REQUESTS_KEY = 'clinic_admin_requests';
+    var store = window.MediStore;
+    var ui = window.MediUI;
 
-    var staffMembers = [];
-    var resetRequests = [];
+    var STAFF_KEY = 'clinic_staff_members';
+    var REQUESTS_KEY = 'clinic_admin_requests';
+
+    var staff = [];
+    var requests = [];
     var searchTerm = '';
     var roleFilter = '';
+    var editingId = null;
 
-    function loadStaff() {
-        try {
-            var raw = localStorage.getItem(STAFF_KEY);
-            staffMembers = raw ? JSON.parse(raw) : [];
-        } catch (e) { staffMembers = []; }
+    var ROLES = {
+        Admin:      { label: 'Administrator', icon: 'shield-check', duties: 'System configuration, staff records, oversight of all departments.' },
+        Doctor:     { label: 'Clinician',     icon: 'stethoscope',  duties: 'Consultation desk: examination, diagnosis, ordering diagnostics and prescribing.' },
+        Nurse:      { label: 'Nurse',         icon: 'nurse',        duties: 'Nurse station: bedside tasks, observations, medication administration.' },
+        Laboratory: { label: 'Laboratory',    icon: 'lab',          duties: 'Specimen analysis and release of results with classification.' },
+        Pharmacy:   { label: 'Pharmacy',      icon: 'pill',         duties: 'Verification, dispensing and counselling on prescriptions.' },
+        Registry:   { label: 'Reception',     icon: 'patients',     duties: 'Registration, triage observations and the calling queue.' }
+    };
 
-        if (staffMembers.length === 0) {
-            staffMembers = [
-                { id: 1, name: 'Dr. Sarah Chen', username: 'admin', email: 'admin@meditrack.hospital', phone: '0911 000 001', role: 'Admin', department: 'Hospital Administration', password: 'admin123', joined: new Date(Date.now() - 365*24*60*60*1000).toISOString() },
-                { id: 2, name: 'Dr. Abebe Kebede', username: 'abebe.k', email: 'abebe@meditrack.hospital', phone: '0912 345 678', role: 'Doctor', department: 'Internal Medicine', password: 'doctor123', joined: new Date(Date.now() - 180*24*60*60*1000).toISOString() },
-                { id: 3, name: 'Sr. Fatima Ali', username: 'fatima.a', email: 'fatima@meditrack.hospital', phone: '0913 456 789', role: 'Nurse', department: 'Emergency Ward', password: 'nurse123', joined: new Date(Date.now() - 120*24*60*60*1000).toISOString() },
-                { id: 4, name: 'Tech. Solomon Tadesse', username: 'solomon.t', email: 'solomon@meditrack.hospital', phone: '0914 567 890', role: 'Laboratory', department: 'Diagnostic Pathology', password: 'lab123', joined: new Date(Date.now() - 90*24*60*60*1000).toISOString() },
-                { id: 5, name: 'Pharm. Hana Getachew', username: 'hana.g', email: 'hana@meditrack.hospital', phone: '0915 678 901', role: 'Pharmacy', department: 'Hospital Pharmacy', password: 'pharm123', joined: new Date(Date.now() - 60*24*60*60*1000).toISOString() },
-                { id: 6, name: 'Meron Yilma', username: 'meron.y', email: 'meron@meditrack.hospital', phone: '0916 789 012', role: 'Registry', department: 'Patient Registration', password: 'registry123', joined: new Date(Date.now() - 30*24*60*60*1000).toISOString() }
-            ];
-            saveStaff();
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value;
+    }
+
+    function roleMeta(role) {
+        return ROLES[role] || { label: role || 'Unassigned', icon: 'user', duties: '' };
+    }
+
+    /* ==================================================================
+       Load
+       ================================================================== */
+    function load() {
+        staff = store.read(STAFF_KEY);
+        if (!staff.length) {
+            staff = seedStaff();
+            store.write(STAFF_KEY, staff);
+        }
+        requests = store.read(REQUESTS_KEY);
+        render();
+    }
+
+    function save() {
+        store.write(STAFF_KEY, staff);
+    }
+
+    function seedStaff() {
+        var daysAgo = function (d) { return new Date(Date.now() - d * 86400000).toISOString(); };
+        return [
+            { id: 1, name: 'Dr. Sarah Chen',        username: 'schen',    email: 'schen@hospital.example',   phone: '0911 000 001', role: 'Admin',      department: 'Hospital Administration', shift: 'Day',      joined: daysAgo(420) },
+            { id: 2, name: 'Dr. Abebe Kebede',      username: 'akebede',  email: 'akebede@hospital.example', phone: '0912 345 678', role: 'Doctor',     department: 'Internal Medicine',       shift: 'Day',      joined: daysAgo(180) },
+            { id: 3, name: 'Dr. Lelise Fikru',      username: 'lfikru',   email: 'lfikru@hospital.example',  phone: '0912 987 654', role: 'Doctor',     department: 'Emergency',               shift: 'Night',    joined: daysAgo(96) },
+            { id: 4, name: 'Sr. Fatima Ali',        username: 'fali',     email: 'fali@hospital.example',    phone: '0913 456 789', role: 'Nurse',      department: 'Emergency Ward',          shift: 'Rotating', joined: daysAgo(120) },
+            { id: 5, name: 'Solomon Tadesse',       username: 'stadesse', email: 'stadesse@hospital.example',phone: '0914 567 890', role: 'Laboratory', department: 'Diagnostic Pathology',    shift: 'Day',      joined: daysAgo(90) },
+            { id: 6, name: 'Hana Getachew',         username: 'hgetachew',email: 'hgetachew@hospital.example',phone: '0915 678 901',role: 'Pharmacy',   department: 'Dispensary',              shift: 'Day',      joined: daysAgo(60) },
+            { id: 7, name: 'Meron Yilma',           username: 'myilma',   email: 'myilma@hospital.example',  phone: '0916 789 012', role: 'Registry',   department: 'Patient Registration',    shift: 'Evening',  joined: daysAgo(30) }
+        ];
+    }
+
+    /* ==================================================================
+       Render
+       ================================================================== */
+    function render() {
+        setText('statStaffTotal', staff.length);
+        setText('tabDirectoryCount', staff.length);
+
+        var open = requests.filter(function (r) { return r.status !== 'Resolved'; }).length;
+        var reqCount = byId('tabRequestsCount');
+        if (reqCount) {
+            reqCount.textContent = open;
+            reqCount.classList.toggle('count-alert', open > 0);
         }
 
-        loadResetRequests();
-        updateCounts();
         renderDirectory();
-        renderResetRequests();
-    }
-
-    function saveStaff() {
-        localStorage.setItem(STAFF_KEY, JSON.stringify(staffMembers));
-    }
-
-    function loadResetRequests() {
-        try {
-            var raw = localStorage.getItem(RESET_REQUESTS_KEY);
-            resetRequests = raw ? JSON.parse(raw) : [];
-        } catch (e) { resetRequests = []; }
-    }
-
-    function saveResetRequests() {
-        localStorage.setItem(RESET_REQUESTS_KEY, JSON.stringify(resetRequests));
-    }
-
-    function updateCounts() {
-        var dirEl = document.getElementById('tabDirectoryCount');
-        var reqEl = document.getElementById('tabRequestsCount');
-        if (dirEl) dirEl.textContent = staffMembers.length;
-        if (reqEl) reqEl.textContent = resetRequests.filter(function(r) { return r.status !== 'Resolved'; }).length;
-    }
-
-    function formatDate(iso) {
-        if (!iso) return '-';
-        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function getRoleBadgeClass(role) {
-        var map = { Admin: 'role-admin', Doctor: 'role-doctor-badge', Nurse: 'role-nurse-badge', Laboratory: 'role-lab-badge', Pharmacy: 'role-pharmacy-badge', Registry: 'role-registry-badge' };
-        return map[role] || 'role-registry-badge';
-    }
-
-    function getAvatarClass(role) {
-        var map = { Admin: '', Doctor: 'role-doctor', Nurse: 'role-nurse', Laboratory: 'role-lab', Pharmacy: 'role-pharmacy', Registry: 'role-registry' };
-        return map[role] || '';
+        renderRoleCoverage();
+        renderRequests();
     }
 
     function renderDirectory() {
-        var grid = document.getElementById('staffCardGrid');
-        var noData = document.getElementById('noStaffData');
-        if (!grid) return;
+        var host = byId('staffCardGrid');
+        if (!host) return;
 
-        var filtered = staffMembers.filter(function(s) {
-            var matchesRole = !roleFilter || s.role === roleFilter;
-            var matchesSearch = true;
-            if (searchTerm) {
-                var q = searchTerm.toLowerCase();
-                matchesSearch = (s.name && s.name.toLowerCase().includes(q)) ||
-                                (s.username && s.username.toLowerCase().includes(q)) ||
-                                (s.email && s.email.toLowerCase().includes(q)) ||
-                                (s.role && s.role.toLowerCase().includes(q));
-            }
-            return matchesRole && matchesSearch;
+        var rows = staff.filter(function (s) {
+            if (roleFilter && s.role !== roleFilter) return false;
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return [s.name, s.username, s.email, s.department, roleMeta(s.role).label].some(function (f) {
+                return String(f || '').toLowerCase().indexOf(q) !== -1;
+            });
         });
 
-        if (filtered.length === 0) {
-            grid.innerHTML = '';
-            if (noData) noData.style.display = 'block';
+        rows.sort(function (a, b) {
+            /* Administrators first, then alphabetical within a role. */
+            var d = (a.role === 'Admin' ? 0 : 1) - (b.role === 'Admin' ? 0 : 1);
+            if (d !== 0) return d;
+            return String(a.name).localeCompare(String(b.name));
+        });
+
+        if (!rows.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'search',
+                title: 'No staff match these filters',
+                text: 'Clear the search or role filter to see the full directory.'
+            });
             return;
         }
-        if (noData) noData.style.display = 'none';
 
-        grid.innerHTML = filtered.map(function(s) {
-            var initials = s.name ? s.name.split(' ').map(function(n) { return n[0]; }).join('').substring(0, 2).toUpperCase() : 'ST';
+        host.innerHTML = rows.map(function (s) {
+            var meta = roleMeta(s.role);
+            return '<article class="staff-card role-' + esc(String(s.role).toLowerCase()) + '">' +
+                '<header class="stc-head">' +
+                    '<span class="stc-avatar">' + esc(store.initials(s.name)) + '</span>' +
+                    '<div class="stc-identity">' +
+                        '<span class="stc-name">' + esc(s.name) + '</span>' +
+                        '<span class="stc-username mono">@' + esc(s.username) + '</span>' +
+                    '</div>' +
+                    '<span class="stc-role">' + icon(meta.icon, 13) + '<span>' + esc(meta.label) + '</span></span>' +
+                '</header>' +
 
-            return '<div class="staff-card">' +
-                '<div class="scard-top">' +
-                    '<div class="scard-avatar ' + getAvatarClass(s.role) + '">' + initials + '</div>' +
-                    '<div class="scard-info">' +
-                        '<h4 class="scard-name">' + s.name + '</h4>' +
-                        '<span class="scard-username">@' + s.username + '</span>' +
-                    '</div>' +
-                    '<span class="role-badge ' + getRoleBadgeClass(s.role) + '">' + s.role + '</span>' +
-                '</div>' +
+                '<dl class="stc-details">' +
+                    row('Department', s.department || '—') +
+                    row('Shift', s.shift || '—') +
+                    row('Email', s.email || '—') +
+                    row('Phone', s.phone || '—') +
+                '</dl>' +
 
-                '<div class="scard-details">' +
-                    '<div class="scard-detail">' +
-                        '<span class="scard-dlabel">Email</span>' +
-                        '<span class="scard-dval">' + s.email + '</span>' +
+                '<footer class="stc-foot">' +
+                    '<span class="stc-joined">Joined ' + esc(store.formatDate(s.joined)) + '</span>' +
+                    '<div class="stc-actions">' +
+                        '<button type="button" class="btn-icon" data-edit="' + esc(s.id) + '" title="Edit member" aria-label="Edit member">' +
+                            icon('edit', 15) +
+                        '</button>' +
+                        (s.role === 'Admin'
+                            ? '<span class="stc-locked">' + icon('lock', 13) + '<span>Protected</span></span>'
+                            : '<button type="button" class="btn-icon" data-remove="' + esc(s.id) + '" title="Remove member" aria-label="Remove member">' +
+                                icon('trash', 15) +
+                              '</button>') +
                     '</div>' +
-                    '<div class="scard-detail">' +
-                        '<span class="scard-dlabel">Phone</span>' +
-                        '<span class="scard-dval">' + (s.phone || '-') + '</span>' +
-                    '</div>' +
-                    '<div class="scard-detail">' +
-                        '<span class="scard-dlabel">Department</span>' +
-                        '<span class="scard-dval">' + (s.department || '-') + '</span>' +
-                    '</div>' +
-                    '<div class="scard-detail">' +
-                        '<span class="scard-dlabel">Status</span>' +
-                        '<span class="scard-dval" style="color:#10B981;">Active</span>' +
-                    '</div>' +
-                '</div>' +
-
-                '<div class="scard-footer">' +
-                    '<span class="scard-joined">Joined: ' + formatDate(s.joined) + '</span>' +
-                    (s.role !== 'Admin' ?
-                        '<button type="button" class="btn-staff-action btn-staff-remove" data-id="' + s.id + '">Remove</button>'
-                        : '<span style="font-size:11px;color:var(--gray-muted);">Primary Admin</span>'
-                    ) +
-                '</div>' +
-            '</div>';
+                '</footer>' +
+            '</article>';
         }).join('');
 
-        grid.querySelectorAll('.btn-staff-remove').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                if (confirm('Remove this staff member from the system?')) {
-                    staffMembers = staffMembers.filter(function(s) { return s.id !== id; });
-                    saveStaff();
-                    updateCounts();
-                    renderDirectory();
-                    if (window.MediTrackNotify) {
-                        window.MediTrackNotify.push('Staff Removed', 'Staff member has been removed from the hospital directory.', 'warning', 'Settings');
-                    }
-                }
-            });
+        ui.qsa('[data-edit]', host).forEach(function (b) {
+            b.addEventListener('click', function () { openForm(b.getAttribute('data-edit')); });
+        });
+        ui.qsa('[data-remove]', host).forEach(function (b) {
+            b.addEventListener('click', function () { removeMember(b.getAttribute('data-remove')); });
         });
     }
 
-    function renderResetRequests() {
-        var container = document.getElementById('requestsList');
-        var noData = document.getElementById('noRequestsData');
-        if (!container) return;
+    function row(label, value) {
+        return '<div class="stc-row"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>';
+    }
 
-        if (resetRequests.length === 0) {
-            container.innerHTML = '';
-            if (noData) noData.style.display = 'block';
+    /* Coverage highlights departments that have nobody assigned. */
+    function renderRoleCoverage() {
+        var host = byId('roleCoverageGrid');
+        if (!host) return;
+
+        host.innerHTML = Object.keys(ROLES).map(function (key) {
+            var meta = ROLES[key];
+            var members = staff.filter(function (s) { return s.role === key; });
+            var shifts = {};
+            members.forEach(function (m) { shifts[m.shift || 'Unspecified'] = (shifts[m.shift || 'Unspecified'] || 0) + 1; });
+
+            return '<article class="role-card' + (members.length ? '' : ' is-uncovered') + '">' +
+                '<header class="rlc-head">' +
+                    '<span class="rlc-icon">' + icon(meta.icon, 16) + '</span>' +
+                    '<div>' +
+                        '<span class="rlc-name">' + esc(meta.label) + '</span>' +
+                        '<span class="rlc-count">' + members.length +
+                            (members.length === 1 ? ' member' : ' members') + '</span>' +
+                    '</div>' +
+                '</header>' +
+                '<p class="rlc-duties">' + esc(meta.duties) + '</p>' +
+                (members.length
+                    ? '<div class="rlc-shifts">' + Object.keys(shifts).map(function (s) {
+                        return '<span class="tag">' + esc(s) + ' · ' + shifts[s] + '</span>';
+                      }).join('') + '</div>'
+                    : '<div class="rlc-warn">' + icon('warning', 13) +
+                      '<span>No one is assigned to this role.</span></div>') +
+            '</article>';
+        }).join('');
+    }
+
+    function renderRequests() {
+        var host = byId('requestsList');
+        if (!host) return;
+
+        if (!requests.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'lock',
+                title: 'No access requests',
+                text: 'Requests raised from the sign-in screen appear here for an administrator to action.'
+            });
             return;
         }
-        if (noData) noData.style.display = 'none';
 
-        container.innerHTML = resetRequests.map(function(req) {
-            var isResolved = req.status === 'Resolved';
-            return '<div class="request-card' + (isResolved ? ' resolved' : '') + '">' +
-                '<div class="req-info">' +
-                    '<strong class="req-name">' + (req.name || 'Unknown User') + '</strong>' +
-                    '<span class="req-detail">' + (req.message || 'Password reset requested via login page') + '</span>' +
-                    '<span class="req-time">' + formatDate(req.time) + '</span>' +
+        var sorted = requests.slice().sort(function (a, b) {
+            var d = (a.status === 'Resolved' ? 1 : 0) - (b.status === 'Resolved' ? 1 : 0);
+            if (d !== 0) return d;
+            return new Date(b.time) - new Date(a.time);
+        });
+
+        host.innerHTML = sorted.map(function (r) {
+            var resolved = r.status === 'Resolved';
+            return '<article class="request' + (resolved ? ' is-resolved' : '') + '">' +
+                '<div class="req-body">' +
+                    '<span class="req-name">' + esc(r.name || 'Unknown user') + '</span>' +
+                    '<span class="req-text">' + esc(r.message || 'Access assistance requested.') + '</span>' +
+                    '<span class="req-time">' + esc(store.formatDateTime(r.time)) + '</span>' +
                 '</div>' +
                 '<div class="req-actions">' +
-                    (!isResolved ?
-                        '<button type="button" class="btn-resolve" data-id="' + req.id + '">Mark Resolved</button>' +
-                        '<button type="button" class="btn-dismiss-req" data-id="' + req.id + '">Dismiss</button>'
-                        : '<span style="font-size:12px;color:#10B981;font-weight:600;">✓ Resolved</span>'
-                    ) +
+                    (resolved
+                        ? '<span class="badge status-finished">' + icon('check', 12) + '<span>Resolved</span></span>'
+                        : '<button type="button" class="btn-secondary btn-sm" data-resolve="' + esc(r.id) + '">' +
+                            icon('check', 14) + '<span>Mark resolved</span>' +
+                          '</button>') +
+                    '<button type="button" class="btn-icon" data-dismiss="' + esc(r.id) + '" title="Dismiss request" aria-label="Dismiss request">' +
+                        icon('trash', 15) +
+                    '</button>' +
                 '</div>' +
-            '</div>';
+            '</article>';
         }).join('');
 
-        container.querySelectorAll('.btn-resolve').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                var req = resetRequests.find(function(r) { return r.id === id; });
-                if (req) { req.status = 'Resolved'; saveResetRequests(); updateCounts(); renderResetRequests(); }
+        ui.qsa('[data-resolve]', host).forEach(function (b) {
+            b.addEventListener('click', function () {
+                var id = b.getAttribute('data-resolve');
+                requests.forEach(function (r) {
+                    if (String(r.id) === String(id)) {
+                        r.status = 'Resolved';
+                        r.resolvedAt = new Date().toISOString();
+                    }
+                });
+                store.write(REQUESTS_KEY, requests);
+                render();
             });
         });
 
-        container.querySelectorAll('.btn-dismiss-req').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = parseInt(this.getAttribute('data-id'), 10);
-                resetRequests = resetRequests.filter(function(r) { return r.id !== id; });
-                saveResetRequests();
-                updateCounts();
-                renderResetRequests();
+        ui.qsa('[data-dismiss]', host).forEach(function (b) {
+            b.addEventListener('click', function () {
+                var id = b.getAttribute('data-dismiss');
+                requests = requests.filter(function (r) { return String(r.id) !== String(id); });
+                store.write(REQUESTS_KEY, requests);
+                render();
             });
         });
     }
 
-    function changePassword() {
-        var currentPw = document.getElementById('inputCurrentPw').value.trim();
-        var newPw = document.getElementById('inputNewPw').value.trim();
-        var confirmPw = document.getElementById('inputConfirmPw').value.trim();
-
-        var storedPw = localStorage.getItem(ADMIN_PW_KEY) || 'admin123';
-        var admin = staffMembers.find(function(s) { return s.role === 'Admin'; });
-
-        if (currentPw !== storedPw && (!admin || currentPw !== admin.password)) {
-            alert('Current password is incorrect.');
-            return;
-        }
-        if (newPw.length < 6) {
-            alert('New password must be at least 6 characters.');
-            return;
-        }
-        if (newPw !== confirmPw) {
-            alert('New password and confirmation do not match.');
-            return;
+    /* ==================================================================
+       Add / edit
+       ================================================================== */
+    function openForm(id) {
+        editingId = id === undefined || id === null ? null : id;
+        var member = null;
+        if (editingId !== null) {
+            staff.forEach(function (s) { if (String(s.id) === String(editingId)) member = s; });
+            if (!member) return;
         }
 
-        localStorage.setItem(ADMIN_PW_KEY, newPw);
-        if (admin) { admin.password = newPw; saveStaff(); }
+        setText('memberModalTitle', member ? 'Edit staff member' : 'Add staff member');
+        setText('memberModalSub', member ? '@' + member.username : 'Personnel record and role assignment');
+        setText('saveMemberLabel', member ? 'Save changes' : 'Add member');
 
-        document.getElementById('inputCurrentPw').value = '';
-        document.getElementById('inputNewPw').value = '';
-        document.getElementById('inputConfirmPw').value = '';
+        ['inputStaffName', 'inputStaffUsername', 'inputStaffEmail', 'inputStaffPhone', 'inputStaffDept'].forEach(function (f) {
+            byId(f).value = '';
+            ui.clearFieldError(f);
+        });
 
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push('Password Updated', 'Administrator password has been changed successfully.', 'success', 'Settings');
+        if (member) {
+            byId('inputStaffName').value = member.name || '';
+            byId('inputStaffUsername').value = member.username || '';
+            byId('inputStaffEmail').value = member.email || '';
+            byId('inputStaffPhone').value = member.phone || '';
+            byId('inputStaffDept').value = member.department || '';
+            ui.setSelectValue('inputRoleWrapper', member.role, roleMeta(member.role).label);
+            ui.setSelectValue('inputShiftWrapper', member.shift || 'Day', member.shift || 'Day');
+        } else {
+            ui.setSelectValue('inputRoleWrapper', 'Doctor', 'Clinician');
+            ui.setSelectValue('inputShiftWrapper', 'Day', 'Day');
         }
-        alert('Password updated successfully.');
+
+        ui.openModal('memberModal');
     }
 
-    function addNewMember() {
-        var name = document.getElementById('inputStaffName').value.trim();
-        var username = document.getElementById('inputStaffUsername').value.trim();
-        var email = document.getElementById('inputStaffEmail').value.trim();
-        var phone = document.getElementById('inputStaffPhone').value.trim();
-        var roleToggle = document.querySelector('#inputRoleWrapper .cs-toggle');
-        var role = roleToggle ? roleToggle.getAttribute('data-value') : 'Doctor';
-        var dept = document.getElementById('inputStaffDept').value.trim();
-        var password = document.getElementById('inputStaffPassword').value.trim();
+    function saveMember() {
+        var ok = ui.requireFields([
+            { id: 'inputStaffName', message: 'Enter the member\u2019s full name.' },
+            {
+                id: 'inputStaffUsername',
+                message: 'Usernames must be at least 3 characters, letters, numbers, dot or hyphen only.',
+                test: function (v) { return /^[a-zA-Z0-9.\-_]{3,}$/.test(v); }
+            },
+            {
+                id: 'inputStaffEmail',
+                message: 'Enter a valid email address.',
+                test: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+            }
+        ]);
+        if (!ok) return;
 
-        if (!name || !username || !email || !password) {
-            alert('Please fill in all required fields (Name, Username, Email, Password).');
+        var username = byId('inputStaffUsername').value.trim();
+        var clash = staff.some(function (s) {
+            return s.username === username && String(s.id) !== String(editingId);
+        });
+        if (clash) {
+            ui.fieldError('inputStaffUsername', 'That username is already in the directory.');
             return;
         }
 
-        if (staffMembers.some(function(s) { return s.username === username; })) {
-            alert('Username "' + username + '" is already taken. Choose a different one.');
-            return;
-        }
-
-        var newId = staffMembers.length > 0 ? Math.max.apply(null, staffMembers.map(function(s) { return s.id; })) + 1 : 1;
-
-        staffMembers.push({
-            id: newId,
-            name: name,
+        var payload = {
+            name: byId('inputStaffName').value.trim(),
             username: username,
-            email: email,
-            phone: phone,
-            role: role,
-            department: dept,
-            password: password,
-            joined: new Date().toISOString()
-        });
+            email: byId('inputStaffEmail').value.trim(),
+            phone: byId('inputStaffPhone').value.trim(),
+            role: ui.getSelectValue('inputRoleWrapper') || 'Doctor',
+            department: byId('inputStaffDept').value.trim(),
+            shift: ui.getSelectValue('inputShiftWrapper') || 'Day'
+        };
 
-        saveStaff();
-        updateCounts();
-        renderDirectory();
-        closeAddModal();
+        var existing = null;
+        staff.forEach(function (s) { if (String(s.id) === String(editingId)) existing = s; });
 
-        if (window.MediTrackNotify) {
-            window.MediTrackNotify.push('Staff Member Added', name + ' (' + role + ') registered in MediTrack ERP.', 'success', 'Settings');
-        }
-    }
-
-    function openAddModal() {
-        document.getElementById('addMemberModal').classList.add('active');
-    }
-
-    function closeAddModal() {
-        document.getElementById('addMemberModal').classList.remove('active');
-        ['inputStaffName', 'inputStaffUsername', 'inputStaffEmail', 'inputStaffPhone', 'inputStaffDept', 'inputStaffPassword'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-    }
-
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
-
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) { if (el !== wrapper) el.classList.remove('active'); });
-            wrapper.classList.toggle('active');
-        });
-
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                toggle.querySelector('.cs-text').textContent = this.textContent;
-                toggle.setAttribute('data-value', this.getAttribute('data-value'));
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-                wrapper.classList.remove('active');
-                if (callback) callback(this.getAttribute('data-value'));
+        if (existing) {
+            Object.keys(payload).forEach(function (k) { existing[k] = payload[k]; });
+        } else {
+            var maxId = 0;
+            staff.forEach(function (s) {
+                var n = store.toNumber(s.id);
+                if (n !== null && n > maxId) maxId = n;
             });
+            payload.id = maxId + 1;
+            payload.joined = new Date().toISOString();
+            staff.push(payload);
+        }
+
+        save();
+        ui.closeModal('memberModal');
+        render();
+
+        window.MediTrackNotify.flash(
+            existing ? 'Member updated' : 'Member added',
+            payload.name + ' · ' + roleMeta(payload.role).label
+        );
+    }
+
+    function removeMember(id) {
+        var member = null;
+        staff.forEach(function (s) { if (String(s.id) === String(id)) member = s; });
+        if (!member) return;
+
+        ui.confirmAction({
+            title: 'Remove staff member',
+            subtitle: member.name + ' · ' + roleMeta(member.role).label,
+            message: 'This removes the personnel record from the directory. Work already recorded against this member is retained on the patient records.',
+            confirmLabel: 'Remove member',
+            tone: 'danger',
+            icon: 'trash'
+        }, function () {
+            staff = staff.filter(function (s) { return String(s.id) !== String(id); });
+            save();
+            render();
+            window.MediTrackNotify.push(
+                'Staff Member Removed',
+                member.name + ' was removed from the directory.',
+                'warning', 'Staff', 'normal'
+            );
         });
     }
 
+    /* ==================================================================
+       Init
+       ================================================================== */
     function init() {
-        loadStaff();
+        load();
 
-        // Tabs
-        document.querySelectorAll('.staff-tab-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.staff-tab-btn').forEach(function(b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                var tab = this.getAttribute('data-tab');
-                document.querySelectorAll('.staff-tab-panel').forEach(function(p) { p.classList.remove('active'); });
-                var panelMap = { directory: 'panelDirectory', security: 'panelSecurity', requests: 'panelRequests' };
-                var panel = document.getElementById(panelMap[tab]);
-                if (panel) panel.classList.add('active');
+        ui.initTabs({
+            buttonSelector: '[data-stafftab]',
+            panelSelector: '.tab-panel',
+            attribute: 'data-stafftab'
+        });
+
+        ui.initSelect('filterRoleWrapper', function (v) { roleFilter = v; renderDirectory(); });
+        ui.initSelect('inputRoleWrapper');
+        ui.initSelect('inputShiftWrapper');
+        ui.bindLiveValidation(['inputStaffName', 'inputStaffUsername', 'inputStaffEmail']);
+
+        var add = byId('btnAddMember');
+        if (add) add.addEventListener('click', function () { openForm(null); });
+
+        var saveBtn = byId('saveMemberBtn');
+        if (saveBtn) saveBtn.addEventListener('click', saveMember);
+
+        var search = byId('staffSearch');
+        var clear = byId('staffSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                renderDirectory();
             });
-        });
-
-        // Filters
-        initCustomSelect('filterRoleWrapper', function(val) { roleFilter = val; renderDirectory(); });
-        initCustomSelect('inputRoleWrapper');
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) { el.classList.remove('active'); });
-        });
-
-        var searchInput = document.getElementById('staffSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', function() { searchTerm = this.value; renderDirectory(); });
+        }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                renderDirectory();
+            });
         }
 
-        // Add Member
-        document.getElementById('btnAddMember').addEventListener('click', openAddModal);
-        document.getElementById('closeAddModalBtn').addEventListener('click', closeAddModal);
-        document.getElementById('cancelAddMemberBtn').addEventListener('click', closeAddModal);
-        document.getElementById('saveNewMemberBtn').addEventListener('click', addNewMember);
+        var reset = byId('resetStaffFiltersBtn');
+        if (reset) {
+            reset.addEventListener('click', function () {
+                searchTerm = '';
+                roleFilter = '';
+                if (search) search.value = '';
+                if (clear) clear.classList.remove('visible');
+                ui.setSelectValue('filterRoleWrapper', '', 'All roles');
+                renderDirectory();
+            });
+        }
 
-        // Change Password
-        document.getElementById('btnChangePw').addEventListener('click', changePassword);
-
-        // Modal backdrop click
-        document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
-            overlay.addEventListener('click', function(e) { if (e.target === overlay) closeAddModal(); });
-        });
-
-        window.addEventListener('storage', function(e) {
-            if (e.key === STAFF_KEY || e.key === RESET_REQUESTS_KEY) { loadStaff(); }
+        window.addEventListener('storage', function (e) {
+            if (!e.key || e.key === STAFF_KEY || e.key === REQUESTS_KEY) load();
         });
     }
 
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
-})();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})(window, document);

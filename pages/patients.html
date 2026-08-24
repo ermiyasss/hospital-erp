@@ -3,197 +3,340 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patients Registry</title>
+    <title>Patient Registry · MediTrack</title>
+    <script src="../js/theme.js"></script>
     <link rel="stylesheet" href="../css/variables.css">
-    <link rel="stylesheet" href="../css/patients.css">
+    <link rel="stylesheet" href="../css/components.css">
     <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/patients.css">
 </head>
 <body>
-    <div class="patients-page">
-        <div class="patients-header">
-            <div>
-                <h2>Patients Registry</h2>
-                <p class="subtitle">Record demographics, vital signs, urgency classification, and medical conditions</p>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Patient Registry</h1>
+            <p>Register arrivals, record baseline observations and assign a triage priority. Observations are checked against adult reference ranges as they are entered.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="patients" data-icon-size="15"></span>
+                <span>On file <strong id="statTotal">0</strong></span>
             </div>
-            <button class="btn-primary" id="addPatientBtn">
-                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                <span>Add Patient</span>
+            <div class="meta-pill">
+                <span class="ico" data-icon="queue" data-icon-size="15"></span>
+                <span>Active <strong id="statActive">0</strong></span>
+            </div>
+            <button type="button" class="btn-primary" id="addPatientBtn">
+                <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                <span>Register patient</span>
             </button>
         </div>
+    </header>
 
-        <div class="patients-toolbar">
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="patientSearch" placeholder="Search by patient name, phone, or tracking ID...">
-            </div>
-            <div class="filters-wrapper">
-                <div class="custom-select" id="filterUrgencyWrapper">
-                    <div class="cs-toggle" data-value="">
-                        <span class="cs-text">All Urgencies</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                    </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="">All Urgencies</li>
-                        <li class="cs-option" data-value="Urgent">Urgent</li>
-                        <li class="cs-option" data-value="Non-Urgent">Non-Urgent</li>
-                    </ul>
-                </div>
-
-                <div class="custom-select" id="sortOrderWrapper">
-                    <div class="cs-toggle" data-value="default">
-                        <span class="cs-text">Sort: Default</span>
-                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                    </div>
-                    <ul class="cs-menu">
-                        <li class="cs-option selected" data-value="default">Default</li>
-                        <li class="cs-option" data-value="age_asc">Age (Young to Old)</li>
-                        <li class="cs-option" data-value="age_desc">Age (Old to Young)</li>
-                        <li class="cs-option" data-value="alpha_asc">Name (A-Z)</li>
-                        <li class="cs-option" data-value="alpha_desc">Name (Z-A)</li>
-                        <li class="cs-option" data-value="reg_desc">Newest Registered</li>
-                        <li class="cs-option" data-value="reg_asc">Oldest Registered</li>
-                    </ul>
-                </div>
-            </div>
+    <!-- Toolbar --------------------------------------------------------- -->
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="patientSearch" placeholder="Search name, phone or tracking ID" aria-label="Search patients">
+            <button type="button" class="search-clear" id="patientSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
         </div>
-
-        <!-- Card Grid (replaces table) -->
-        <div class="patients-card-grid" id="patientsCardGrid">
-            <!-- Populated dynamically -->
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterUrgencyWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All priorities</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All priorities</li>
+                    <li class="cs-option" data-value="Emergency">Emergency</li>
+                    <li class="cs-option" data-value="Urgent">Urgent</li>
+                    <li class="cs-option" data-value="Routine">Routine</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="filterStatusWrapper">
+                <button type="button" class="cs-toggle" data-value="active">
+                    <span class="cs-text">Active visits</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="active" data-label="Active visits">Active visits</li>
+                    <li class="cs-option" data-value="Pending" data-label="Waiting">Waiting</li>
+                    <li class="cs-option" data-value="In Consultation" data-label="In consultation">In consultation</li>
+                    <li class="cs-option" data-value="Awaiting Results" data-label="Awaiting results">Awaiting results</li>
+                    <li class="cs-option" data-value="Finished" data-label="Completed">Completed</li>
+                    <li class="cs-option" data-value="all" data-label="All records">All records</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="sortOrderWrapper">
+                <button type="button" class="cs-toggle" data-value="reg_desc">
+                    <span class="cs-text">Newest first</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="reg_desc" data-label="Newest first">Newest first</li>
+                    <li class="cs-option" data-value="reg_asc" data-label="Oldest first">Oldest first</li>
+                    <li class="cs-option" data-value="name_asc" data-label="Name A–Z">Name A–Z</li>
+                    <li class="cs-option" data-value="age_desc" data-label="Age, oldest">Age, oldest first</li>
+                    <li class="cs-option" data-value="age_asc" data-label="Age, youngest">Age, youngest first</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
         </div>
-        <div id="noPatients" class="no-data" style="display: none;">No active patients found in registry.</div>
     </div>
 
-    <!-- ADD PATIENT MODAL -->
-    <div class="modal-overlay" id="patientModal">
-        <div class="modal-box">
-            <div class="modal-header">
-                <div>
-                    <h3>Register New Patient</h3>
-                    <p class="modal-subtitle">Enter demographics, initial vital signs, and triage priority</p>
+    <div class="card-grid" id="patientsCardGrid"></div>
+
+    <!-- ==================================================================
+         Register / edit patient
+         ================================================================== -->
+    <div class="modal-overlay" id="patientModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="patientModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="patients" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="patientModalTitle">Register patient</h3>
+                    <span id="patientModalSub">Demographics, baseline observations and triage priority</span>
                 </div>
-                <button class="modal-close" id="closeModalBtn">&times;</button>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
             </div>
+
             <div class="modal-body">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Full Name *</label>
-                        <input type="text" id="inputName" placeholder="e.g. John Doe">
-                        <span class="form-error" id="errName"></span>
-                    </div>
-                    <div class="form-group" style="max-width: 120px;">
-                        <label>Age *</label>
-                        <input type="number" id="inputAge" placeholder="e.g. 34">
-                        <span class="form-error" id="errAge"></span>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Phone Number *</label>
-                        <input type="tel" id="inputPhone" inputmode="numeric" placeholder="09XX XXX XXX">
-                        <span class="form-error" id="errPhone"></span>
-                    </div>
-                    <div class="form-group">
-                        <label>Weight (kg)</label>
-                        <input type="number" id="inputWeight" placeholder="e.g. 70">
-                    </div>
-                    <div class="form-group">
-                        <label>Height (cm)</label>
-                        <input type="number" id="inputHeight" placeholder="e.g. 175">
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Blood Pressure (mmHg)</label>
-                        <input type="text" id="inputBP" inputmode="numeric" placeholder="e.g. 120/80">
-                        <span class="form-hint">Systolic / Diastolic</span>
-                    </div>
-                    <div class="form-group">
-                        <label>Heart Rate (bpm)</label>
-                        <input type="number" id="inputHR" placeholder="e.g. 72">
-                        <span class="form-hint">Beats per minute</span>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Triage Urgency *</label>
-                        <div class="custom-select" id="inputUrgencyWrapper">
-                            <div class="cs-toggle" data-value="Non-Urgent">
-                                <span class="cs-text">Non-Urgent</span>
-                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="user" data-icon-size="14"></span>
+                        <span>Demographics</span>
+                    </h4>
+                    <div class="form-row">
+                        <div class="form-group form-group-grow">
+                            <label for="inputName">Full name <span class="req">*</span></label>
+                            <input type="text" id="inputName" placeholder="Family name and given name" data-autofocus>
+                        </div>
+                        <div class="form-group form-group-narrow">
+                            <label for="inputAge">Age <span class="req">*</span></label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputAge" min="0" max="130" placeholder="34">
+                                <span class="unit">years</span>
                             </div>
-                            <ul class="cs-menu">
-                                <li class="cs-option" data-value="Urgent">Urgent</li>
-                                <li class="cs-option selected" data-value="Non-Urgent">Non-Urgent</li>
-                            </ul>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Status</label>
-                        <div class="custom-select" id="inputStatusWrapper">
-                            <div class="cs-toggle" data-value="Pending">
-                                <span class="cs-text">Pending</span>
-                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Sex</label>
+                            <div class="custom-select" id="inputSexWrapper">
+                                <button type="button" class="cs-toggle" data-value="">
+                                    <span class="cs-text">Not stated</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option selected" data-value="">Not stated</li>
+                                    <li class="cs-option" data-value="Female">Female</li>
+                                    <li class="cs-option" data-value="Male">Male</li>
+                                </ul>
                             </div>
-                            <ul class="cs-menu">
-                                <li class="cs-option selected" data-value="Pending">Pending</li>
-                                <li class="cs-option" data-value="In Treatment">In Treatment</li>
-                            </ul>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputPhone">Phone <span class="req">*</span></label>
+                            <input type="tel" id="inputPhone" inputmode="tel" placeholder="09XX XXX XXX">
+                            <span class="field-hint">Used to link previous visits</span>
                         </div>
                     </div>
+                </section>
+
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="pulse" data-icon-size="14"></span>
+                        <span>Baseline observations</span>
+                    </h4>
+                    <div class="vitals-entry-grid">
+                        <div class="form-group">
+                            <label for="inputSystolic">Systolic BP</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputSystolic" min="40" max="300" placeholder="120">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputDiastolic">Diastolic BP</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputDiastolic" min="20" max="200" placeholder="80">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputPulse">Heart rate</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputPulse" min="20" max="260" placeholder="72">
+                                <span class="unit">bpm</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputTemp">Temperature</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputTemp" step="0.1" min="30" max="45" placeholder="36.8">
+                                <span class="unit">&deg;C</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputSpo2">SpO&#8322;</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputSpo2" min="50" max="100" placeholder="98">
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputRespRate">Respiratory rate</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputRespRate" min="4" max="80" placeholder="16">
+                                <span class="unit">/min</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputGlucose">Blood glucose</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputGlucose" min="10" max="900" placeholder="95">
+                                <span class="unit">mg/dL</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputWeight">Weight</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputWeight" step="0.1" min="1" max="400" placeholder="70">
+                                <span class="unit">kg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputHeight">Height</label>
+                            <div class="input-suffix">
+                                <input type="number" id="inputHeight" step="0.1" min="30" max="250" placeholder="175">
+                                <span class="unit">cm</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Automatic interpretation of what has been typed -->
+                    <div class="vitals-readout" id="vitalsReadout">
+                        <div class="notice">
+                            <span class="ico" data-icon="info" data-icon-size="15"></span>
+                            <div>
+                                <strong>Automatic interpretation</strong>
+                                Enter observations above and each value is checked against adult reference ranges.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="clipboard" data-icon-size="14"></span>
+                        <span>Triage</span>
+                    </h4>
+                    <div class="form-group">
+                        <label for="inputDesc">Presenting complaint <span class="req">*</span></label>
+                        <textarea id="inputDesc" rows="3" placeholder="What the patient reports, in their own words where possible, including duration."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Triage priority <span class="req">*</span></label>
+                            <div class="custom-select" id="inputUrgencyWrapper">
+                                <button type="button" class="cs-toggle" data-value="Routine">
+                                    <span class="cs-text">Routine</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option" data-value="Emergency" data-label="Emergency">Emergency — see immediately</li>
+                                    <li class="cs-option" data-value="Urgent" data-label="Urgent">Urgent — see soon</li>
+                                    <li class="cs-option selected" data-value="Routine" data-label="Routine">Routine — standard queue</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Initial status</label>
+                            <div class="custom-select" id="inputStatusWrapper">
+                                <button type="button" class="cs-toggle" data-value="Awaiting Payment">
+                                    <span class="cs-text">Awaiting payment</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option selected" data-value="Awaiting Payment" data-label="Awaiting payment">Awaiting payment</li>
+                                    <li class="cs-option" data-value="Pending" data-label="Waiting in queue">Waiting in queue</li>
+                                    <li class="cs-option" data-value="In Consultation" data-label="In consultation">In consultation</li>
+                                </ul>
+                            </div>
+                            <span class="field-hint">New patients join the waiting list once their bill is settled at billing.</span>
+                        </div>
+                    </div>
+
+                    <!-- Raised when the observations disagree with the chosen priority -->
+                    <div class="triage-advice" id="triageAdvice" hidden>
+                        <span class="ico" data-icon="warning" data-icon-size="15"></span>
+                        <div>
+                            <strong id="triageAdviceTitle">Observations suggest a higher priority</strong>
+                            <span id="triageAdviceText"></span>
+                        </div>
+                        <button type="button" class="btn-secondary btn-sm" id="triageAdviceApply">Apply</button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="savePatientBtn">
+                    <span class="ico" data-icon="save" data-icon-size="15"></span>
+                    <span id="savePatientLabel">Save record</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Record detail
+         ================================================================== -->
+    <div class="modal-overlay" id="detailModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="file-text" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="detailModalTitle">Patient record</h3>
+                    <span id="detailModalSub">—</span>
                 </div>
-
-                <div class="form-group">
-                    <label>Chief Complaint / Description *</label>
-                    <textarea id="inputDesc" rows="3" placeholder="Describe symptoms, chief complaint, or reason for visit..."></textarea>
-                    <span class="form-error" id="errDesc"></span>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body" id="detailModalBody"></div>
+            <div class="modal-foot modal-foot-split">
+                <button type="button" class="btn-danger" id="deleteFromDetailBtn">
+                    <span class="ico" data-icon="trash" data-icon-size="15"></span>
+                    <span>Delete record</span>
+                </button>
+                <div class="toolbar-group">
+                    <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                    <button type="button" class="btn-secondary" id="editFromDetailBtn">
+                        <span class="ico" data-icon="edit" data-icon-size="15"></span>
+                        <span>Edit</span>
+                    </button>
+                    <button type="button" class="btn-primary" id="openConsultationBtn">
+                        <span class="ico" data-icon="stethoscope" data-icon-size="15"></span>
+                        <span>Open consultation</span>
+                    </button>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="cancelModalBtn">Cancel</button>
-                <button type="button" class="btn-primary" id="savePatientBtn">Save Patient Record</button>
-            </div>
         </div>
     </div>
+</div>
 
-    <!-- VIEW PATIENT DETAIL MODAL -->
-    <div class="modal-overlay" id="detailModal">
-        <div class="modal-box detail-modal-box">
-            <div class="modal-header">
-                <h3 id="detailModalTitle">Patient Details</h3>
-                <button class="modal-close" id="closeDetailBtn">&times;</button>
-            </div>
-            <div class="modal-body" id="detailModalBody">
-                <!-- Populated dynamically -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="closeDetailBtn2">Close</button>
-                <button type="button" class="btn-danger" id="deleteFromDetailBtn">Delete Record</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- DELETE CONFIRMATION MODAL -->
-    <div class="modal-overlay" id="confirmModal">
-        <div class="modal-box" style="max-width: 420px;">
-            <div class="modal-header">
-                <h3>Confirm Deletion</h3>
-                <button class="modal-close" id="closeConfirmBtn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p id="confirmText" style="color: var(--text-dark); font-size: 14px; margin: 0;">Are you sure you want to delete this patient record?</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
-                <button type="button" class="btn-danger" id="confirmDeleteBtn">Delete Record</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="../js/notifications.js"></script>
-    <script src="../js/patients.js"></script>
+<script src="../js/icons.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/patients.js"></script>
 </body>
 </html>

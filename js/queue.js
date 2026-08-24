@@ -1,457 +1,332 @@
-/**
- * MediTrack Hospital ERP - Streamlined Patient Queue Tracking (Card Layout)
- * Directly synchronized with clinic_patients_data in localStorage.
- * Only displays active patients (Pending and In Treatment). Finished patients are stored in Storage.
- * Powered by Tracking ID, 2-way ordering (Urgent First default vs Registry Order),
- * safety warning confirmation before queue reordering, and thermal ticket printing.
- */
+/* ==========================================================================
+   MediTrack Hospital ERP - Triage Queue
 
-(function() {
+   This is the only screen that may change the calling order, and it does so by
+   setting a persisted policy in js/store.js rather than a local sort. Search
+   and priority filters affect what is displayed, never the queue positions.
+   ========================================================================== */
+
+(function (window, document) {
     'use strict';
 
-    var STORAGE_KEY = 'clinic_patients_data';
+    var store = window.MediStore;
+    var ui = window.MediUI;
+    var STATUS = store.STATUS;
+
     var patients = [];
     var searchTerm = '';
     var urgencyFilter = '';
-    var currentOrderMode = 'urgent_first'; // Default: Urgent First
-    var pendingOrderMode = null;
-    var activeTicketPatient = null;
+    var ticketPatientId = null;
+    var ticketPosition = '01';
 
-    /* --------------------------------------------------------------------------
-       Modal Helpers & Parent Iframe Blur
-       -------------------------------------------------------------------------- */
-    function toggleBlur(state) {
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ action: 'toggleBlur', state: state }, '*');
+    function esc(s) { return store.escapeHtml(s); }
+    function icon(name, size) { return ui.icon(name, size); }
+    function byId(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = byId(id);
+        if (el) el.textContent = value;
+    }
+
+    function urgencyClass(u) {
+        return 'urgency-' + String(store.normalizeUrgency(u)).toLowerCase();
+    }
+
+    /* ==================================================================
+       Render
+       ================================================================== */
+    function render() {
+        var queue = store.queueOrder(patients);         /* authoritative order */
+        var consulting = store.consultingPatients(patients);
+
+        var emergencies = queue.filter(function (p) {
+            return store.normalizeUrgency(p.urgency) === store.URGENCY.EMERGENCY;
+        }).length;
+
+        setText('queueTotalCount', queue.length);
+        setText('queueConsultingCount', consulting.length);
+
+        var emPill = byId('queueEmergencyPill');
+        if (emPill) {
+            emPill.hidden = emergencies === 0;
+            setText('queueEmergencyCount', emergencies);
         }
-    }
 
-    function generateTrackingId() {
-        return 'TRK-' + Math.floor(10000000 + Math.random() * 90000000);
-    }
+        renderPolicy();
 
-    /* --------------------------------------------------------------------------
-       LocalStorage Synchronization
-       -------------------------------------------------------------------------- */
-    function loadPatientsFromStorage() {
-        var data = localStorage.getItem(STORAGE_KEY);
-        if (!data) {
-            patients = [
-                { id: 1, trackingId: generateTrackingId(), name: 'John Doe', age: 34, phone: '0912 345 678', weight: 70, height: 175, bp: '135/88', hr: 82, urgency: 'Urgent', status: 'In Treatment', description: 'Severe chest pain, undergoing tests.', registered: new Date().toISOString(), clinicalNotes: [], labOrders: [], nurseOrders: [] },
-                { id: 2, trackingId: generateTrackingId(), name: 'Alice Smith', age: 28, phone: '0987 654 321', weight: 60, height: 160, bp: '118/76', hr: 74, urgency: 'Non-Urgent', status: 'Pending', description: 'Persistent cough and fever.', registered: new Date().toISOString(), clinicalNotes: [], labOrders: [], nurseOrders: [] },
-                { id: 3, trackingId: generateTrackingId(), name: 'Bob Johnson', age: 45, phone: '0911 222 333', weight: 85, height: 180, bp: '122/80', hr: 68, urgency: 'Non-Urgent', status: 'Finished', description: 'Routine annual checkup completed.', registered: '2023-10-20T11:15:00Z', clinicalNotes: [], labOrders: [], nurseOrders: [] }
-            ];
-            savePatientsToStorage();
-        } else {
-            try {
-                patients = JSON.parse(data);
-                patients.forEach(function(p) {
-                    if (p.urgency === 'High') p.urgency = 'Urgent';
-                    else if (p.urgency === 'Medium' || p.urgency === 'Low') p.urgency = 'Non-Urgent';
-                    if (!p.bp) p.bp = '120/80';
-                    if (!p.hr) p.hr = 72;
-                });
-            } catch (e) {
-                patients = [];
-            }
-        }
-    }
-
-    function savePatientsToStorage() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(patients));
-    }
-
-    /* --------------------------------------------------------------------------
-       Filtering & 2-Way Queue Ordering (Only Non-Finished)
-       -------------------------------------------------------------------------- */
-    function getFilteredAndOrderedQueue() {
-        // Exclude Finished patients (they live in Storage)
-        var activePatients = patients.filter(function(p) {
-            return p.status === 'Pending' || p.status === 'In Treatment';
+        /* Positions are assigned before filtering so a filtered view still
+           shows each patient's true place in the queue. */
+        var withPositions = queue.map(function (p, i) {
+            return { patient: p, position: i + 1 };
         });
 
-        var filtered = activePatients.filter(function(p) {
-            var matchesSearch = true;
-            if (searchTerm.trim() !== '') {
-                var term = searchTerm.toLowerCase().trim();
-                matchesSearch = (p.name && p.name.toLowerCase().includes(term)) ||
-                                (p.trackingId && p.trackingId.toLowerCase().includes(term)) ||
-                                (p.phone && p.phone.includes(term));
-            }
-
-            var matchesUrgency = (urgencyFilter === '') || (p.urgency === urgencyFilter);
-
-            return matchesSearch && matchesUrgency;
+        var visible = withPositions.filter(function (row) {
+            var p = row.patient;
+            if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return String(p.name || '').toLowerCase().indexOf(q) !== -1 ||
+                String(p.trackingId || '').toLowerCase().indexOf(q) !== -1 ||
+                String(p.phone || '').replace(/\s+/g, '').indexOf(q.replace(/\s+/g, '')) !== -1;
         });
 
-        // 2-Way Ordering
-        if (currentOrderMode === 'urgent_first') {
-            filtered.sort(function(a, b) {
-                var weightA = (a.urgency === 'Urgent') ? 2 : 1;
-                var weightB = (b.urgency === 'Urgent') ? 2 : 1;
-                var diff = weightB - weightA;
-                if (diff !== 0) return diff;
-                return new Date(a.registered) - new Date(b.registered);
-            });
-        } else {
-            filtered.sort(function(a, b) {
-                return new Date(a.registered) - new Date(b.registered);
-            });
-        }
-
-        return filtered;
-    }
-
-    function formatDate(isoString) {
-        if (!isoString) return '-';
-        var date = new Date(isoString);
-        var dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        var h = date.getHours();
-        var m = String(date.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return dateStr + ' · ' + h + ':' + m + ' ' + ampm;
-    }
-
-    /* --------------------------------------------------------------------------
-       Render Queue Cards
-       -------------------------------------------------------------------------- */
-    function renderQueueCards() {
-        var grid = document.getElementById('queueCardGrid');
-        var noDataDiv = document.getElementById('noQueueData');
-        var totalCountEl = document.getElementById('queueTotalCount');
+        var grid = byId('queueCardGrid');
         if (!grid) return;
 
-        var list = getFilteredAndOrderedQueue();
-
-        var pendingCount = list.length;
-        if (totalCountEl) totalCountEl.textContent = pendingCount + ' patient' + (pendingCount === 1 ? '' : 's');
-
-        if (list.length === 0) {
-            grid.innerHTML = '';
-            if (noDataDiv) noDataDiv.style.display = 'block';
+        if (!visible.length) {
+            grid.innerHTML = ui.emptyState({
+                icon: queue.length ? 'search' : 'check-circle',
+                title: queue.length ? 'No patients match this search' : 'The queue is clear',
+                text: queue.length
+                    ? 'Clear the search or priority filter to see the full queue.'
+                    : 'Patients appear here as soon as reception completes registration and triage.'
+            });
             return;
         }
 
-        if (noDataDiv) noDataDiv.style.display = 'none';
-
-        grid.innerHTML = list.map(function(p, index) {
-            var statusClass = (p.status === 'In Treatment') ? 'status-treatment' : 'status-pending';
-            var urgencyClass = (p.urgency === 'Urgent') ? 'urgency-urgent' : 'urgency-nonurgent';
-            var queuePos = '#' + String(index + 1).padStart(2, '0');
-
-            return '<div class="queue-card" data-id="' + p.id + '">' +
-                '<div class="qcard-top">' +
-                    '<div class="qcard-left-head">' +
-                        '<span class="queue-pos-badge">' + queuePos + '</span>' +
-                        '<span class="tracking-id">' + p.trackingId + '</span>' +
-                    '</div>' +
-                    '<span class="badge ' + urgencyClass + '">' + p.urgency + '</span>' +
-                '</div>' +
-                '<div class="qcard-body">' +
-                    '<h4 class="qcard-name">' + p.name + '</h4>' +
-                    '<div class="qcard-meta-row">' +
-                        '<span>Age: ' + p.age + '</span>' +
-                        '<span>•</span>' +
-                        '<span>Phone: ' + (p.phone || '-') + '</span>' +
-                        '<span>•</span>' +
-                        '<span>BP: ' + (p.bp || '-') + '</span>' +
-                    '</div>' +
-                    '<p class="qcard-desc" title="' + (p.description || '') + '">' + (p.description || 'No complaint specified.') + '</p>' +
-                '</div>' +
-                '<div class="qcard-bottom">' +
-                    '<div style="display:flex; align-items:center; gap:6px;">' +
-                        '<span class="badge ' + statusClass + '">' + p.status + '</span>' +
-                        '<span style="font-size:11px; color:var(--gray-muted);">' + formatDate(p.registered) + '</span>' +
-                    '</div>' +
-                    '<div class="qcard-actions">' +
-                        (p.status === 'Pending' ? 
-                            '<button class="action-btn btn-action-treat" data-id="' + p.id + '" title="Start Treatment">' +
-                                '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>' +
-                            '</button>' : '') +
-                        (p.status === 'In Treatment' ? 
-                            '<button class="action-btn btn-action-finish" data-id="' + p.id + '" title="Mark Finished (Move to Storage)">' +
-                                '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' +
-                            '</button>' : '') +
-                        '<button class="action-btn btn-action-ticket" data-id="' + p.id + '" data-pos="' + queuePos + '" title="Print Queue Ticket">' +
-                            '<svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>' +
-                        '</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
+        grid.innerHTML = visible.map(function (row) {
+            return cardHtml(row.patient, row.position);
         }).join('');
 
-        // Attach action handlers
-        grid.querySelectorAll('.btn-action-treat').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var pId = parseInt(this.getAttribute('data-id'), 10);
-                updatePatientStatus(pId, 'In Treatment');
-                sessionStorage.setItem('selected_tracking_patient_id', pId);
-                if (window.parent && window.parent !== window) {
-                    window.parent.postMessage({ action: 'navigate', target: 'pages/track.html', title: 'Tracking' }, '*');
-                } else {
-                    window.location.href = 'track.html';
-                }
+        bind(grid);
+    }
+
+    function renderPolicy() {
+        var policy = store.queuePolicy();
+        var fifo = policy === store.POLICIES.FIFO;
+
+        setText('policyName', store.policyLabel(policy));
+        setText('policyExplain', fifo
+            ? 'Strict registration order. Clinical priority is ignored, so emergency arrivals wait their turn.'
+            : 'Emergency, then Urgent, then Routine. Within the same priority, whoever arrived first is called first.');
+
+        ui.setSelectValue('queuePolicySelect', policy, store.policyLabel(policy));
+
+        var bar = document.querySelector('.policy-bar');
+        if (bar) bar.classList.toggle('policy-risk', fifo);
+    }
+
+    function cardHtml(p, position) {
+        var urgency = store.normalizeUrgency(p.urgency);
+        var vitals = p.vitals;
+        var bp = store.bloodPressureText(vitals);
+
+        return '<article class="queue-card ' + urgencyClass(urgency) + '" data-id="' + esc(p.id) + '">' +
+            '<header class="qc-head">' +
+                '<span class="qc-position">' + String(position).padStart(2, '0') + '</span>' +
+                '<div class="qc-identity">' +
+                    '<span class="qc-name">' + esc(p.name) + '</span>' +
+                    '<span class="qc-sub">' +
+                        '<span class="mono">' + esc(p.trackingId) + '</span>' +
+                        (p.age !== null ? '<span>' + esc(p.age) + ' yrs</span>' : '') +
+                        (p.sex ? '<span>' + esc(p.sex) + '</span>' : '') +
+                    '</span>' +
+                '</div>' +
+                '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
+            '</header>' +
+
+            '<p class="qc-complaint">' + esc(p.description || 'No complaint recorded at triage.') + '</p>' +
+
+            '<div class="qc-vitals">' +
+                vitalChip('BP', bp, 'mmHg') +
+                vitalChip('Pulse', vitals.pulse === null ? '—' : Math.round(vitals.pulse), 'bpm') +
+                vitalChip('Temp', vitals.temperature === null ? '—' : vitals.temperature.toFixed(1), '\u00B0C') +
+                vitalChip('SpO\u2082', vitals.spo2 === null ? '—' : Math.round(vitals.spo2), '%') +
+            '</div>' +
+
+            '<footer class="qc-foot">' +
+                '<span class="qc-waited">' + icon('clock', 13) +
+                    '<span>Waiting <strong data-elapsed="' + esc(p.registered) + '">' +
+                        esc(store.elapsed(p.registered)) + '</strong></span>' +
+                '</span>' +
+                '<div class="qc-actions">' +
+                    '<button type="button" class="btn-icon" data-ticket="' + esc(p.id) + '" data-pos="' +
+                        String(position).padStart(2, '0') + '" title="Print queue slip" aria-label="Print queue slip">' +
+                        icon('print', 15) +
+                    '</button>' +
+                    '<button type="button" class="btn-secondary btn-sm" data-escalate="' + esc(p.id) + '">' +
+                        icon('warning', 14) + '<span>Escalate</span>' +
+                    '</button>' +
+                '</div>' +
+            '</footer>' +
+        '</article>';
+    }
+
+    function vitalChip(label, value, unit) {
+        return '<div class="qc-vital">' +
+            '<span class="qc-vital-label">' + esc(label) + '</span>' +
+            '<span class="qc-vital-value">' + esc(value) +
+                (String(value) === '—' ? '' : '<small>' + esc(unit) + '</small>') +
+            '</span>' +
+        '</div>';
+    }
+
+    function bind(grid) {
+        ui.qsa('[data-ticket]', grid).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                openTicket(btn.getAttribute('data-ticket'), btn.getAttribute('data-pos'));
             });
         });
-
-        grid.querySelectorAll('.btn-action-finish').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var pId = parseInt(this.getAttribute('data-id'), 10);
-                updatePatientStatus(pId, 'Finished');
-                if (window.MediTrackNotify) {
-                    var p = patients.find(function(x) { return x.id === pId; });
-                    window.MediTrackNotify('Treatment Finished', (p ? p.name : 'Patient') + ' moved to Storage archive.', 'success');
-                }
-            });
-        });
-
-        grid.querySelectorAll('.btn-action-ticket').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var pId = parseInt(this.getAttribute('data-id'), 10);
-                var pos = this.getAttribute('data-pos');
-                openTicketModal(pId, pos);
+        ui.qsa('[data-escalate]', grid).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                escalate(btn.getAttribute('data-escalate'));
             });
         });
     }
 
-    function updatePatientStatus(patientId, newStatus) {
-        var patient = patients.find(function(p) { return p.id === patientId; });
-        if (patient) {
-            patient.status = newStatus;
-            savePatientsToStorage();
-            renderQueueCards();
+    /* ==================================================================
+       Actions
+       ================================================================== */
+    /* Reception can raise priority when a waiting patient deteriorates.
+       Priority is never lowered here: that is a clinical decision. */
+    function escalate(id) {
+        var p = store.findPatient(patients, id);
+        if (!p) return;
+
+        var current = store.normalizeUrgency(p.urgency);
+        if (current === store.URGENCY.EMERGENCY) {
+            window.MediTrackNotify.flash('Already highest priority', p.name + ' is already flagged Emergency.', 'info');
+            return;
         }
-    }
+        var next = current === store.URGENCY.URGENT ? store.URGENCY.EMERGENCY : store.URGENCY.URGENT;
 
-    /* --------------------------------------------------------------------------
-       Queue Order Change Warning Confirmation
-       -------------------------------------------------------------------------- */
-    function promptOrderChange(newMode) {
-        if (newMode === currentOrderMode) return;
+        ui.confirmAction({
+            title: 'Escalate to ' + next,
+            subtitle: p.name + ' · ' + p.trackingId,
+            message: 'This moves ' + p.name + ' up the calling order immediately and alerts the consultation desk.',
+            confirmLabel: 'Escalate to ' + next,
+            tone: next === store.URGENCY.EMERGENCY ? 'danger' : 'warning',
+            icon: 'warning'
+        }, function () {
+            p.urgency = next;
+            store.writePatients(patients);
 
-        pendingOrderMode = newMode;
-        var modeName = (newMode === 'urgent_first') ? 'Urgent First (Default)' : 'Registry Order (FIFO)';
-        document.getElementById('newOrderModeText').textContent = modeName;
-
-        document.getElementById('orderWarningModal').classList.add('active');
-        toggleBlur(true);
-    }
-
-    function confirmOrderChange() {
-        if (pendingOrderMode) {
-            currentOrderMode = pendingOrderMode;
-            pendingOrderMode = null;
-
-            var wrap = document.getElementById('queueOrderWrapper');
-            if (wrap) {
-                var toggle = wrap.querySelector('.cs-toggle');
-                var text = (currentOrderMode === 'urgent_first') ? 'Order: Urgent First' : 'Order: Registry Order';
-                toggle.querySelector('.cs-text').textContent = text;
-                toggle.setAttribute('data-value', currentOrderMode);
-
-                wrap.querySelectorAll('.cs-option').forEach(function(opt) {
-                    opt.classList.toggle('selected', opt.getAttribute('data-value') === currentOrderMode);
+            if (next === store.URGENCY.EMERGENCY) {
+                window.MediTrackNotify.event('queue.emergency', {
+                    key: 'escalated:' + p.id,
+                    title: 'Escalated to Emergency',
+                    message: p.name + ' (' + p.trackingId + ') requires immediate assessment.'
                 });
+            } else {
+                window.MediTrackNotify.flash('Priority raised', p.name + ' is now ' + next + '.');
             }
-
-            var noticeText = document.getElementById('orderNoticeText');
-            if (noticeText) {
-                if (currentOrderMode === 'urgent_first') {
-                    noticeText.innerHTML = 'Current Order: <strong>Urgent First</strong> (Urgent patients prioritized first, then registration time).';
-                } else {
-                    noticeText.innerHTML = 'Current Order: <strong>Registry Order (FIFO)</strong> (Strict registration timestamp order; new arrivals wait).';
-                }
-            }
-
-            renderQueueCards();
-        }
-        closeOrderWarningModal();
-    }
-
-    function cancelOrderChange() {
-        pendingOrderMode = null;
-
-        var wrap = document.getElementById('queueOrderWrapper');
-        if (wrap) {
-            var toggle = wrap.querySelector('.cs-toggle');
-            var text = (currentOrderMode === 'urgent_first') ? 'Order: Urgent First' : 'Order: Registry Order';
-            toggle.querySelector('.cs-text').textContent = text;
-            toggle.setAttribute('data-value', currentOrderMode);
-
-            wrap.querySelectorAll('.cs-option').forEach(function(opt) {
-                opt.classList.toggle('selected', opt.getAttribute('data-value') === currentOrderMode);
-            });
-        }
-
-        closeOrderWarningModal();
-    }
-
-    function closeOrderWarningModal() {
-        document.getElementById('orderWarningModal').classList.remove('active');
-        toggleBlur(false);
-    }
-
-    /* --------------------------------------------------------------------------
-       Thermal Ticket Modal
-       -------------------------------------------------------------------------- */
-    function openTicketModal(patientId, queuePos) {
-        var patient = patients.find(function(p) { return p.id === patientId; });
-        if (!patient) return;
-
-        activeTicketPatient = patient;
-
-        document.getElementById('ticketQueueNumber').textContent = queuePos || '#01';
-        document.getElementById('ticketTrackingId').textContent = patient.trackingId;
-        document.getElementById('ticketPatientName').textContent = patient.name;
-        document.getElementById('ticketAge').textContent = patient.age;
-        document.getElementById('ticketPhone').textContent = patient.phone || '-';
-        document.getElementById('ticketStatus').textContent = patient.status;
-        document.getElementById('ticketRegistered').textContent = formatDate(patient.registered);
-        document.getElementById('ticketDesc').textContent = patient.description || 'Medical checkup';
-        document.getElementById('ticketBarcodeText').textContent = patient.trackingId;
-
-        var urgTag = document.getElementById('ticketUrgencyTag');
-        if (urgTag) {
-            urgTag.textContent = 'URGENCY: ' + patient.urgency.toUpperCase();
-            urgTag.style.color = (patient.urgency === 'Urgent') ? 'var(--primary-red)' : 'var(--text-dark)';
-        }
-
-        document.getElementById('ticketModal').classList.add('active');
-        toggleBlur(true);
-    }
-
-    function closeTicketModal() {
-        document.getElementById('ticketModal').classList.remove('active');
-        toggleBlur(false);
-        activeTicketPatient = null;
-    }
-
-    /* --------------------------------------------------------------------------
-       Custom Select Dropdowns
-       -------------------------------------------------------------------------- */
-    function initCustomSelect(wrapperId, callback) {
-        var wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        var toggle = wrapper.querySelector('.cs-toggle');
-        var menu = wrapper.querySelector('.cs-menu');
-        if (!toggle || !menu) return;
-
-        toggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                if (el !== wrapper) el.classList.remove('active');
-            });
-            wrapper.classList.toggle('active');
-        });
-
-        menu.querySelectorAll('.cs-option').forEach(function(opt) {
-            opt.addEventListener('click', function() {
-                var val = this.getAttribute('data-value');
-                var text = this.textContent;
-                toggle.querySelector('.cs-text').textContent = text;
-                toggle.setAttribute('data-value', val);
-
-                menu.querySelectorAll('.cs-option').forEach(function(o) { o.classList.remove('selected'); });
-                this.classList.add('selected');
-
-                wrapper.classList.remove('active');
-                if (callback) callback(val);
-            });
         });
     }
 
-    /* --------------------------------------------------------------------------
-       Initialization
-       -------------------------------------------------------------------------- */
+    function changePolicy(value) {
+        var current = store.queuePolicy();
+        if (value === current) return;
+
+        var toFifo = value === store.POLICIES.FIFO;
+
+        ui.confirmAction({
+            title: 'Change the calling policy',
+            subtitle: store.policyLabel(current) + ' \u2192 ' + store.policyLabel(value),
+            message: toFifo
+                ? 'Arrival order ignores clinical priority. Emergency and Urgent patients will wait behind earlier routine arrivals until the policy is changed back. This affects the whole department.'
+                : 'Triage priority calls Emergency and Urgent patients ahead of Routine arrivals. This is the clinical default.',
+            confirmLabel: 'Apply ' + store.policyLabel(value).toLowerCase(),
+            tone: toFifo ? 'danger' : 'info',
+            icon: toFifo ? 'warning' : 'shield-check'
+        }, function () {
+            store.setQueuePolicy(value);
+            render();
+            if (toFifo) {
+                window.MediTrackNotify.push(
+                    'Calling Policy Changed',
+                    'The queue now runs in strict arrival order. Clinical priority is not applied.',
+                    'warning', 'Queue', 'high'
+                );
+            } else {
+                window.MediTrackNotify.flash('Policy restored', 'Queue is calling by triage priority again.');
+            }
+        });
+
+        /* Revert the control until the change is actually confirmed. */
+        ui.setSelectValue('queuePolicySelect', current, store.policyLabel(current));
+    }
+
+    /* ------------------------------------------------------------ ticket */
+    function openTicket(id, position) {
+        var p = store.findPatient(patients, id);
+        if (!p) return;
+
+        ticketPatientId = p.id;
+        ticketPosition = position || '01';
+
+        setText('ticketQueueNumber', ticketPosition);
+        setText('ticketTrackingId', p.trackingId);
+        setText('ticketPatientName', p.name);
+        setText('ticketAge', p.age === null ? '—' : p.age + ' yrs');
+        setText('ticketUrgency', store.normalizeUrgency(p.urgency));
+        setText('ticketRegistered', store.formatDateTime(p.registered));
+
+        ui.openModal('ticketModal');
+    }
+
+    /* ==================================================================
+       Init
+       ================================================================== */
+    function tickElapsed() {
+        ui.qsa('[data-elapsed]').forEach(function (el) {
+            el.textContent = store.elapsed(el.getAttribute('data-elapsed'));
+        });
+    }
+
     function init() {
-        loadPatientsFromStorage();
-        renderQueueCards();
+        patients = store.seedIfEmpty();
+        if (!patients.length) patients = store.readPatients();
+        render();
 
-        initCustomSelect('filterUrgencyWrapper', function(val) {
-            urgencyFilter = val;
-            renderQueueCards();
+        ui.initSelect('queuePolicySelect', changePolicy);
+        ui.initSelect('filterUrgencyWrapper', function (value) {
+            urgencyFilter = value;
+            render();
         });
 
-        initCustomSelect('queueOrderWrapper', function(val) {
-            promptOrderChange(val);
-        });
-
-        document.addEventListener('click', function() {
-            document.querySelectorAll('.custom-select.active').forEach(function(el) {
-                el.classList.remove('active');
-            });
-        });
-
-        var searchInput = document.getElementById('queueSearch');
-        var clearSearchBtn = document.getElementById('clearSearchBtn');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                searchTerm = e.target.value;
-                if (clearSearchBtn) {
-                    clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
-                }
-                renderQueueCards();
+        var search = byId('queueSearch');
+        var clear = byId('queueSearchClear');
+        if (search) {
+            search.addEventListener('input', function () {
+                searchTerm = search.value.trim();
+                if (clear) clear.classList.toggle('visible', !!searchTerm);
+                render();
             });
         }
-        if (clearSearchBtn) {
-            clearSearchBtn.addEventListener('click', function() {
-                if (searchInput) {
-                    searchInput.value = '';
-                    searchTerm = '';
-                    clearSearchBtn.style.display = 'none';
-                    renderQueueCards();
-                }
+        if (clear) {
+            clear.addEventListener('click', function () {
+                if (search) search.value = '';
+                searchTerm = '';
+                clear.classList.remove('visible');
+                render();
             });
         }
 
-        var resetBtn = document.getElementById('resetFiltersBtn');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', function() {
+        var reset = byId('resetFiltersBtn');
+        if (reset) {
+            reset.addEventListener('click', function () {
                 searchTerm = '';
                 urgencyFilter = '';
-                if (searchInput) searchInput.value = '';
-                if (clearSearchBtn) clearSearchBtn.style.display = 'none';
-
-                var uWrap = document.getElementById('filterUrgencyWrapper');
-                if (uWrap) {
-                    uWrap.querySelector('.cs-text').textContent = 'All Urgencies';
-                    uWrap.querySelector('.cs-toggle').setAttribute('data-value', '');
-                }
-
-                renderQueueCards();
+                if (search) search.value = '';
+                if (clear) clear.classList.remove('visible');
+                ui.setSelectValue('filterUrgencyWrapper', '', 'All priorities');
+                render();
             });
         }
 
-        var confirmOrderBtn = document.getElementById('confirmOrderChangeBtn');
-        var cancelOrderBtn = document.getElementById('cancelOrderChangeBtn');
-        var closeOrderWarningBtn = document.getElementById('closeOrderWarningBtn');
-
-        if (confirmOrderBtn) confirmOrderBtn.addEventListener('click', confirmOrderChange);
-        if (cancelOrderBtn) cancelOrderBtn.addEventListener('click', cancelOrderChange);
-        if (closeOrderWarningBtn) closeOrderWarningBtn.addEventListener('click', cancelOrderChange);
-
-        var closeTicketBtn = document.getElementById('closeTicketBtn');
-        var closeTicketModalBtn = document.getElementById('closeTicketModalBtn');
-        var printTicketActionBtn = document.getElementById('printTicketActionBtn');
-
-        if (closeTicketBtn) closeTicketBtn.addEventListener('click', closeTicketModal);
-        if (closeTicketModalBtn) closeTicketModalBtn.addEventListener('click', closeTicketModal);
-        if (printTicketActionBtn) {
-            printTicketActionBtn.addEventListener('click', function() {
-                window.print();
+        var print = byId('printTicketBtn');
+        if (print) {
+            print.addEventListener('click', function () {
+                ui.printNode('ticketPaper');
             });
         }
 
-        window.addEventListener('storage', function(e) {
-            if (e.key === STORAGE_KEY) {
-                loadPatientsFromStorage();
-                renderQueueCards();
-            }
+        store.onPatientsChanged(function () {
+            patients = store.readPatients();
+            render();
         });
+
+        setInterval(tickElapsed, 30000);
     }
 
     if (document.readyState === 'loading') {
@@ -459,4 +334,4 @@
     } else {
         init();
     }
-})();
+})(window, document);
