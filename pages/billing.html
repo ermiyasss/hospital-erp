@@ -37,7 +37,7 @@
     <!-- Summary --------------------------------------------------------- -->
     <section class="bill-stats" aria-label="Billing summary">
         <div class="bs-box">
-            <span class="bs-label">Still owed</span>
+                <span class="bs-label">Unpaid</span>
             <strong class="bs-value tone-warning" id="statOutstandingAmount">—</strong>
             <span class="bs-foot" id="statOutstandingCount">No unpaid bills</span>
         </div>
@@ -78,7 +78,7 @@
                     <li class="cs-option" data-value="open" data-label="Not fully paid">Not fully paid</li>
                     <li class="cs-option" data-value="Unpaid" data-label="Unpaid">Unpaid</li>
                     <li class="cs-option" data-value="Partly Paid" data-label="Part paid">Part paid</li>
-                    <li class="cs-option" data-value="Paid" data-label="Paid">Paid</li>
+                    <li class="cs-option" data-value="Paid" data-label="Paid">Awaiting final payment</li>
                     <li class="cs-option" data-value="Discharged" data-label="Discharged">Discharged</li>
                     <li class="cs-option" data-value="Cancelled" data-label="Cancelled">Cancelled</li>
                     <li class="cs-option" data-value="all" data-label="All bills">All bills</li>
@@ -102,32 +102,23 @@
         </div>
     </div>
 
-    <div class="card" id="invoiceTableCard">
-        <div class="card-header">
-            <div class="card-header-text">
-                <h3>Bills</h3>
-                <span class="card-sub" id="invoiceResultCount">0 bills</span>
-            </div>
-        </div>
-        <div class="table-scroll">
-            <table class="data-table" id="invoiceTable">
-                <thead>
-                    <tr>
-                        <th>Bill</th>
-                        <th>Patient</th>
-                        <th>Created</th>
-                        <th class="num">Total</th>
-                        <th class="num">Paid</th>
-                        <th class="num">Left to pay</th>
-                        <th>Status</th>
-                        <th aria-label="Actions"></th>
-                    </tr>
-                </thead>
-                <tbody id="invoiceTableBody"></tbody>
-            </table>
-        </div>
-        <div id="invoiceEmptyHost"></div>
+    <div class="cards-head">
+        <h3>Bills</h3>
+        <span class="card-sub" id="invoiceResultCount">0 bills</span>
     </div>
+
+    <div id="invoiceEmptyHost"></div>
+    <section class="bill-list-wrap" aria-label="Bills">
+        <div class="bl-head" id="billListHead" hidden>
+            <span>Bill</span>
+            <span>Patient</span>
+            <span>Type</span>
+            <span class="num">Total</span>
+            <span>Status</span>
+            <span></span>
+        </div>
+        <div class="bill-list" id="billCards"></div>
+    </section>
 
     <!-- ==================================================================
          Create / edit a bill
@@ -298,7 +289,7 @@
                     </button>
                     <button type="button" class="btn-secondary" id="printReceiptBtn">
                         <span class="ico" data-icon="print" data-icon-size="15"></span>
-                        <span>Receipt</span>
+                        <span>Print slip</span>
                     </button>
                     <button type="button" class="btn-secondary" id="dischargeBtn" hidden>
                         <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
@@ -331,7 +322,7 @@
 
             <div class="modal-body">
                 <div class="pay-due">
-                    <span class="pd-label">Left to pay</span>
+                    <span class="pd-label">Amount due</span>
                     <strong class="pd-value" id="payBalanceValue">—</strong>
                 </div>
 
@@ -442,23 +433,79 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="notice notice-info">
-                    <span class="ico" data-icon="info" data-icon-size="15"></span>
-                    <div>
-                        <strong>Patient is leaving the hospital</strong>
-                        Enter how much was finally paid in total. The bill then leaves the billing list.
-                    </div>
+                <div class="pay-due">
+                    <span class="pd-label" id="dischargePatientLabel">—</span>
+                    <span class="pd-settle"><span>Final total <strong id="dgBalance">—</strong></span></span>
                 </div>
+
                 <div class="form-group">
-                    <label for="dischargeAmount">Final amount paid (total) <span class="req">*</span></label>
-                    <input type="number" id="dischargeAmount" min="0" step="0.01" placeholder="0.00" data-autofocus>
+                    <label for="dgConsultation">Consultation amount <span class="req">*</span></label>
+                    <input type="number" id="dgConsultation" min="0" step="0.01" placeholder="0.00" data-autofocus>
+                </div>
+
+                <div class="form-section">
+                    <h4 class="form-section-title">
+                        <span class="ico" data-icon="plus" data-icon-size="14"></span>
+                        <span>Additional costs · optional</span>
+                    </h4>
+                    <div class="add-line">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <div class="custom-select" id="extraCategoryWrapper">
+                                <button type="button" class="cs-toggle" data-value="Laboratory">
+                                    <span class="cs-text">Laboratory</span>
+                                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                </button>
+                                <ul class="cs-menu">
+                                    <li class="cs-option selected" data-value="Laboratory" data-label="Laboratory">Laboratory</li>
+                                    <li class="cs-option" data-value="Nursing" data-label="Nursing">Nursing</li>
+                                    <li class="cs-option" data-value="Pharmacy" data-label="Pharmacy">Pharmacy</li>
+                                    <li class="cs-option" data-value="Fine" data-label="Fine">Fine</li>
+                                    <li class="cs-option" data-value="Other" data-label="Other">Something else</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="extraPrice">Amount</label>
+                            <input type="number" id="extraPrice" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group form-group-narrow">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn-secondary btn-block" id="btnAddExtra">
+                                <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                                <span>Add</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="extras-list" id="extrasList"></div>
+                </div>
+
+                <div class="totals-box">
+                    <div class="totals-row totals-strong"><span>Total to collect</span><span id="dgTotal">—</span></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Payment method</label>
+                    <div class="custom-select" id="dischargeMethodWrapper">
+                        <button type="button" class="cs-toggle" data-value="Cash">
+                            <span class="cs-text">Cash</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="Cash" data-label="Cash">Cash</li>
+                            <li class="cs-option" data-value="Telebirr" data-label="Telebirr">Telebirr</li>
+                            <li class="cs-option" data-value="CBE" data-label="CBE">CBE</li>
+                            <li class="cs-option" data-value="BOA" data-label="BOA">BOA</li>
+                            <li class="cs-option" data-value="Awash" data-label="Awash">Awash</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
             <div class="modal-foot">
                 <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
                 <button type="button" class="btn-primary" id="confirmDischargeBtn">
                     <span class="ico" data-icon="check" data-icon-size="15"></span>
-                    <span>Record &amp; remove from billing</span>
+                    <span>Take final payment</span>
                 </button>
             </div>
         </div>
@@ -562,6 +609,9 @@
         </div>
     </div>
 </div>
+
+<datalist id="priceSuggestions"></datalist>
+<div id="slipPrintArea" hidden></div>
 
 <script src="../js/icons.js"></script>
 <script src="../js/session.js"></script>

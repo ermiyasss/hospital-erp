@@ -931,6 +931,8 @@
 }
 .btn-stat-finish { border-color: var(--success-border); background: var(--success-bg); color: var(--success); }
 .btn-stat-finish:hover { background: var(--success); color: var(--white); border-color: var(--success); }
+.btn-stat-park { border-color: var(--warning-border); background: var(--warning-bg); color: var(--warning); }
+.btn-stat-park:hover { background: var(--warning); color: var(--white); border-color: var(--warning); }
 .btn-status-action:disabled {
     opacity: 0.55;
     cursor: not-allowed;

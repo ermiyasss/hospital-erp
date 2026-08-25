@@ -30,7 +30,8 @@
         settings: 'clinic_settings',
         notifications: 'clinic_notifications_log',
         invoices: 'clinic_invoices',
-        priceList: 'clinic_price_list'
+        priceList: 'clinic_price_list',
+        seeded: 'clinic_seeded'
     };
 
     /* Canonical vocabularies -------------------------------------------- */
@@ -459,6 +460,7 @@
             urgency: normalizeUrgency(p.urgency),
             status: normalizeStatus(p.status),
             description: p.description || p.complaint || '',
+            preferredDoctor: p.preferredDoctor || null,
             registered: p.registered || p.registeredAt || new Date().toISOString(),
             calledAt: p.calledAt || null,
             completedAt: p.completedAt || null,
@@ -631,9 +633,11 @@
 
     /* --------------------------------------------------------- demo seed */
     /* Only used when storage is completely empty, so a fresh offline install
-       is not a blank screen. Real data always wins. */
+       is not a blank screen. Real data always wins. A deliberate wipe sets
+       the seeded flag to "none" so the demo data never comes back. */
     function seedIfEmpty() {
         if (rawGet(KEYS.patients)) return readPatients();
+        if (rawGet(KEYS.seeded) === 'none') return [];
 
         var now = Date.now();
         var mins = function (m) { return new Date(now - m * 60000).toISOString(); };
@@ -693,7 +697,31 @@
         ];
 
         writePatients(seed);
+        rawSet(KEYS.seeded, 'demo');
         return readPatients();
+    }
+
+    /* Wipe every record on this workstation — patients, orders, results,
+       bills, staff, inventory, notifications, the demo seed AND the saved
+       settings/appearance defaults. The app restarts from a completely
+       blank slate. The demo data set is never re-seeded afterwards. */
+    function clearAllData() {
+        Object.keys(KEYS).forEach(function (name) {
+            rawRemove(KEYS[name]);
+        });
+        rawRemove(QUEUE_POLICY_KEY);
+        /* Anything else the app may have written under our namespace,
+           including session and appearance defaults. */
+        try {
+            var stale = [];
+            for (var i = 0; i < window.localStorage.length; i++) {
+                var k = window.localStorage.key(i);
+                if (k && (k.indexOf('clinic_') === 0 || k.indexOf('meditrack_') === 0)) stale.push(k);
+            }
+            stale.forEach(rawRemove);
+        } catch (e) {}
+        /* A deliberate wipe stays wiped: the demo seed never comes back. */
+        rawSet(KEYS.seeded, 'none');
     }
 
     /* ==================================================================
@@ -711,6 +739,7 @@
         { category: 'Pharmacy', name: 'Medication (per course)', amount: 180 },
         { category: 'Nursing', name: 'Nursing care', amount: 100 },
         { category: 'Nursing', name: 'Vital signs observation', amount: 50 },
+        { category: 'Other', name: 'Queue card', amount: 300 },
         { category: 'Other', name: 'Dressing / procedure', amount: 140 }
     ];
 
@@ -897,6 +926,58 @@
         return { invoice: inv, promoted: promoted };
     }
 
+    /* Every newly registered patient gets a "queue card" bill the moment
+       they are put on file. Routine patients settle it before joining the
+       waiting list; urgent/emergency arrivals queue first and the unpaid
+       card stays on the billing desk to be settled later. */
+    function hasOpenRegistrationInvoice(patientId) {
+        var list = readInvoices();
+        for (var i = 0; i < list.length; i++) {
+            var inv = list[i];
+            if (String(inv.patientId) === String(patientId) &&
+                inv.kind === 'registration' &&
+                inv.status !== 'Cancelled') return true;
+        }
+        return false;
+    }
+
+    function ensureRegistrationInvoice(patient) {
+        if (!patient || patient.status === STATUS.FINISHED) return null;
+        if (hasOpenRegistrationInvoice(patient.id)) return null;
+
+        var invoice = createInvoice({
+            patientId: patient.id,
+            patientName: patient.name,
+            trackingId: patient.trackingId,
+            kind: 'registration',
+            items: [{
+                category: 'Queue card',
+                description: lookupPriceName('Other', 'Queue card'),
+                qty: 1,
+                price: lookupPrice('Other', 'Queue card')
+            }]
+        });
+
+        try {
+            window.dispatchEvent(new CustomEvent('meditrack:invoices-updated', {
+                detail: { invoice: invoice }
+            }));
+        } catch (e) {}
+
+        return invoice;
+    }
+
+    /* Backfill: any awaiting-payment patient without a registration bill
+       (older records, seeded demo data) gets one on the next billing sweep. */
+    function ensureRegistrationInvoices(patients) {
+        var created = [];
+        (patients || []).forEach(function (p) {
+            var inv = ensureRegistrationInvoice(p);
+            if (inv) created.push(inv);
+        });
+        return created;
+    }
+
     /* Pull every chargeable thing off the patient record as bill lines. */
     function buildChargesFromRecord(patient) {
         var items = [];
@@ -966,6 +1047,7 @@
         nextPatientId: nextPatientId,
         generateTrackingId: generateTrackingId,
         seedIfEmpty: seedIfEmpty,
+        clearAllData: clearAllData,
 
         activePatients: activePatients,
         queueOrder: queueOrder,
@@ -1012,6 +1094,8 @@
         saveInvoice: saveInvoice,
         invoiceTotals: invoiceTotals,
         recordPayment: recordPayment,
+        ensureRegistrationInvoice: ensureRegistrationInvoice,
+        ensureRegistrationInvoices: ensureRegistrationInvoices,
         buildChargesFromRecord: buildChargesFromRecord,
         formatDate: formatDate,
         formatTime: formatTime,

@@ -34,8 +34,10 @@ ul { list-style: none; }
    Left column
    -------------------------------------------------------------------------- */
 .login-aside {
-    background: var(--text-dark);
-    color: var(--text-invert);
+    /* Fixed dark brand panel: literal colours, not theme tokens, so the
+       text stays white on the dark gradient in both themes. */
+    background-color: #16202C;
+    color: var(--on-dark);
     padding: var(--space-8) clamp(var(--space-6), 5vw, 64px);
     display: flex;
     flex-direction: column;
@@ -50,7 +52,7 @@ ul { list-style: none; }
     flex-shrink: 0;
     border-radius: var(--radius-md);
     background: var(--primary-red);
-    color: var(--white);
+    color: #FFFFFF;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -76,7 +78,7 @@ ul { list-style: none; }
     font-weight: var(--fw-bold);
     line-height: 1.22;
     letter-spacing: -0.02em;
-    color: var(--white);
+    color: var(--on-dark);
     max-width: 22ch;
 }
 .la-copy p {
@@ -105,7 +107,7 @@ ul { list-style: none; }
     display: block;
     font-size: var(--fs-base);
     font-weight: var(--fw-semibold);
-    color: var(--white);
+    color: var(--on-dark);
 }
 .la-points li > span:last-child {
     font-size: var(--fs-xs);
@@ -281,8 +283,8 @@ ul { list-style: none; }
     position: absolute;
     left: 4px; top: 1px;
     width: 4px; height: 7px;
-    border-right: 1.5px solid var(--white);
-    border-bottom: 1.5px solid var(--white);
+    border-right: 1.5px solid #FFFFFF;
+    border-bottom: 1.5px solid #FFFFFF;
     transform: rotate(40deg);
 }
 .role-option:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
@@ -329,8 +331,8 @@ ul { list-style: none; }
     position: absolute;
     left: 4px; top: 1px;
     width: 5px; height: 9px;
-    border-right: 2px solid var(--white);
-    border-bottom: 2px solid var(--white);
+    border-right: 2px solid #FFFFFF;
+    border-bottom: 2px solid #FFFFFF;
     transform: rotate(40deg);
 }
 .lf-check input:focus-visible + .lf-box { outline: 2px solid var(--info); outline-offset: 2px; }
@@ -353,7 +355,7 @@ ul { list-style: none; }
     height: 42px;
     border-radius: var(--radius-md);
     background: var(--primary-red);
-    color: var(--white);
+    color: var(--primary-contrast);
     font-size: var(--fs-md);
     font-weight: var(--fw-semibold);
     transition: background var(--t-fast);

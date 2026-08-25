@@ -237,6 +237,10 @@
                         '<div class="np-badges">' +
                             '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
                             '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                            (p.preferredDoctor
+                                ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' Requests ' +
+                                      esc(p.preferredDoctor) + '</span>'
+                                : '') +
                             (assignedDoctor
                                 ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' ' +
                                       esc(assignedDoctor) + '</span>'
@@ -534,6 +538,18 @@
             p.calledAt = new Date().toISOString();
             p.assignedDoctor = currentStaffName();
             persist();
+
+            /* Loud cross-workstation alert for the queue manager / nurse:
+               every open tab picks this up via the storage event and plays
+               a repeating critical chime with a sticky toast. */
+            try {
+                store.rawSet('meditrack_call_alert', JSON.stringify({
+                    name: p.name,
+                    trackingId: p.trackingId,
+                    doctor: p.assignedDoctor,
+                    at: new Date().toISOString()
+                }));
+            } catch (e) {}
 
             window.MediTrackNotify.event('queue.called', {
                 key: 'called:' + p.id + ':' + p.calledAt,
@@ -1264,67 +1280,10 @@
             order.medication + ' prescribed by ' + order.doctor + '.');
     }
 
-    function parkForResults() {
-        var p = currentPatient();
-        if (!p) return;
-
-        if (!store.openOrderCount(p)) {
-            window.MediTrackNotify.push(
-                'Nothing outstanding',
-                'There are no open orders for ' + p.name + '. Complete the visit instead of parking it.',
-                'warning', 'Doctor', 'high'
-            );
-            return;
-        }
-
-        p.status = STATUS.AWAITING;
-        persist();
-        showIntake();
-        window.MediTrackNotify.flash('Patient parked', p.name + ' moved to awaiting results.');
-    }
-
-    /* After the doctor signs the visit off, everything outstanding on the
-       record becomes one final bill at the billing desk. */
-    function raiseFinalBill(p) {
-        var items = store.buildChargesFromRecord(p);
-        if (!items.length) return null;
-
-        var openUnpaid = store.readInvoices().filter(function (inv) {
-            return String(inv.patientId) === String(p.id) &&
-                   inv.kind === 'final' &&
-                   inv.status !== 'Paid' && inv.status !== 'Cancelled';
-        });
-
-        var invoice = store.createInvoice({
-            patientId: p.id,
-            patientName: p.name,
-            trackingId: p.trackingId,
-            kind: 'final',
-            items: items
-        });
-
-        /* One open final bill per visit is enough; retire any stale ones. */
-        openUnpaid.forEach(function (old) {
-            old.status = 'Cancelled';
-            old.note = (old.note ? old.note + ' \u00b7 ' : '') + 'Replaced by ' + invoice.number;
-            store.saveInvoice(old);
-        });
-
-        try { window.sessionStorage.setItem('billing_open_invoice_id', invoice.id); } catch (e) {}
-
-        window.MediTrackNotify.push(
-            'Final Payment Due',
-            p.name + ' (' + p.trackingId + ') has a final bill of ' +
-                store.formatMoney(store.invoiceTotals(invoice).total) + ' at the billing desk.',
-            'info', 'Billing', 'normal'
-        );
-
-        return invoice;
-    }
-
-    /* Only released laboratory results block completion. Nursing tasks and
-       prescriptions do not hold the visit hostage - the visit can be marked
-       complete regardless of them. */
+    /* After the doctor signs the visit off, no separate final invoice is
+       raised. Billing takes the final payment on the patient's own card bill
+       — the nurse enters the consultation amount plus any additional costs
+       there. */
     function completeVisit() {
         var p = currentPatient();
         if (!p) return;
@@ -1343,23 +1302,21 @@
         var otherOpen = (store.openOrderCount(p) - labsOutstanding);
         var message = otherOpen > 0
             ? 'Completing marks the visit complete even though ' + otherOpen + ' nursing/pharmacy order' +
-              (otherOpen > 1 ? 's are' : ' is') + ' still open. A final bill will be raised from the charges on the record.'
-            : 'This closes the visit for ' + p.name + '. A final bill will be raised from the charges on the record.';
+              (otherOpen > 1 ? 's are' : ' is') + ' still open. Billing will take the final payment before the patient leaves.'
+            : 'This closes the visit for ' + p.name + '. Billing will take the final payment before the patient leaves.';
 
         ui.confirmAction({
-            title: 'Complete visit \u00b7 final payment',
+            title: 'Complete visit',
             subtitle: p.trackingId,
             message: message,
-            confirmLabel: 'Complete & bill',
+            confirmLabel: 'Complete visit',
             tone: otherOpen ? 'warning' : 'info',
-            icon: 'receipt'
+            icon: 'check'
         }, function () {
             p.status = STATUS.FINISHED;
             p.completedAt = new Date().toISOString();
             p.completedBy = currentStaffName();
             persist();
-
-            raiseFinalBill(p);
 
             window.MediTrackNotify.event('consult.completed', {
                 key: 'completed:' + p.id,
@@ -1369,11 +1326,16 @@
             });
 
             showIntake();
+            /* The final payment happens in Billing on the patient's own card
+               bill — no separate final invoice is raised here. */
             store.navigate('pages/billing.html');
         });
     }
 
-    /* Completes the current visit and immediately calls the queue's next. */
+    /* Completes the current visit and immediately calls the queue's next.
+       When the visit still has open orders (laboratory, nursing or
+       pharmacy) the doctor is asked to confirm, and the patient moves to
+       Awaiting Results instead of being blocked or completed. */
     function callNext() {
         var p = currentPatient();
 
@@ -1393,20 +1355,31 @@
 
         if (!p) { proceed(); return; }
 
-        if (openLabCount(p) > 0) {
-            window.MediTrackNotify.push(
-                'Results still outstanding',
-                p.name + ' still has laboratory orders without results. Release them first, or park the patient.',
-                'warning', 'Doctor', 'high'
-            );
+        var outstanding = store.openOrderCount(p);
+        if (outstanding > 0) {
+            ui.confirmAction({
+                title: 'Call the next patient',
+                subtitle: 'Current visit: ' + p.name,
+                message: p.name + ' still has ' + outstanding +
+                         ' open order' + (outstanding > 1 ? 's' : '') +
+                         '. They will be moved to Awaiting Results until the department closes them, and the next patient in the queue will be called in.',
+                confirmLabel: 'Move to awaiting results & call next',
+                tone: 'warning',
+                icon: 'hourglass'
+            }, function () {
+                p.status = STATUS.AWAITING;
+                persist();
+                window.MediTrackNotify.flash('Patient parked',
+                    p.name + ' moved to awaiting results. Next patient called.');
+                proceed();
+            });
             return;
         }
 
         ui.confirmAction({
             title: 'Call the next patient',
             subtitle: 'Current visit: ' + p.name,
-            message: 'This completes ' + p.name + '\u2019s visit and calls the next patient in the queue. ' +
-                     'Use \u201cPark for results\u201d instead if diagnostics are still pending.',
+            message: 'This completes ' + p.name + '\u2019s visit and calls the next patient in the queue.',
             confirmLabel: 'Complete and call next',
             tone: 'info',
             icon: 'arrow-right'
@@ -1470,7 +1443,6 @@
             ['sendLabOrderBtn', sendLabOrder],
             ['sendNurseOrderBtn', sendNurseOrder],
             ['sendPrescriptionBtn', sendPrescription],
-            ['btnParkForResults', parkForResults],
             ['btnSetFinished', completeVisit],
             ['btnNextPatient', callNext],
             ['assistRunBtn', function () { runAssist(true); }],

@@ -33,11 +33,7 @@
     var VITAL_FIELDS = [
         ['inputSystolic', 'systolic'],
         ['inputDiastolic', 'diastolic'],
-        ['inputPulse', 'pulse'],
         ['inputTemp', 'temperature'],
-        ['inputSpo2', 'spo2'],
-        ['inputRespRate', 'respRate'],
-        ['inputGlucose', 'glucose'],
         ['inputWeight', 'weight'],
         ['inputHeight', 'height']
     ];
@@ -138,6 +134,10 @@
                     '<span class="pc-badges">' +
                         '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
                         '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                        (p.preferredDoctor
+                            ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' ' +
+                                  esc(p.preferredDoctor) + '</span>'
+                            : '') +
                     '</span>' +
                 '</div>' +
             '</header>' +
@@ -188,8 +188,45 @@
     }
 
     /* ==================================================================
-       Register / edit form
-       ================================================================== */
+        Register / edit form
+        ================================================================== */
+
+    /* Doctors come from the staff directory; reception cannot type free
+       text so a preference always names a real clinician. */
+    var STAFF_KEY = 'clinic_staff_members';
+
+    function doctorChoices() {
+        return store.read(STAFF_KEY).filter(function (s) {
+            return s.role === 'Doctor';
+        }).map(function (s) { return s.name; }).sort();
+    }
+
+    function renderDoctorOptions(selected) {
+        var menu = byId('inputDoctorMenu');
+        if (!menu) return;
+        var opts = ['<li class="cs-option" data-value="" data-label="No preference — queue order">No preference — any doctor, the queue decides</li>'];
+        doctorChoices().forEach(function (name) {
+            opts.push('<li class="cs-option' + (selected && name === selected ? ' selected' : '') +
+                '" data-value="' + esc(name) + '" data-label="' + esc(name) + '">' + esc(name) + '</li>');
+        });
+        menu.innerHTML = opts.join('');
+    }
+
+    /* The field shows only the 9 national digits; +251 is fixed on screen
+       and the number is stored with the trunk 0 so lookups stay canonical. */
+    function bindPhoneInput() {
+        var el = byId('inputPhone');
+        if (!el || el.getAttribute('data-phone-ready') === '1') return;
+        el.setAttribute('data-phone-ready', '1');
+        el.setAttribute('maxlength', '9');
+        el.addEventListener('input', function () {
+            var d = el.value.replace(/\D/g, '');
+            while (d.charAt(0) === '0') d = d.slice(1);   /* +251 already says it */
+            if (d.length > 9) d = d.slice(0, 9);
+            if (el.value !== d) el.value = d;
+        });
+    }
+
     function openForm(id) {
         editingId = id === undefined || id === null ? null : id;
         var p = editingId === null ? null : store.findPatient(patients, editingId);
@@ -205,26 +242,25 @@
         });
         VITAL_FIELDS.forEach(function (pair) { byId(pair[0]).value = ''; });
 
+        renderDoctorOptions(p ? p.preferredDoctor : null);
+
         if (p) {
             byId('inputName').value = p.name;
             byId('inputAge').value = p.age === null ? '' : p.age;
-            byId('inputPhone').value = p.phone;
+            byId('inputPhone').value = p.phone ? String(p.phone).replace(/^0+/, '') : '';
             byId('inputDesc').value = p.description;
             VITAL_FIELDS.forEach(function (pair) {
                 var v = p.vitals[pair[1]];
                 byId(pair[0]).value = v === null || v === undefined ? '' : v;
             });
-            ui.setSelectValue('inputSexWrapper', p.sex || '', p.sex || 'Not stated');
+            ui.setSelectValue('inputSexWrapper', p.sex || '', p.sex || 'Choose sex');
             ui.setSelectValue('inputUrgencyWrapper', store.normalizeUrgency(p.urgency));
-            ui.setSelectValue('inputStatusWrapper',
-                p.status === STATUS.CONSULTING ? STATUS.CONSULTING :
-                p.status === STATUS.PENDING ? STATUS.PENDING : STATUS.AWAITING_PAYMENT,
-                p.status === STATUS.CONSULTING ? 'In consultation' :
-                p.status === STATUS.PENDING ? 'Waiting in queue' : 'Awaiting payment');
+            ui.setSelectValue('inputDoctorWrapper', p.preferredDoctor || '',
+                p.preferredDoctor || 'No preference — queue order');
         } else {
-            ui.setSelectValue('inputSexWrapper', '', 'Not stated');
+            ui.setSelectValue('inputSexWrapper', '', 'Choose sex');
             ui.setSelectValue('inputUrgencyWrapper', store.URGENCY.ROUTINE, 'Routine');
-            ui.setSelectValue('inputStatusWrapper', STATUS.AWAITING_PAYMENT, 'Awaiting payment');
+            ui.setSelectValue('inputDoctorWrapper', '', 'No preference — queue order');
         }
 
         refreshReadout();
@@ -312,6 +348,23 @@
             assessment.summary + ' Recorded priority is ' + chosen + '.');
     }
 
+    /* An "active" twin: same phone number AND same age still inside the
+       department (waiting, in consultation or awaiting results). Finished
+       visits are history, not duplicates. */
+    function findActiveDuplicate(phone, age) {
+        var digits = store.phoneDigits(phone);
+        if (!digits || age === null || age === undefined) return null;
+        var match = null;
+        patients.some(function (p) {
+            if (p.status === STATUS.FINISHED) return false;
+            if (store.phoneDigits(p.phone) !== digits) return false;
+            if (p.age === null || Number(p.age) !== Number(age)) return false;
+            match = p;
+            return true;
+        });
+        return match;
+    }
+
     function savePatient() {
         var ok = ui.requireFields([
             { id: 'inputName', message: 'Enter the patient\u2019s full name.' },
@@ -325,41 +378,83 @@
             },
             {
                 id: 'inputPhone',
-                message: 'Enter a contact number with at least 9 digits.',
-                test: function (v) { return v.replace(/\D/g, '').length >= 9; }
-            },
-            { id: 'inputDesc', message: 'Record the presenting complaint.' }
+                message: 'Enter all 9 digits after +251.',
+                test: function (v) { return store.isValidPhone('0' + v.replace(/\D/g, '')); }
+            }
         ]);
         if (!ok) return;
 
-        var urgency = ui.getSelectValue('inputUrgencyWrapper') || store.URGENCY.ROUTINE;
-        var status = ui.getSelectValue('inputStatusWrapper') || STATUS.AWAITING_PAYMENT;
+        var sex = ui.getSelectValue('inputSexWrapper');
+        if (!sex) {
+            window.MediTrackNotify.push('Sex is required',
+                'Choose Female or Male before saving.',
+                'warning', 'Patients', 'normal');
+            return;
+        }
 
+        var urgency = ui.getSelectValue('inputUrgencyWrapper') || store.URGENCY.ROUTINE;
+
+        /* Urgent and emergency arrivals go straight to the queue; everyone
+           else pays their queue-card bill first. */
+        var goesStraightToQueue = urgency === store.URGENCY.URGENT ||
+                                  urgency === store.URGENCY.EMERGENCY;
+        var status = goesStraightToQueue ? STATUS.PENDING : STATUS.AWAITING_PAYMENT;
+
+        var phoneDigitsTyped = val('inputPhone').replace(/\D/g, '');
         var payload = {
             name: val('inputName'),
             age: store.toNumber(val('inputAge')),
-            sex: ui.getSelectValue('inputSexWrapper'),
-            phone: val('inputPhone'),
+            sex: sex,
+            phone: '0' + phoneDigitsTyped,
             description: val('inputDesc'),
+            preferredDoctor: ui.getSelectValue('inputDoctorWrapper') || null,
             urgency: urgency,
             status: status,
             vitals: readVitalsFromForm()
         };
 
+        /* Duplicate safety net: warn, show who is already here, and let the
+           operator insist only deliberately. */
+        if (editingId === null) {
+            var dup = findActiveDuplicate(payload.phone, payload.age);
+            if (dup && dup.id !== editingId) {
+                ui.confirmAction({
+                    title: 'Possible duplicate',
+                    subtitle: dup.name + ' \u00b7 ' + dup.trackingId,
+                    message: 'A patient with the same phone number and age is already active: ' +
+                             dup.name + ' (' + dup.trackingId + '), currently \u201c' + dup.status +
+                             '\u201d' + (dup.preferredDoctor ? ' under ' + dup.preferredDoctor : '') +
+                             '. Check their card before creating a second record for the same person.',
+                    confirmLabel: 'Register anyway',
+                    cancelLabel: 'Open existing record',
+                    tone: 'danger',
+                    icon: 'warning',
+                    onCancel: function () { openDetail(dup.id); }
+                }, function () {
+                    performSave(payload, goesStraightToQueue);
+                });
+                return;
+            }
+        }
+
+        performSave(payload, goesStraightToQueue);
+    }
+
+    function performSave(payload, goesStraightToQueue) {
         var existing = editingId === null ? null : store.findPatient(patients, editingId);
 
         if (existing) {
             Object.keys(payload).forEach(function (k) { existing[k] = payload[k]; });
             /* Re-run the vitals alert if the numbers changed materially. */
             existing.vitalsAlerted = null;
-            if (status === STATUS.CONSULTING && !existing.calledAt) {
+            if (payload.status === STATUS.CONSULTING && !existing.calledAt) {
                 existing.calledAt = new Date().toISOString();
             }
         } else {
             payload.id = store.nextPatientId(patients);
             payload.trackingId = store.generateTrackingId();
             payload.registered = new Date().toISOString();
-            if (status === STATUS.CONSULTING) payload.calledAt = payload.registered;
+            if (payload.status === STATUS.CONSULTING) payload.calledAt = payload.registered;
             patients.push(store.normalizePatient(payload));
         }
 
@@ -369,24 +464,44 @@
         var saved = existing || patients[patients.length - 1];
         var assessment = clinical.assess(saved.vitals);
 
+        /* Every registration raises a queue-card bill on the billing desk.
+           Routine patients are taken there to pay straight away; urgent and
+           emergency arrivals join the queue first and settle it later. */
+        var regBill = null;
+        if (!existing) {
+            regBill = store.ensureRegistrationInvoice(saved);
+            if (regBill && !goesStraightToQueue) {
+                try {
+                    window.sessionStorage.setItem('billing_open_invoice_id', regBill.id);
+                } catch (e) {}
+            }
+        }
+
         ui.closeModal('patientModal');
         render();
 
         if (existing) {
             window.MediTrackNotify.flash('Record updated', saved.name + ' saved.');
-        } else if (store.normalizeUrgency(saved.urgency) === store.URGENCY.EMERGENCY) {
-            window.MediTrackNotify.event('queue.emergency', {
-                key: 'emergency:' + saved.id,
-                title: 'Emergency Arrival',
-                message: saved.name + ' (' + saved.trackingId + ') registered as Emergency and placed at the front of the queue.'
-            });
         } else {
             window.MediTrackNotify.event('patient.registered', {
                 key: 'registered:' + saved.id,
                 title: 'Patient Registered',
                 message: saved.name + ' added as ' + store.normalizeUrgency(saved.urgency) +
-                         '. Tracking ID ' + saved.trackingId + '.'
+                         '. Tracking ID ' + saved.trackingId + '.' +
+                         (saved.preferredDoctor ? ' Requests ' + saved.preferredDoctor + '.' : '')
             });
+        }
+
+        if (regBill && !goesStraightToQueue) {
+            store.navigate('pages/billing.html');
+        } else if (goesStraightToQueue) {
+            window.MediTrackNotify.push(
+                regBill ? 'Queued · card bill unpaid' : 'Added to queue',
+                saved.name + ' is urgent and joins the queue now.' +
+                    (regBill ? ' The unpaid queue-card bill (' +
+                        store.formatMoney(store.invoiceTotals(regBill).total) + ') waits at billing.' : ''),
+                'info', 'Queue', 'high'
+            );
         }
 
         /* Abnormal baseline observations are a clinical event in their own right. */
@@ -452,11 +567,17 @@
             '<dl class="detail-grid">' +
                 detailItem('Age', p.age === null ? '—' : p.age + ' years') +
                 detailItem('Sex', p.sex || '—') +
-                detailItem('Phone', p.phone || '—') +
+                detailItem('Phone', p.phone ? store.formatPhone(p.phone) : '—') +
                 detailItem('Tracking ID', p.trackingId) +
                 detailItem('BMI', b ? b.value + ' (' + b.category + ')' : '—') +
                 detailItem('Time in department', store.elapsed(p.registered, p.completedAt)) +
             '</dl>' +
+
+            (p.preferredDoctor
+                ? section('Doctor preference', 'stethoscope',
+                    '<p class="detail-text">Patient requests <strong>' + esc(p.preferredDoctor) +
+                    '</strong>. All doctors draw from the same queue; this is shown to the consultation desk when calling.</p>')
+                : '') +
 
             section('Presenting complaint', 'file-text',
                 '<p class="detail-text">' + esc(p.description || 'Not recorded.') + '</p>') +
@@ -558,8 +679,11 @@
         if (saveBtn) saveBtn.addEventListener('click', savePatient);
 
         ui.initSelect('inputSexWrapper');
-        ui.initSelect('inputStatusWrapper');
         ui.initSelect('inputUrgencyWrapper', function () { refreshReadout(); });
+        ui.initSelect('inputDoctorWrapper');
+
+        /* Ethiopian mobile entry: exactly 9 national digits after +251. */
+        bindPhoneInput();
 
         ui.initSelect('filterUrgencyWrapper', function (v) { urgencyFilter = v; render(); });
         ui.initSelect('filterStatusWrapper', function (v) { statusFilter = v; render(); });

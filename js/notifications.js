@@ -24,6 +24,7 @@
     var STORAGE_NOTIFS_KEY = 'clinic_notifications_log';
     var STORAGE_KEY_PATIENTS = 'clinic_patients_data';
     var STORAGE_KEY_LAB = 'clinic_lab_requests';
+    var STORAGE_CALL_ALERT = 'meditrack_call_alert';
 
     var MAX_LOG = 60;
     var DEDUPE_WINDOW_MS = 20000;   /* identical alert inside this window is dropped */
@@ -481,6 +482,29 @@
         });
     }
 
+    /* A clinician called a patient in another tab: the queue manager and
+       the nurse station must hear it. Critical priority keeps the toast on
+       screen until dismissed, and the chime repeats three times so it is
+       unmistakable across a busy room. */
+    function handleCallAlert(newValue) {
+        var data;
+        try { data = JSON.parse(newValue); } catch (e) { return; }
+        if (!data || !data.name || !data.at) return;
+
+        var doctor = data.doctor ? ' to ' + data.doctor : '';
+        MediTrackNotify.event('queue.called', {
+            key: 'callalert:' + data.trackingId + ':' + data.at,
+            title: 'Now Calling Patient',
+            message: data.name + ' (' + (data.trackingId || '\u2014') + ') has been called' +
+                     doctor + '. Please direct them to the consultation room.',
+            priority: 'critical'
+        });
+
+        [0, 900, 1800].forEach(function (delay) {
+            setTimeout(function () { playSound('critical'); }, delay);
+        });
+    }
+
     function handleLabChange(newValue) {
         var labs;
         try { labs = JSON.parse(newValue || '[]'); } catch (e) { return; }
@@ -528,6 +552,8 @@
                 handlePatientChange(e.newValue);
             } else if (e.key === STORAGE_KEY_LAB) {
                 handleLabChange(e.newValue);
+            } else if (e.key === STORAGE_CALL_ALERT && e.newValue) {
+                handleCallAlert(e.newValue);
             }
         });
     }

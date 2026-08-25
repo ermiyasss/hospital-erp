@@ -423,4 +423,9 @@ body.blurred-ui .topbar {
 @media print {
     .sidebar, .topbar { display: none !important; }
     .main-content { margin-left: 0; width: 100%; max-width: 100%; }
+
+    /* Paper is white: force dark ink so a dark UI theme can never print
+       light text that is invisible on the sheet. */
+    html, body { background: #FFFFFF !important; color: #16202C !important; }
+    body * { color: #16202C !important; border-color: #DDE2E9 !important; }
 }

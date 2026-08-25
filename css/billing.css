@@ -55,22 +55,126 @@
 .tone-danger-text { color: var(--danger); }
 
 /* --------------------------------------------------------------------------
-   Bills table
+   Bills · compact list
+   One row per bill, colour-coded by stage on the left edge:
+   red = unpaid, yellow = card paid / part paid, green = settled.
    -------------------------------------------------------------------------- */
-#invoiceTable tbody tr { cursor: pointer; }
-#invoiceTable tbody tr:hover { background: var(--surface-alt); }
+.cards-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: var(--space-3);
+}
+.cards-head h3 { font-size: var(--fs-md); }
 
-.bill-number { font-weight: var(--fw-semibold); color: var(--text-strong); display: block; }
-#invoiceTable td:nth-child(2), #invoiceTable td:nth-child(4),
-#invoiceTable td:nth-child(5), #invoiceTable td:nth-child(6) { white-space: nowrap; }
+.bill-list-wrap {
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+    overflow: hidden;
+}
+
+.bl-head, .bl-row {
+    display: grid;
+    grid-template-columns: 92px minmax(180px, 1.4fr) minmax(130px, 1fr) 110px 180px 150px;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 9px var(--space-4);
+}
+.bl-head {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    background: var(--surface-alt);
+    border-bottom: 1px solid var(--gray-border);
+}
+.bl-head .num { text-align: right; }
+
+.bl-row {
+    --stage-color: var(--danger);
+    border-bottom: 1px solid var(--gray-border);
+    border-left: 3px solid var(--stage-color);
+    cursor: pointer;
+    transition: background var(--t-fast);
+}
+.bl-row:last-child { border-bottom: none; }
+.bl-row:hover { background: var(--surface-alt); }
+
+.bl-row.stage-unpaid      { --stage-color: var(--danger); }
+.bl-row.stage-part        ,
+.bl-row.stage-paid        { --stage-color: var(--warning); }
+.bl-row.stage-done        { --stage-color: var(--success); }
+.bl-row.stage-cancelled   { --stage-color: var(--gray-muted); opacity: 0.6; }
+
+.bl-num { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-strong); }
+
+.bl-patient { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.bl-patient-text { min-width: 0; }
+.bl-name {
+    display: block;
+    font-weight: var(--fw-semibold);
+    color: var(--text-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bl-sub {
+    display: block;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.bl-kind { min-width: 0; font-size: var(--fs-sm); color: var(--text-body); }
+.bl-kind em {
+    display: block;
+    font-style: normal;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+
+.bl-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.bl-amt strong { font-size: var(--fs-sm); color: var(--text-strong); font-weight: var(--fw-semibold); }
+.bl-amt em {
+    display: block;
+    font-style: normal;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+}
+
+.bl-stage {
+    justify-self: start;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+    white-space: nowrap;
+    background: var(--surface-sunken);
+    color: var(--stage-color);
+    border: 1px solid var(--gray-border);
+}
+.bl-stage.stage-unpaid    { background: var(--danger-bg);  border-color: var(--danger-border); }
+.bl-stage.stage-part      ,
+.bl-stage.stage-paid      { background: var(--warning-bg); border-color: var(--warning-border); }
+.bl-stage.stage-done      { background: var(--success-bg); border-color: var(--success-border); }
+
+.bl-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    white-space: nowrap;
+}
 
 .mini-avatar {
-    width: 30px; height: 30px; flex-shrink: 0;
+    width: 28px; height: 28px; flex-shrink: 0;
     border-radius: var(--radius-md);
     background: var(--primary-light);
     color: var(--primary-dark);
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: var(--fs-xs);
+    font-size: 10px;
     font-weight: var(--fw-bold);
 }
 
@@ -139,6 +243,17 @@
    -------------------------------------------------------------------------- */
 .cs-sub { display: block; font-size: var(--fs-xs); color: var(--text-faint); margin-top: 1px; }
 .cs-empty { padding: 12px 14px; font-size: var(--fs-sm); color: var(--gray-muted); }
+
+/* Compact inline "add a line" rows (new bill, price list, final payment). */
+.add-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: flex-end;
+}
+.add-line .form-group { margin-bottom: 0; }
+.form-group-tiny { flex: 0 0 76px !important; min-width: 76px !important; }
+.form-group-small { flex: 0 0 128px !important; min-width: 128px !important; }
 
 .line-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-3); }
 
@@ -247,8 +362,38 @@
     border-radius: var(--radius-lg);
     margin-bottom: var(--space-4);
 }
-.pd-label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--primary-dark); }
+.pd-label {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--primary-dark);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .pd-value { font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--primary-dark); font-variant-numeric: tabular-nums; }
+
+/* Final-payment summary strip: Bill · Paid · To settle */
+.pd-settle { display: flex; gap: 18px; flex-shrink: 0; }
+.pd-settle span {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--primary-dark);
+    opacity: 0.75;
+}
+.pd-settle strong {
+    font-size: var(--fs-md);
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 1;
+}
+.pd-settle span:last-child strong { color: var(--danger); }
+
+.discharge-pay-row { margin-top: var(--space-3); }
 
 .link-btn {
     display: inline-block;
@@ -469,9 +614,22 @@
 }
 .rcp-txn strong { color: #16202C; letter-spacing: 0.04em; }
 .rcp-foot { margin-top: var(--space-4); font-size: 10.5px; color: #8A929C; text-align: center; }
+.rcp-staff { display: block; font-size: 9.5px; color: #8A929C; }
 
-/* Printing a receipt prints only the paper. */
+/* Printing a receipt prints only the paper.
+   Ink is forced light-on-white so a dark UI theme can never bleed into
+   the printed sheet (light text would otherwise vanish on white paper). */
 @media print {
+    html, body {
+        background: #FFFFFF !important;
+        color: #16202C !important;
+    }
+    body * {
+        color: #16202C !important;
+        border-color: #DDE2E9 !important;
+    }
+    .receipt-paper, .receipt-paper * { color: #16202C !important; }
+    .rcp-txn { background: #FDF6E7 !important; border-color: #E3C88A !important; }
     body.printing-node * { visibility: hidden !important; }
     body.printing-node .print-target,
     body.printing-node .print-target * { visibility: visible !important; }
@@ -485,9 +643,59 @@
 }
 
 /* --------------------------------------------------------------------------
+   Final payment · extra charges
+   -------------------------------------------------------------------------- */
+.add-line-extras { align-items: end; }
+
+.extras-list { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-3); }
+.extras-list:empty { display: none; }
+.extra-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    background: var(--surface-alt);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+}
+.extra-row .ex-cat {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--info);
+    background: var(--info-bg);
+    border-radius: var(--radius-sm);
+    padding: 3px 7px;
+}
+.extra-row .ex-desc {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-body);
+}
+.extra-row .ex-total { font-weight: var(--fw-semibold); color: var(--text-strong); font-variant-numeric: tabular-nums; }
+
+.discharge-totals { margin-top: 0; margin-bottom: var(--space-3); }
+
+/* --------------------------------------------------------------------------
    Price list
    -------------------------------------------------------------------------- */
 .price-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-4); }
+.price-row input.pr-amount {
+    width: 100%;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-strong);
+    font-size: var(--fs-sm);
+    text-align: right;
+}
 .price-row {
     display: grid;
     grid-template-columns: 110px 1fr 100px 28px;

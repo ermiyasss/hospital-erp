@@ -84,7 +84,7 @@
             summary: 'Nurse station, pharmacy, waiting list and patient records.',
             pages: ['nurse', 'pharmacy', 'queue', 'registry', 'settings'],
             landing: 'nurse',
-            settingsScope: 'preferences'
+            settingsScope: 'full'
         },
         reception: {
             key: 'reception',
@@ -94,7 +94,7 @@
             summary: 'Waiting list, billing and patient records.',
             pages: ['queue', 'billing', 'registry', 'settings'],
             landing: 'queue',
-            settingsScope: 'preferences'
+            settingsScope: 'full'
         }
     };
 

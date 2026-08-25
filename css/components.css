@@ -522,6 +522,27 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     white-space: nowrap;
 }
 
+/* Fixed international prefix for phone entry (for example +251). */
+.phone-prefix {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 9px;
+    border: 1px solid var(--gray-border);
+    border-right: none;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+    background: var(--surface-sunken);
+    color: var(--text-body);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+    user-select: none;
+}
+.phone-prefix + input {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
 /* --------------------------------------------------------------------------
    Custom select (shared with the shell)
    -------------------------------------------------------------------------- */
