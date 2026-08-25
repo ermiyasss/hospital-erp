@@ -111,7 +111,7 @@
                 <section class="form-section">
                     <h4 class="form-section-title">
                         <span class="ico" data-icon="user" data-icon-size="14"></span>
-                        <span>Demographics</span>
+                        <span>Patient</span>
                     </h4>
                     <div class="form-row">
                         <div class="form-group form-group-grow">
@@ -128,23 +128,27 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Sex</label>
+                            <label>Sex <span class="req">*</span></label>
                             <div class="custom-select" id="inputSexWrapper">
                                 <button type="button" class="cs-toggle" data-value="">
-                                    <span class="cs-text">Not stated</span>
+                                    <span class="cs-text">Choose sex</span>
                                     <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
                                 </button>
                                 <ul class="cs-menu">
-                                    <li class="cs-option selected" data-value="">Not stated</li>
+                                    <li class="cs-option selected" data-value="">Choose sex</li>
                                     <li class="cs-option" data-value="Female">Female</li>
                                     <li class="cs-option" data-value="Male">Male</li>
                                 </ul>
                             </div>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group form-group-grow">
                             <label for="inputPhone">Phone <span class="req">*</span></label>
-                            <input type="tel" id="inputPhone" inputmode="tel" placeholder="09XX XXX XXX">
-                            <span class="field-hint">Used to link previous visits</span>
+                            <div class="input-suffix">
+                                <span class="phone-prefix">+251</span>
+                                <input type="tel" id="inputPhone" inputmode="numeric" maxlength="9"
+                                       placeholder="9XX XXX XXX" autocomplete="tel-national">
+                            </div>
+                            <span class="field-hint">Type the 9 digits after +251 — for example 911 234 567. The leading 0 is added for you.</span>
                         </div>
                     </div>
                 </section>
@@ -152,7 +156,7 @@
                 <section class="form-section">
                     <h4 class="form-section-title">
                         <span class="ico" data-icon="pulse" data-icon-size="14"></span>
-                        <span>Baseline observations</span>
+                        <span>Observations <em class="optional-tag">optional</em></span>
                     </h4>
                     <div class="vitals-entry-grid">
                         <div class="form-group">
@@ -170,38 +174,10 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="inputPulse">Heart rate</label>
-                            <div class="input-suffix">
-                                <input type="number" id="inputPulse" min="20" max="260" placeholder="72">
-                                <span class="unit">bpm</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
                             <label for="inputTemp">Temperature</label>
                             <div class="input-suffix">
                                 <input type="number" id="inputTemp" step="0.1" min="30" max="45" placeholder="36.8">
                                 <span class="unit">&deg;C</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="inputSpo2">SpO&#8322;</label>
-                            <div class="input-suffix">
-                                <input type="number" id="inputSpo2" min="50" max="100" placeholder="98">
-                                <span class="unit">%</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="inputRespRate">Respiratory rate</label>
-                            <div class="input-suffix">
-                                <input type="number" id="inputRespRate" min="4" max="80" placeholder="16">
-                                <span class="unit">/min</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="inputGlucose">Blood glucose</label>
-                            <div class="input-suffix">
-                                <input type="number" id="inputGlucose" min="10" max="900" placeholder="95">
-                                <span class="unit">mg/dL</span>
                             </div>
                         </div>
                         <div class="form-group">
@@ -221,15 +197,7 @@
                     </div>
 
                     <!-- Automatic interpretation of what has been typed -->
-                    <div class="vitals-readout" id="vitalsReadout">
-                        <div class="notice">
-                            <span class="ico" data-icon="info" data-icon-size="15"></span>
-                            <div>
-                                <strong>Automatic interpretation</strong>
-                                Enter observations above and each value is checked against adult reference ranges.
-                            </div>
-                        </div>
-                    </div>
+                    <div class="vitals-readout" id="vitalsReadout"></div>
                 </section>
 
                 <section class="form-section">
@@ -237,39 +205,39 @@
                         <span class="ico" data-icon="clipboard" data-icon-size="14"></span>
                         <span>Triage</span>
                     </h4>
-                    <div class="form-group">
-                        <label for="inputDesc">Presenting complaint <span class="req">*</span></label>
-                        <textarea id="inputDesc" rows="3" placeholder="What the patient reports, in their own words where possible, including duration."></textarea>
-                    </div>
                     <div class="form-row">
+                        <div class="form-group form-group-grow">
+                            <label for="inputDesc">Complaint</label>
+                            <input type="text" id="inputDesc" placeholder="What the patient reports, e.g. fever for two days">
+                        </div>
                         <div class="form-group">
-                            <label>Triage priority <span class="req">*</span></label>
+                            <label>Priority</label>
                             <div class="custom-select" id="inputUrgencyWrapper">
                                 <button type="button" class="cs-toggle" data-value="Routine">
                                     <span class="cs-text">Routine</span>
                                     <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
                                 </button>
                                 <ul class="cs-menu">
-                                    <li class="cs-option" data-value="Emergency" data-label="Emergency">Emergency — see immediately</li>
-                                    <li class="cs-option" data-value="Urgent" data-label="Urgent">Urgent — see soon</li>
                                     <li class="cs-option selected" data-value="Routine" data-label="Routine">Routine — standard queue</li>
+                                    <li class="cs-option" data-value="Urgent" data-label="Urgent">Urgent — see soon</li>
+                                    <li class="cs-option" data-value="Emergency" data-label="Emergency">Emergency — see immediately</li>
                                 </ul>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Initial status</label>
-                            <div class="custom-select" id="inputStatusWrapper">
-                                <button type="button" class="cs-toggle" data-value="Awaiting Payment">
-                                    <span class="cs-text">Awaiting payment</span>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group form-group-grow">
+                            <label>Preferred doctor</label>
+                            <div class="custom-select" id="inputDoctorWrapper">
+                                <button type="button" class="cs-toggle" data-value="">
+                                    <span class="cs-text">No preference — queue order</span>
                                     <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
                                 </button>
-                                <ul class="cs-menu">
-                                    <li class="cs-option selected" data-value="Awaiting Payment" data-label="Awaiting payment">Awaiting payment</li>
-                                    <li class="cs-option" data-value="Pending" data-label="Waiting in queue">Waiting in queue</li>
-                                    <li class="cs-option" data-value="In Consultation" data-label="In consultation">In consultation</li>
+                                <ul class="cs-menu" id="inputDoctorMenu">
+                                    <li class="cs-option selected" data-value="" data-label="No preference — queue order">No preference — any doctor, the queue decides</li>
                                 </ul>
                             </div>
-                            <span class="field-hint">New patients join the waiting list once their bill is settled at billing.</span>
+                            <span class="field-hint">Optional. Without a preference every doctor draws from the same queue in calling order; with one, the request is shown to the consultation desk.</span>
                         </div>
                     </div>
 
@@ -289,7 +257,7 @@
                 <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
                 <button type="button" class="btn-primary" id="savePatientBtn">
                     <span class="ico" data-icon="save" data-icon-size="15"></span>
-                    <span id="savePatientLabel">Save record</span>
+                    <span id="savePatientLabel">Register &amp; go to billing</span>
                 </button>
             </div>
         </div>

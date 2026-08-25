@@ -51,10 +51,12 @@
     /* ==================================================================
        Status visuals
        ================================================================== */
+    /* Paid reads yellow until discharge turns it green, matching the cards:
+       red = owes money, yellow = money taken / may queue, green = gone home. */
     function statusChip(status) {
         var cls, label = status;
         switch (status) {
-            case 'Paid':        cls = 'chip chip-success'; break;
+            case 'Paid':        cls = 'chip chip-warning'; label = 'Paid'; break;
             case 'Partly Paid': cls = 'chip chip-warning'; break;
             case 'Cancelled':   cls = 'chip chip-muted';   break;
             default:            cls = 'chip chip-danger';  label = 'Unpaid'; break;
@@ -168,76 +170,127 @@
             String(inv.trackingId || '').toLowerCase().indexOf(q) !== -1;
     }
 
-    function renderTable() {
-        var body = byId('invoiceTableBody');
-        var card = byId('invoiceTableCard');
+    /* The journey of a bill drives its colour:
+       Unpaid   -> red    (card fee or final bill waiting)
+       Paid     -> yellow (card paid · awaiting final payment)
+       Settled  -> green  (final payment taken, patient discharged)
+       Overdue  -> yellow part-paid; Cancelled -> grey */
+    function stageOf(inv) {
+        if (inv.status === 'Cancelled') return 'cancelled';
+        if (inv.discharged) return 'done';
+        switch (inv.status) {
+            case 'Paid':        return 'paid';
+            case 'Partly Paid': return 'part';
+            default:            return 'unpaid';
+        }
+    }
+
+    function stageChip(inv) {
+        var map = {
+            unpaid:    ['stage-unpaid', 'Unpaid'],
+            part:      ['stage-part',   'Part paid'],
+            paid:      ['stage-paid',
+                           inv.kind === 'registration' ? 'Awaiting final payment' : 'Paid'],
+            done:      ['stage-done',   'Settled · discharged'],
+            cancelled: ['stage-cancelled', 'Cancelled']
+        };
+        var s = map[stageOf(inv)] || map.unpaid;
+        return '<span class="bl-stage ' + s[0] + '">' + esc(s[1]) + '</span>';
+    }
+
+    function renderCards() {
+        var host = byId('billCards');
         var emptyHost = byId('invoiceEmptyHost');
-        if (!body) return;
+        if (!host) return;
 
         var list = invoices.filter(matchesFilters);
         setText('invoiceResultCount', list.length + (list.length === 1 ? ' bill' : ' bills'));
 
         if (!list.length) {
-            card.hidden = true;
+            host.hidden = true;
+            byId('billListHead').hidden = true;
             emptyHost.innerHTML = ui.emptyState({
                 icon: invoices.length ? 'search' : 'receipt',
                 title: invoices.length ? 'No bills match' : 'No bills yet',
                 text: invoices.length
                     ? 'Clear the search or the filters to see more bills.'
-                    : 'Create the first bill with the “New bill” button. Patients waiting to pay appear here.'
+                    : 'Register a patient to raise their queue-card bill, or create one with the “New bill” button.'
             });
             return;
         }
 
-        card.hidden = false;
+        host.hidden = false;
+        byId('billListHead').hidden = false;
         emptyHost.innerHTML = '';
 
-        body.innerHTML = list.map(function (inv) {
+        host.innerHTML = list.map(function (inv) {
             var t = store.invoiceTotals(inv);
-            return '<tr data-inv="' + esc(inv.id) + '">' +
-                '<td><span class="mono bill-number">' + esc(inv.number) + '</span>' +
-                    '<span class="cell-meta">' + esc(kindLabel(inv.kind)) + '</span></td>' +
-                '<td><div class="cell-patient">' +
+            var stage = stageOf(inv);
+            var canPay = t.balance > 0 && inv.status !== 'Cancelled' && !inv.discharged;
+            var canFinalize = (stage === 'paid' || stage === 'part') && inv.kind !== 'service';
+
+            return '<div class="bl-row stage-' + stage + '" data-inv="' + esc(inv.id) + '" title="Open bill">' +
+                '<span class="bl-num mono">' + esc(inv.number) + '</span>' +
+                '<span class="bl-patient">' +
                     '<span class="mini-avatar">' + esc(store.initials(inv.patientName)) + '</span>' +
-                    '<span class="cell-patient-text">' +
-                        '<span class="cell-name">' + esc(inv.patientName || '—') + '</span>' +
-                        '<span class="cell-meta mono">' + esc(inv.trackingId || '') + '</span>' +
-                    '</span></div></td>' +
-                '<td><span class="cell-meta">' + esc(store.formatDateTime(inv.createdAt)) + '</span></td>' +
-                '<td class="num"><strong>' + money(t.total) + '</strong></td>' +
-                '<td class="num">' + money(t.paid) + '</td>' +
-                '<td class="num">' + (t.balance > 0 ? '<strong class="tone-danger-text">' + money(t.balance) + '</strong>' : '—') + '</td>' +
-                '<td>' + statusChip(inv.status) +
-                    (inv.discharged ? ' <span class="chip chip-success">Discharged</span>' : '') + '</td>' +
-                '<td class="row-actions">' +
-                    (t.balance > 0 && inv.status !== 'Cancelled' && !inv.discharged
+                    '<span class="bl-patient-text">' +
+                        '<span class="bl-name">' + esc(inv.patientName || '—') + '</span>' +
+                        '<span class="bl-sub mono">' + esc(inv.trackingId || '') + '</span>' +
+                    '</span>' +
+                '</span>' +
+                '<span class="bl-kind">' +
+                    esc(kindLabel(inv.kind)) +
+                    '<em>' + esc(store.formatDateTime(inv.createdAt)) + '</em>' +
+                '</span>' +
+                '<span class="bl-amt"><strong class="mono">' + money(t.total) + '</strong><em>total</em></span>' +
+                stageChip(inv) +
+                '<span class="bl-actions">' +
+                    (canPay
                         ? '<button type="button" class="btn-mini btn-mini-primary" data-quickpay="' + esc(inv.id) + '">' +
-                              icon('cash', 13) + ' Pay</button>' : '') +
-                    '<button type="button" class="btn-mini" data-open="' + esc(inv.id) + '">' + icon('chevron-right', 13) + '</button>' +
-                '</td>' +
-            '</tr>';
+                              icon('cash', 13) + ' Card payment</button>'
+                        : '') +
+                    (canFinalize
+                        ? '<button type="button" class="btn-mini btn-mini-primary" data-finalize="' + esc(inv.id) + '">' +
+                              icon('check-circle', 13) + ' Final payment</button>'
+                        : '') +
+                    '<button type="button" class="btn-mini" data-slip="' + esc(inv.id) + '" title="Print slip">' +
+                        icon('print', 13) + '</button>' +
+                '</span>' +
+            '</div>';
         }).join('');
 
-        bindTable();
+        bindCards();
     }
 
-    function bindTable() {
-        var body = byId('invoiceTableBody');
-        if (!body) return;
+    function bindCards() {
+        var host = byId('billCards');
+        if (!host) return;
 
-        ui.qsa('[data-open]', body).forEach(function (btn) {
+        ui.qsa('[data-open]', host).forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 openDetail(btn.getAttribute('data-open'));
             });
         });
-        ui.qsa('[data-quickpay]', body).forEach(function (btn) {
+        ui.qsa('[data-quickpay]', host).forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 openPayment(btn.getAttribute('data-quickpay'));
             });
         });
-        ui.qsa('tr[data-inv]', body).forEach(function (row) {
+        ui.qsa('[data-slip]', host).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                printSlip(btn.getAttribute('data-slip'));
+            });
+        });
+        ui.qsa('[data-finalize]', host).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openDischarge(btn.getAttribute('data-finalize'));
+            });
+        });
+        ui.qsa('.bl-row[data-inv]', host).forEach(function (row) {
             row.addEventListener('click', function () {
                 openDetail(row.getAttribute('data-inv'));
             });
@@ -248,7 +301,7 @@
         invoices = store.readInvoices();
         patients = store.readPatients();
         renderStats();
-        renderTable();
+        renderCards();
     }
 
     /* ==================================================================
@@ -563,7 +616,7 @@
         byId('detailModalBody').innerHTML =
             '<div class="detail-status-row">' + statusChip(inv.status) +
                 (t.balance > 0 && inv.status !== 'Cancelled'
-                    ? '<span class="due-pill">' + money(t.balance) + ' left to pay</span>' : '') +
+                    ? '<span class="due-pill">' + money(t.balance) + ' due</span>' : '') +
             '</div>' +
             '<div class="table-scroll"><table class="data-table detail-table">' +
                 '<thead><tr><th>Type</th><th>Description</th><th class="num">Qty</th>' +
@@ -605,44 +658,166 @@
 
     /* ==================================================================
        Final payment & discharge
+       The nurse opens the patient's card bill (the yellow "Awaiting final
+       payment" row), enters the consultation amount, optionally adds costs
+       like laboratory or nursing below it, and takes one payment. The system
+       sums everything automatically.
        ================================================================== */
     var dischargingId = null;
+    var dischargeExtras = [];
+    var dischargeMethod = 'Cash';
 
     function openDischarge(id) {
         var inv = store.findInvoice(id);
         if (!inv || inv.discharged) return;
 
         dischargingId = id;
+        dischargeExtras = [];
+        dischargeMethod = 'Cash';
+
         setText('dischargeModalSub', inv.number + ' · ' + (inv.patientName || '') + ' · ' + kindLabel(inv.kind));
-        byId('dischargeAmount').value = store.invoiceTotals(inv).total.toFixed(2);
-        ui.clearFieldError('dischargeAmount');
+
+        /* Start the consultation amount at the standard price. */
+        byId('dgConsultation').value = store.lookupPrice('Consultation', 'Standard consultation');
+        ui.setSelectValue('extraCategoryWrapper', 'Laboratory', 'Laboratory');
+        byId('extraPrice').value = '';
+        ui.setSelectValue('dischargeMethodWrapper', 'Cash', 'Cash');
+
+        renderDischargeUI(true);
+        ui.clearFieldError('dgConsultation');
+        ui.clearFieldError('extraPrice');
         ui.openModal('dischargeModal');
+    }
+
+    function finalTotal(inv) {
+        var consult = store.toNumber(byId('dgConsultation').value) || 0;
+        var extras = 0;
+        dischargeExtras.forEach(function (it) { extras += it.price; });
+        /* Anything still owed on the bill (e.g. a partly paid card) counts too. */
+        var base = store.invoiceTotals(inv).balance;
+        return Math.max(0, base) + Math.max(0, consult) + extras;
+    }
+
+    function renderDischargeUI() {
+        var inv = store.findInvoice(dischargingId);
+        if (!inv) return;
+
+        /* Added cost lines */
+        var host = byId('extrasList');
+        host.innerHTML = dischargeExtras.map(function (it, i) {
+            return '<div class="extra-row" data-extra-row="' + i + '">' +
+                '<span class="ex-cat">' + esc(it.category) + '</span>' +
+                '<span class="ex-desc">' + esc(it.description) + '</span>' +
+                '<span class="ex-total">' + money(it.price) + '</span>' +
+                '<button type="button" class="li-remove" data-remove-extra="' + i + '" aria-label="Remove">' +
+                    icon('close', 13) + '</button>' +
+            '</div>';
+        }).join('');
+
+        ui.qsa('[data-remove-extra]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                dischargeExtras.splice(Number(btn.getAttribute('data-remove-extra')), 1);
+                renderDischargeUI();
+            });
+        });
+
+        var total = finalTotal(inv);
+        setText('dischargePatientLabel', inv.patientName || '—');
+        setText('dgTotal', money(total));
+        setText('dgBalance', money(total));
+    }
+
+    function addExtraCharge() {
+        if (!dischargingId) return;
+        var category = ui.getSelectValue('extraCategoryWrapper') || 'Other';
+        var price = store.toNumber(byId('extraPrice').value);
+
+        if (price === null || price <= 0) {
+            ui.fieldError('extraPrice', 'Enter an amount above zero.');
+            return;
+        }
+
+        dischargeExtras.push({
+            category: category,
+            description: category,
+            qty: 1,
+            price: price
+        });
+
+        byId('extraPrice').value = '';
+        ui.clearFieldError('extraPrice');
+
+        renderDischargeUI();
+        byId('extraPrice').focus();
     }
 
     function confirmDischarge() {
         var inv = store.findInvoice(dischargingId);
         if (!inv) return;
 
-        var amount = store.toNumber(byId('dischargeAmount').value);
-        if (amount === null || amount < 0) {
-            ui.fieldError('dischargeAmount', 'Enter the final amount paid.');
+        var consult = store.toNumber(byId('dgConsultation').value);
+        if (consult === null || consult < 0) {
+            ui.fieldError('dgConsultation', 'Enter the consultation amount.');
             return;
         }
 
-        inv.finalPayment = amount;
-        inv.finalPaymentAt = new Date().toISOString();
-        inv.discharged = true;
+        /* Put the consultation charge on the bill (replacing the old one). */
+        var items = inv.items || [];
+        var consultIdx = -1;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].category === 'Consultation') { consultIdx = i; break; }
+        }
+        if (consultIdx >= 0) {
+            items[consultIdx].price = consult;
+            items[consultIdx].qty = 1;
+        } else {
+            items.push({
+                category: 'Consultation',
+                description: 'Consultation fee',
+                qty: 1,
+                price: consult
+            });
+        }
+
+        /* Add the optional extra costs. */
+        dischargeExtras.forEach(function (it) { items.push(it); });
+        inv.items = items;
         store.saveInvoice(inv);
+
+        /* Collect everything owed in one payment. */
+        var total = store.invoiceTotals(inv).balance;
+        var updated = inv;
+        if (total > 0) {
+            var result = store.recordPayment(inv.id, {
+                amount: total,
+                method: dischargeMethod,
+                reference: '',
+                phone: ''
+            });
+            if (!result) {
+                window.MediTrackNotify.push('Payment failed', 'The payment could not be recorded.', 'error', 'Billing', 'high');
+                return;
+            }
+            updated = result.invoice;
+        }
+
+        updated.finalPayment = total;
+        updated.finalPaymentAt = new Date().toISOString();
+        updated.discharged = true;
+        store.saveInvoice(updated);
 
         ui.closeModal('dischargeModal');
         ui.closeModal('detailModal');
         refresh();
 
         window.MediTrackNotify.flash(
-            'Patient discharged',
-            (inv.patientName || 'The patient') + ' settled ' + money(amount) +
-            ' in total and has been removed from the billing list.');
+            'Final payment taken',
+            (updated.patientName || 'The patient') + ' paid ' + money(total) +
+            ' and is discharged. The receipt can be printed from the bill.');
+
+        openReceipt(updated.id);
         dischargingId = null;
+        dischargeExtras = [];
     }
 
     function cancelInvoice() {
@@ -912,16 +1087,19 @@
     }
 
     /* ==================================================================
-       Receipt
-       ================================================================== */
-    function openReceipt(id) {
-        var inv = store.findInvoice(id);
-        if (!inv) return;
-
+        Receipt & slips
+        Every stage of the bill can hand the patient a printed slip:
+          - Unpaid card / final bill -> "payment due" slip
+          - Card paid                -> queue-card receipt
+          - Settled                  -> official receipt
+        ================================================================== */
+    function buildReceiptHtml(inv) {
         var t = store.invoiceTotals(inv);
         var rows = inv.items.map(function (it) {
             var line = (store.toNumber(it.qty) || 1) * (store.toNumber(it.price) || 0);
-            return '<tr><td>' + esc(it.description) + '</td>' +
+            return '<tr><td>' + esc(it.description) +
+                (it.staff ? '<span class="rcp-staff">ordered by ' + esc(it.staff) + '</span>' : '') +
+                '</td>' +
                 '<td class="num">' + esc(String(it.qty)) + '</td>' +
                 '<td class="num">' + money(line) + '</td></tr>';
         }).join('');
@@ -937,17 +1115,31 @@
                     '<strong class="mono">' + esc(p.reference) + '</strong></div>';
             }).join('');
 
-        byId('receiptPrintArea').innerHTML =
-            '<div class="rcp-head">' +
+        var settled = inv.status === 'Paid' || inv.discharged;
+        var headLabel = !settled
+            ? (inv.kind === 'final' ? 'Final bill · payment due' : 'Payment due slip')
+            : (inv.kind === 'registration' ? 'Queue card receipt' : 'Official receipt');
+
+        var footText;
+        if (!settled) {
+            footText = 'Present this slip at the cashier and pay ' + money(t.balance) +
+                ' to continue. Keep it as your proof of registration.';
+        } else if (inv.kind === 'registration') {
+            footText = 'Your queue card is paid. Please wait to be called for your consultation.';
+        } else {
+            footText = 'Keep this receipt. It is your proof of payment for the services above.';
+        }
+
+        return '<div class="rcp-head">' +
                 '<h2>' + esc(settingsFacilityName()) + '</h2>' +
-                '<span>Official receipt · ' + esc(inv.number) + '</span>' +
+                '<span>' + esc(headLabel) + ' · ' + esc(inv.number) + '</span>' +
                 '<span>' + esc(store.formatDateTime(inv.createdAt)) + '</span>' +
             '</div>' +
             '<div class="rcp-meta">' +
                 '<div><span>Patient</span><strong>' + esc(inv.patientName || '—') + '</strong></div>' +
                 '<div><span>Tracking ID</span><strong class="mono">' + esc(inv.trackingId || '—') + '</strong></div>' +
                 '<div><span>Bill type</span><strong>' + esc(kindLabel(inv.kind)) + '</strong></div>' +
-                '<div><span>Status</span><strong>' + esc(inv.status) + '</strong></div>' +
+                '<div><span>Status</span><strong>' + esc(settled ? 'Paid' : inv.status) + '</strong></div>' +
             '</div>' +
             '<table class="rcp-table"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>' +
             '<tbody>' + rows + '</tbody></table>' +
@@ -960,9 +1152,34 @@
             '</div>' +
             (pays ? '<div class="rcp-payments">' + pays + '</div>' : '') +
             (txnCodes ? '<div class="rcp-txns">' + txnCodes + '</div>' : '') +
-            '<div class="rcp-foot">Keep this receipt. It is your proof of payment for the services above.</div>';
+            (inv.discharged
+                ? '<div class="rcp-payments"><div class="rcp-pay"><span>Discharged</span><span>' +
+                      esc(store.formatDateTime(inv.finalPaymentAt || inv.createdAt)) + '</span></div></div>'
+                : '') +
+            '<div class="rcp-foot">' + esc(footText) + '</div>';
+    }
 
+    function openReceipt(id) {
+        var inv = store.findInvoice(id);
+        if (!inv) return;
+
+        byId('receiptPrintArea').innerHTML = buildReceiptHtml(inv);
+        setText('receiptModalTitle',
+            inv.status === 'Paid' || inv.discharged ? 'Receipt' : 'Payment slip');
         ui.openModal('receiptModal');
+    }
+
+    /* One-click slip straight to the printer, no preview modal. */
+    function printSlip(id) {
+        var inv = store.findInvoice(id);
+        if (!inv) return;
+
+        var host = byId('slipPrintArea');
+        if (!host) { openReceipt(id); return; }
+        host.innerHTML = '<article class="receipt-paper">' + buildReceiptHtml(inv) + '</article>';
+        ui.printNode('slipPrintArea', 'Slip ' + inv.number);
+
+        window.MediTrackNotify.flash('Slip ready', 'The print dialog opened for ' + inv.number + '.');
     }
 
     function settingsFacilityName() {
@@ -987,11 +1204,28 @@
             return '<div class="price-row" data-price-row="' + i + '">' +
                 '<span class="pr-cat">' + esc(p.category) + '</span>' +
                 '<span class="pr-name">' + esc(p.name) + '</span>' +
-                '<span class="pr-amount mono">' + money(p.amount) + '</span>' +
+                '<input type="number" class="pr-amount mono" data-edit-price="' + i + '"' +
+                    ' value="' + esc(p.amount) + '" min="0" step="0.01"' +
+                    ' aria-label="Default price for ' + esc(p.name) + '">' +
                 '<button type="button" class="li-remove" data-remove-price="' + i + '" aria-label="Remove price">' +
                     icon('close', 13) + '</button>' +
             '</div>';
         }).join('');
+
+        /* Editing an amount rewrites the default immediately. */
+        ui.qsa('[data-edit-price]', host).forEach(function (input) {
+            function commit() {
+                var idx = Number(input.getAttribute('data-edit-price'));
+                var list2 = store.readPriceList();
+                var next = store.toNumber(input.value);
+                if (!list2[idx]) return;
+                if (next === null || next < 0) { renderPriceRows(); return; }
+                list2[idx].amount = next;
+                store.writePriceList(list2);
+                renderPriceSuggestions();
+            }
+            input.addEventListener('change', commit);
+        });
 
         ui.qsa('[data-remove-price]', host).forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -1055,15 +1289,15 @@
         /* Filters */
         byId('billSearch').addEventListener('input', function () {
             searchTerm = this.value.trim();
-            renderTable();
+            renderCards();
         });
         byId('billSearchClear').addEventListener('click', function () {
             byId('billSearch').value = '';
             searchTerm = '';
-            renderTable();
+            renderCards();
         });
-        ui.initSelect('filterStatusWrapper', function (v) { statusFilter = v; renderTable(); });
-        ui.initSelect('filterPeriodWrapper', function (v) { periodFilter = v; renderTable(); });
+        ui.initSelect('filterStatusWrapper', function (v) { statusFilter = v; renderCards(); });
+        ui.initSelect('filterPeriodWrapper', function (v) { periodFilter = v; renderCards(); });
         byId('resetFiltersBtn').addEventListener('click', function () {
             searchTerm = '';
             statusFilter = 'active';
@@ -1071,7 +1305,7 @@
             byId('billSearch').value = '';
             ui.setSelectValue('filterStatusWrapper', 'active', 'Active');
             ui.setSelectValue('filterPeriodWrapper', 'all', 'Any date');
-            renderTable();
+            renderCards();
         });
 
         /* New-bill modal */
@@ -1110,7 +1344,17 @@
             });
         }
         byId('confirmDischargeBtn').addEventListener('click', confirmDischarge);
-        byId('dischargeAmount').addEventListener('input', function () { ui.clearFieldError('dischargeAmount'); });
+        byId('dgConsultation').addEventListener('input', function () {
+            ui.clearFieldError('dgConsultation');
+            renderDischargeUI();
+        });
+        ui.initSelect('extraCategoryWrapper');
+        ui.initSelect('dischargeMethodWrapper', function (v) { dischargeMethod = v; });
+        byId('btnAddExtra').addEventListener('click', addExtraCharge);
+        byId('extraPrice').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); addExtraCharge(); }
+        });
+        byId('extraPrice').addEventListener('input', function () { ui.clearFieldError('extraPrice'); });
         byId('printReceiptBtn').addEventListener('click', function () {
             ui.closeModal('detailModal');
             setTimeout(function () { openReceipt(detailId); }, 150);
@@ -1188,8 +1432,8 @@
             try { window.sessionStorage.removeItem('billing_open_invoice_id'); } catch (e) {}
             var inv = store.findInvoice(openId);
             if (inv && inv.status !== 'Paid' && inv.status !== 'Cancelled') {
-                openDetail(openId);
-                setTimeout(function () { openPayment(openId); }, 200);
+                /* Only the payment modal — no detail modal stacked behind it. */
+                openPayment(openId);
             }
         }
     }

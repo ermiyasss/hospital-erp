@@ -112,6 +112,14 @@
     margin-bottom: var(--space-3);
 }
 .form-section-title .ico { color: var(--gray-muted); }
+.optional-tag {
+    font-style: normal;
+    font-weight: var(--fw-semibold);
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: var(--text-faint);
+    opacity: 0.8;
+}
 
 .vitals-entry-grid {
     display: grid;

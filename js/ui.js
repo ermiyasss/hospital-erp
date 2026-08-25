@@ -351,6 +351,7 @@
             setTimeout(function () {
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
                 if (run && onConfirm) onConfirm();
+                if (!run && opts.onCancel) opts.onCancel();
             }, 180);
         }
 
@@ -391,12 +392,22 @@
         }).join('\n');
 
         doc.open();
-        doc.write('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+        doc.write('<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="UTF-8">' +
             '<title>' + esc(title || 'Print') + '</title>' +
             stylesHtml +
             '<style>' +
             'html,body{margin:0!important;padding:0!important;background:#fff!important;}' +
             '[data-theme]{--white:#FFFFFF;}' +
+            /* Paper is always white, so every token that can end up as text
+               or line colour is pinned to its light value here. Without this
+               a dark UI theme printed light-on-white and looked broken. */
+            ':root{--text-dark:#16202C!important;--text-strong:#16202C!important;' +
+            '--text-body:#38414D!important;--gray-muted:#6B7480!important;' +
+            '--text-faint:#8A929C!important;--text-invert:#FFFFFF!important;' +
+            '--surface:#FFFFFF!important;--surface-alt:#F7F8FA!important;' +
+            '--surface-sunken:#F1F3F6!important;--gray-border:#E3E6EB!important;' +
+            '--border-strong:#CFD4DC!important;color-scheme:light!important;}' +
+            'body{color:#16202C!important;}' +
             '.modal-overlay,.modal-box{position:static!important;background:none!important;padding:0!important;margin:0!important;border:none!important;box-shadow:none!important;max-width:none!important;max-height:none!important;overflow:visible!important;opacity:1!important;visibility:visible!important;transform:none!important;}' +
             '.modal-head,.modal-foot,.toolbar,.no-print{display:none!important;}' +
             '</style></head><body>' + el.outerHTML + '</body></html>');

@@ -16,7 +16,6 @@
    labelled as requiring clinician confirmation. Ranges follow common adult
    defaults and are not adjusted for paediatrics, pregnancy or comorbidity.
    ========================================================================== */
-
 (function (window) {
     'use strict';
 

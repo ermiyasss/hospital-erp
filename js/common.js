@@ -1,14 +1,3 @@
-/* ==========================================================================
-   MediTrack Hospital ERP - Shell Controller
-
-   Owns the chrome around #content-frame: the menu, the live clock, workload
-   badges, the alert panel, the light/dark switch and the identity shown in the
-   topbar.
-
-   It is also the only place that decides which menu items exist. Both the menu
-   and the pages themselves ask js/session.js, so a role can never be shown a
-   link it is not allowed to open.
-   ========================================================================== */
 
 (function (window, document) {
     'use strict';
@@ -36,8 +25,6 @@
     function esc(s) { return store.escapeHtml(s); }
     function icon(name, size) { return ui.icon(name, size); }
 
-    /* Page metadata comes from js/session.js so the title, the menu and the
-       access rules cannot drift apart. */
     function metaForTarget(target) {
         var keys = Object.keys(session.PAGES);
         for (var i = 0; i < keys.length; i++) {
@@ -69,13 +56,6 @@
         }
     }
 
-    /* ==================================================================
-       Role-based menu
-
-       Anything the role does not cover is removed from the DOM rather than
-       hidden with CSS, so it cannot be revealed with the inspector or picked
-       up by keyboard navigation.
-       ================================================================== */
     function applyRoleToMenu() {
         var allowed = session.allowedPages();
 
@@ -86,8 +66,7 @@
             }
         });
 
-        /* Refresh the cached list, then drop any section heading that has
-           nothing left under it. */
+     
         navItems = ui.qsa('.nav-item');
 
         ui.qsa('.nav-section').forEach(function (heading) {
@@ -135,8 +114,6 @@
         var dept = byId('brandDepartment');
         if (dept) dept.textContent = s.departmentName || 'Hospital ERP';
 
-        /* The signed-in name wins; the Settings value is only a fallback for a
-           direct page open with no session. */
         var name = (current && current.name) || s.clinicianName || def.label;
         [byId('topbarUserName'), byId('menuUserName')].forEach(function (el) {
             if (el) el.textContent = name;

@@ -437,22 +437,23 @@
 
     function eraseEverything() {
         ui.confirmAction({
-            title: 'Erase all clinical data',
-            message: 'This permanently removes every patient record, order, result and notification from this workstation. There is no server copy and no undo.',
-            confirmLabel: 'Erase everything',
+            title: 'Clear all data',
+            message: 'This permanently removes every record on this workstation — patients, orders, results, bills, staff, inventory, notifications and the sample demo data. The app starts completely empty and the demo data will not come back. There is no server copy and no undo.',
+            confirmLabel: 'Clear all data',
             cancelLabel: 'Keep my data',
             tone: 'danger',
             icon: 'trash'
         }, function () {
-            TRACKED.forEach(function (pair) {
-                store.remove(pair[1]);
-            });
+            store.clearAllData();
             renderUsage();
             window.MediTrackNotify.push(
-                'All Data Erased',
-                'This workstation now holds no clinical records.',
+                'All Data Cleared',
+                'Everything was removed from this workstation, including saved settings. Reloading a blank application.',
                 'warning', 'System', 'high'
             );
+            /* Settings themselves were wiped too, so reload into the
+               factory-fresh state instead of showing stale values. */
+            setTimeout(function () { window.location.reload(); }, 1500);
         });
     }
 

@@ -143,68 +143,77 @@
 /* ==========================================================================
    Dark theme
 
-   Not an inversion: surfaces are lifted rather than darkened further as they
-   come forward, and the status colours are re-picked so they stay legible on
-   a dark background instead of glowing.
+   Pure black-and-white: neutral surfaces with no colour cast, white text,
+   and a monochrome primary so buttons stay ink-on-paper rather than blue.
+   Only the clinical status colours keep their hues (danger must read as
+   danger), and they sit on near-black neutral washes.
    ========================================================================== */
 [data-theme="dark"] {
-    --white: #1B2430;
-    --surface: #1B2430;
-    --surface-alt: #151D27;
-    --surface-sunken: #222D3B;
-    --gray-light: #111821;
-    --gray-border: #2C3846;
-    --border-strong: #3E4C5D;
+    --white: #101010;
+    --surface: #101010;
+    --surface-alt: #0A0A0A;
+    --surface-sunken: #191919;
+    --gray-light: #070707;
+    --gray-border: #232323;
+    --border-strong: #363636;
 
-    --text-dark: #E8ECF1;
-    --text-strong: #E8ECF1;
-    --text-body: #C3CBD6;
-    --gray-muted: #94A0AE;
-    --text-faint: #7C8896;
-    --text-invert: #10161E;
+    --text-dark: #FFFFFF;
+    --text-strong: #FFFFFF;
+    --text-body: #E8E8E8;
+    --gray-muted: #A3A3A3;
+    --text-faint: #787878;
+    --text-invert: #0A0A0A;
 
-    --primary-light: #14263A;
-    --primary-border: #22405E;
+    --primary-light: #1D1D1D;
+    --primary-border: #333333;
 
-    --info: #6BA6E8;
-    --info-bg: #16283C;
-    --info-border: #27425F;
+    --info: #D6D6D6;
+    --info-bg: #1A1A1A;
+    --info-border: #333333;
 
-    --success: #57C08A;
-    --success-bg: #142D22;
-    --success-border: #21462F;
-    --success-dark: #7BD3A4;
+    --success: #5FC98E;
+    --success-bg: #141914;
+    --success-border: #263326;
+    --success-dark: #82DBAA;
 
-    --warning: #E0A93F;
-    --warning-bg: #2E2415;
-    --warning-border: #4A3A1C;
+    --warning: #E3B34C;
+    --warning-bg: #1A1710;
+    --warning-border: #332B18;
 
-    --danger: #E8737A;
-    --danger-bg: #33181B;
-    --danger-border: #4E2226;
+    --danger: #EF7B81;
+    --danger-bg: #1B1010;
+    --danger-border: #38201F;
 
-    --critical: #F08A90;
-    --critical-bg: #3A1B1F;
+    --critical: #F49197;
+    --critical-bg: #211314;
 
-    --accent-lab: #6BA6E8;
-    --accent-lab-bg: #16283C;
-    --accent-nurse: #E0A93F;
-    --accent-nurse-bg: #2E2415;
-    --accent-rx: #B394E0;
-    --accent-rx-bg: #251E38;
-    --accent-triage: #55BDB8;
-    --accent-triage-bg: #122E2D;
-    --accent-billing: #5FBF9E;
-    --accent-billing-bg: #122C25;
+    --accent-lab: #D6D6D6;
+    --accent-lab-bg: #1A1A1A;
+    --accent-nurse: #E3B34C;
+    --accent-nurse-bg: #1A1710;
+    --accent-rx: #CBBCE8;
+    --accent-rx-bg: #17141F;
+    --accent-triage: #7FC9C4;
+    --accent-triage-bg: #0F1B1A;
+    --accent-billing: #74C9A6;
+    --accent-billing-bg: #0F1A15;
 
-    --overlay: rgba(6, 10, 15, 0.66);
-    --sidebar-well: #10161E;
+    --overlay: rgba(0, 0, 0, 0.72);
+    --sidebar-well: #000000;
 
     /* Shadows read as depth only if they are darker than the surface. */
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.36);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.42);
-    --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.55);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.62);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.66);
+    --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.75);
+
+    /* Monochrome brand ramp: dark mode is black and white only, whatever
+       accent the workstation uses in the light theme. */
+    --primary: #FFFFFF;
+    --primary-red: #FFFFFF;
+    --primary-dark: #D9D9D9;
+    --primary-hover: #EBEBEB;
+    --primary-contrast: #0A0A0A;
 }
 
 [data-accent="crimson"] {
@@ -215,14 +224,10 @@
     --primary-light: #FBECEC;
     --primary-border: #F0CFD0;
 }
-[data-theme="dark"][data-accent="crimson"] {
-    --primary: #D4535A;
-    --primary-red: #D4535A;
-    --primary-dark: #A83840;
-    --primary-hover: #E2646B;
-    --primary-light: #33181B;
-    --primary-border: #4E2226;
-}
+/* Dark mode is deliberately monochrome for every accent — the shared
+   [data-theme="dark"] block above already pins the primary ramp to white,
+   so no per-accent overrides exist here. Only the light theme changes
+   colour with the accent choice. */
 
 /* ==========================================================================
    Accent themes
@@ -238,14 +243,6 @@
     --primary-light: #E7F3F3;
     --primary-border: #C2DFDF;
 }
-[data-theme="dark"][data-accent="teal"] {
-    --primary: #2E9E9B;
-    --primary-red: #2E9E9B;
-    --primary-dark: #247D7B;
-    --primary-hover: #35B0AD;
-    --primary-light: #10302F;
-    --primary-border: #1C4746;
-}
 
 [data-accent="blue"] {
     --primary: #1C5FA8;
@@ -254,14 +251,6 @@
     --primary-hover: #195496;
     --primary-light: #EAF2FB;
     --primary-border: #C7DCF2;
-}
-[data-theme="dark"][data-accent="blue"] {
-    --primary: #4E90D8;
-    --primary-red: #4E90D8;
-    --primary-dark: #3B72AE;
-    --primary-hover: #5C9FE5;
-    --primary-light: #14263A;
-    --primary-border: #22405E;
 }
 
 [data-accent="indigo"] {
@@ -272,14 +261,6 @@
     --primary-light: #EDEBF8;
     --primary-border: #D0CBEC;
 }
-[data-theme="dark"][data-accent="indigo"] {
-    --primary: #8B7DE0;
-    --primary-red: #8B7DE0;
-    --primary-dark: #6C60B8;
-    --primary-hover: #9A8DE8;
-    --primary-light: #201C38;
-    --primary-border: #332C56;
-}
 
 [data-accent="slate"] {
     --primary: #3B4A5C;
@@ -288,14 +269,6 @@
     --primary-hover: #344252;
     --primary-light: #EEF1F4;
     --primary-border: #D3DAE2;
-}
-[data-theme="dark"][data-accent="slate"] {
-    --primary: #7E90A6;
-    --primary-red: #7E90A6;
-    --primary-dark: #63738A;
-    --primary-hover: #8C9DB2;
-    --primary-light: #1E2833;
-    --primary-border: #2F3D4C;
 }
 
 /* ==========================================================================
