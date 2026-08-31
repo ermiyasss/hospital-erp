@@ -1,16 +1,18 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "justworkai/claude-opus-5",
   "provider": {
     "justworkai": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "justworkai",
+      "name": "JustWorkAI",
       "options": {
-        "baseURL": "https://api.justwoker.icu/v1"
+        "baseURL": "https://api.justworker.icu/v1"
       },
       "models": {
+        "claude-opus-4-8": {
+          "name": "Claude Opus 4.8"
+        },
         "claude-opus-5": {
-          "name": "claude-opus-5"
+          "name": "Claude Opus 5"
         }
       }
     }

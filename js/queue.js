@@ -16,6 +16,7 @@
     var patients = [];
     var searchTerm = '';
     var urgencyFilter = '';
+    var doctorFilter = '';
     var ticketPatientId = null;
     var ticketPosition = '01';
 
@@ -33,8 +34,53 @@
     }
 
     /* ==================================================================
-       Render
-       ================================================================== */
+        Render
+        ================================================================== */
+    function renderDoctorFilter() {
+        var menu = byId('filterDoctorMenu');
+        if (!menu) return;
+        var doctors = doctorChoices();
+        var extras = doctors.map(function (name) {
+            var n = store.queueOrder(patients).filter(function (p) {
+                return p.preferredDoctor === name;
+            }).length;
+            return '<li class="cs-option" data-value="' + esc(name) + '" data-label="' + esc(name) + '">' +
+                esc(name) + ' · ' + n + ' waiting</li>';
+        }).join('');
+        var generalCount = store.queueOrder(patients).filter(function (p) { return !p.preferredDoctor; }).length;
+        menu.innerHTML =
+            '<li class="cs-option' + (doctorFilter === '' ? ' selected' : '') + '" data-value="">All queues</li>' +
+            '<li class="cs-option' + (doctorFilter === 'general' ? ' selected' : '') +
+                '" data-value="general">General queue · ' + generalCount + ' waiting</li>' +
+            extras;
+        var toggle = document.querySelector('#filterDoctorWrapper .cs-toggle .cs-text');
+        if (toggle) {
+            var selected = doctors.indexOf(doctorFilter) !== -1 ? doctorFilter
+                : (doctorFilter === 'general' ? 'General queue' : 'All queues');
+            toggle.textContent = selected;
+        }
+    }
+
+    function doctorChoices() {
+        var seen = {};
+        var out = [];
+        store.readPatients().forEach(function (p) {
+            if (p.preferredDoctor && !seen[p.preferredDoctor]) {
+                seen[p.preferredDoctor] = true;
+                out.push(p.preferredDoctor);
+            }
+        });
+        /* Union with the staff directory so every doctor is listed even
+           with an empty queue. */
+        store.read('clinic_staff_members').forEach(function (s) {
+            if (s.role === 'Doctor' && !seen[s.name]) {
+                seen[s.name] = true;
+                out.push(s.name);
+            }
+        });
+        return out.sort();
+    }
+
     function render() {
         var queue = store.queueOrder(patients);         /* authoritative order */
         var consulting = store.consultingPatients(patients);
@@ -53,6 +99,7 @@
         }
 
         renderPolicy();
+        renderDoctorFilter();
 
         /* Positions are assigned before filtering so a filtered view still
            shows each patient's true place in the queue. */
@@ -63,6 +110,8 @@
         var visible = withPositions.filter(function (row) {
             var p = row.patient;
             if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
+            if (doctorFilter === 'general' && p.preferredDoctor) return false;
+            if (doctorFilter && doctorFilter !== 'general' && p.preferredDoctor !== doctorFilter) return false;
             if (!searchTerm) return true;
             var q = searchTerm.toLowerCase();
             return String(p.name || '').toLowerCase().indexOf(q) !== -1 ||
@@ -139,6 +188,10 @@
                     '<span>Waiting <strong data-elapsed="' + esc(p.registered) + '">' +
                         esc(store.elapsed(p.registered)) + '</strong></span>' +
                 '</span>' +
+                (p.preferredDoctor
+                    ? '<span class="badge status-treatment" title="This patient specifically chose this doctor">' +
+                      icon('stethoscope', 11) + '<span>' + esc(p.preferredDoctor) + '</span></span>'
+                    : '') +
                 '<div class="qc-actions">' +
                     '<button type="button" class="btn-icon" data-ticket="' + esc(p.id) + '" data-pos="' +
                         String(position).padStart(2, '0') + '" title="Print queue slip" aria-label="Print queue slip">' +
@@ -283,6 +336,10 @@
             urgencyFilter = value;
             render();
         });
+        ui.initSelect('filterDoctorWrapper', function (value) {
+            doctorFilter = value;
+            render();
+        });
 
         var search = byId('queueSearch');
         var clear = byId('queueSearchClear');
@@ -307,9 +364,11 @@
             reset.addEventListener('click', function () {
                 searchTerm = '';
                 urgencyFilter = '';
+                doctorFilter = '';
                 if (search) search.value = '';
                 if (clear) clear.classList.remove('visible');
                 ui.setSelectValue('filterUrgencyWrapper', '', 'All priorities');
+                ui.setSelectValue('filterDoctorWrapper', '', 'All queues');
                 render();
             });
         }

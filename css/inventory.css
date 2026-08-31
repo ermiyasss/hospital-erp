@@ -1,0 +1,42 @@
+/* ==========================================================================
+   MediTrack Hospital ERP - Inventory
+   ========================================================================== */
+.inv-filter-row { display: flex; gap: 8px; margin-bottom: var(--space-4); flex-wrap: wrap; }
+
+.inv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-4);
+}
+.inv-card {
+    background: var(--surface);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-xs);
+    transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+.inv-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.inv-card-preview {
+    height: 130px;
+    background: var(--surface-sunken);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+}
+.inv-thumb { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+.inv-file-ico { color: var(--primary); }
+
+.inv-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.inv-card-name { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inv-card-meta { font-size: var(--fs-xs); color: var(--gray-muted); }
+.inv-card-note { font-size: var(--fs-xs); color: var(--text-body); background: var(--surface-alt); border-radius: 6px; padding: 4px 7px; margin-top: 4px; }
+
+.inv-card-actions {
+    display: flex; gap: 2px; padding: 6px 8px;
+    border-top: 1px solid var(--gray-border);
+    justify-content: flex-end;
+}
+.inv-card-actions .btn-icon { width: 30px; height: 30px; border-radius: var(--radius-sm); }
+.inv-card-actions .btn-icon.danger:hover { color: var(--danger); border-color: var(--danger); }

@@ -135,9 +135,9 @@
                         '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
                         '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
                         (p.preferredDoctor
-                            ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' ' +
-                                  esc(p.preferredDoctor) + '</span>'
-                            : '') +
+                            ? '<span class="badge status-treatment" title="Patient is in this doctor\u2019s queue">' +
+                              icon('stethoscope', 12) + ' ' + esc(p.preferredDoctor) + '</span>'
+                            : '<span class="badge status-awaiting">General queue</span>') +
                     '</span>' +
                 '</div>' +
             '</header>' +
@@ -192,8 +192,22 @@
         ================================================================== */
 
     /* Doctors come from the staff directory; reception cannot type free
-       text so a preference always names a real clinician. */
+       text so a preference always names a real clinician. A doctor counts
+       as available when they are checked in today and have not checked
+       out — availability comes straight from the attendance records. */
     var STAFF_KEY = 'clinic_staff_members';
+
+    function availableDoctorsToday() {
+        var today = new Date();
+        var key = today.getFullYear() + '-' +
+            String(today.getMonth() + 1).padStart(2, '0') + '-' +
+            String(today.getDate()).padStart(2, '0');
+        var set = {};
+        store.read(store.KEYS.attendance).forEach(function (r) {
+            if (r.date === key && !r.out && r.username) set[String(r.username).toLowerCase()] = true;
+        });
+        return set;
+    }
 
     function doctorChoices() {
         return store.read(STAFF_KEY).filter(function (s) {
@@ -204,10 +218,15 @@
     function renderDoctorOptions(selected) {
         var menu = byId('inputDoctorMenu');
         if (!menu) return;
+        var available = availableDoctorsToday();
+        var staffRows = store.read(STAFF_KEY).filter(function (s) { return s.role === 'Doctor'; });
         var opts = ['<li class="cs-option" data-value="" data-label="No preference — queue order">No preference — any doctor, the queue decides</li>'];
         doctorChoices().forEach(function (name) {
+            var row = staffRows.filter(function (s) { return s.name === name; })[0] || {};
+            var onDuty = available[String(row.username || '').toLowerCase()];
             opts.push('<li class="cs-option' + (selected && name === selected ? ' selected' : '') +
-                '" data-value="' + esc(name) + '" data-label="' + esc(name) + '">' + esc(name) + '</li>');
+                '" data-value="' + esc(name) + '" data-label="' + esc(name) + '">' + esc(name) +
+                (onDuty ? ' · Available now' : '') + '</li>');
         });
         menu.innerHTML = opts.join('');
     }

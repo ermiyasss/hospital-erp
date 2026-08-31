@@ -14,11 +14,8 @@
       critical observations are surfaced before the clinician has to look for
       them.
 
-   4. Clinical Assist analyses the doctor's notes automatically and every
-      reading needs explicit doctor approval before it is attached.
-
-   5. Everything recorded here is stamped with the signed-in clinician's name
-      so the record always shows who did what.
+    4. Everything recorded here is stamped with the signed-in clinician's name
+       so the record always shows who did what.
    ========================================================================== */
 
 (function (window, document) {
@@ -156,6 +153,22 @@
     }
 
     /* ------------------------------------------------- next patient card */
+    function myName() {
+        return currentStaffName();
+    }
+
+    /* A doctor is served their own queue first: patients who specifically
+       chose them at registration. When nobody booked them and they are
+       free, the general queue is theirs — the next unassigned patient is
+       redirected to whoever is free. */
+    function doctorNextFromQueue(queue) {
+        if (window.MediSession && window.MediSession.role() !== 'doctor') return null;
+        var mine = myName();
+        var booked = queue.filter(function (p) { return p.preferredDoctor === mine; });
+        return booked.length ? { patient: booked[0], booked: true } :
+            (queue.length ? { patient: queue[0], booked: false } : null);
+    }
+
     function renderNextPatient() {
         var host = byId('nextPatientHost');
         if (!host) return;
@@ -164,7 +177,10 @@
            next queue entry: resuming must take priority over calling. */
         var consulting = store.consultingPatients(patients);
         if (consulting.length) {
-            host.innerHTML = nextCardHtml(consulting[0], 0, true);
+            var mineConsulting = consulting.filter(function (p) {
+                return p.assignedDoctor === myName();
+            });
+            host.innerHTML = nextCardHtml(mineConsulting[0] || consulting[0], 0, true);
             bindNextCard(host);
             return;
         }
@@ -182,11 +198,15 @@
             return;
         }
 
-        host.innerHTML = nextCardHtml(queue[0], 1, false);
+        var pick = doctorNextFromQueue(queue);
+        var next = pick ? pick.patient : queue[0];
+        var booked = pick ? pick.booked : false;
+        var position = queue.indexOf(next) + 1;
+        host.innerHTML = nextCardHtml(next, position, false, booked);
         bindNextCard(host);
     }
 
-    function nextCardHtml(p, position, resuming) {
+    function nextCardHtml(p, position, resuming, booked) {
         var urgency = store.normalizeUrgency(p.urgency);
         var assessment = clinical.assess(p.vitals);
         var frame = urgency === 'Emergency' ? ' is-emergency' : (urgency === 'Urgent' ? ' is-urgent' : '');
@@ -237,6 +257,11 @@
                         '<div class="np-badges">' +
                             '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
                             '<span class="badge ' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+                            (booked === true
+                                ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' Booked for you</span>'
+                                : (booked === false
+                                    ? '<span class="badge status-treatment">General queue</span>'
+                                    : '')) +
                             (p.preferredDoctor
                                 ? '<span class="badge status-treatment">' + icon('stethoscope', 12) + ' Requests ' +
                                       esc(p.preferredDoctor) + '</span>'
@@ -624,10 +649,10 @@
         renderOrderHistory(p, 'labOrders', 'labOrdersHistory');
         renderOrderHistory(p, 'nurseOrders', 'nurseOrdersHistory');
         renderOrderHistory(p, 'prescriptions', 'prescriptionOrdersHistory');
-        renderAssist(p);
         markResultsReviewed(p);
         updateTabAlerts(p);
         renderStatusBar(p);
+        renderBedsHint();
 
         if (window.MediIcons) window.MediIcons.hydrate(document);
     }
@@ -936,198 +961,19 @@
         Object.keys(counts).forEach(function (tab) {
             var btn = ui.qs('[data-tab="' + tab + '"]');
             if (!btn) return;
-            var dot = ui.qs('.tab-alert-dot', btn);
+            var badge = ui.qs('.tab-count', btn);
+            if (!badge) return;
             if (counts[tab] > 0) {
-                if (!dot) {
-                    dot = document.createElement('span');
-                    dot.className = 'tab-alert-dot';
-                    btn.appendChild(dot);
-                }
-            } else if (dot) {
-                btn.removeChild(dot);
+                badge.textContent = counts[tab];
+                badge.hidden = false;
+                badge.classList.toggle('tab-count-alert', counts[tab] >= 3);
+                btn.classList.add('has-alert');
+            } else {
+                badge.hidden = true;
+                badge.classList.remove('tab-count-alert');
+                btn.classList.remove('has-alert');
             }
         });
-    }
-
-    /* ==================================================================
-        Clinical Assist (Gemini 2.5 Flash front end)
-
-        The doctor's notes are pasted in automatically and analysed as soon
-        as the workspace opens or a note is saved. Every reading stays
-        unapproved until the doctor presses Approve.
-        ================================================================== */
-    function buildAssistNarrative(p) {
-        var parts = [];
-        if (p.description) parts.push('Chief complaint: ' + p.description);
-        (p.clinicalNotes || []).slice(-2).forEach(function (n) {
-            if (n.diagnosis) parts.push('Diagnosis: ' + n.diagnosis);
-            if (n.note) parts.push('Findings: ' + n.note);
-        });
-        return parts.join('\n');
-    }
-
-    function renderAssist(p) {
-        var input = byId('assistInput');
-        var out = byId('assistOutput');
-        if (!input || !out) return;
-
-        var narrative = buildAssistNarrative(p);
-
-        if (p.assist && p.assist.narrative) {
-            input.value = p.assist.narrative;
-            runAssist(false, false);
-        } else if (narrative) {
-            /* Auto-paste the doctor's notes and analyse immediately. */
-            input.value = narrative;
-            runAssist(false, false);
-        } else {
-            input.value = '';
-            out.innerHTML = '';
-            setReviewBar(false);
-        }
-    }
-
-    /* saveNarrative=false re-runs the analysis for display without rewriting
-       the stored narrative (used when the workspace re-renders).
-       announce=false keeps the toast quiet during automatic runs. */
-    function runAssist(saveNarrative, announce) {
-        var p = currentPatient();
-        var input = byId('assistInput');
-        var out = byId('assistOutput');
-        if (!p || !input || !out) return;
-
-        var narrative = input.value.trim();
-        if (!narrative) {
-            ui.fieldError('assistInput', 'Enter the reported symptoms before running the analysis.');
-            out.innerHTML = '';
-            setReviewBar(false);
-            return;
-        }
-        ui.clearFieldError('assistInput');
-
-        var result = clinical.analyzeSymptoms(narrative, p.vitals);
-
-        if (saveNarrative !== false) {
-            p.assist = {
-                narrative: narrative,
-                approved: false,
-                engine: 'Gemini 2.5 Flash',
-                at: new Date().toISOString()
-            };
-            persist();
-        }
-
-        out.innerHTML = assistHtml(result);
-        setReviewBar(true);
-        if (window.MediIcons) window.MediIcons.hydrate(out);
-
-        if (announce !== false) {
-            window.MediTrackNotify.flash('Analysis ready',
-                'Gemini 2.5 Flash prepared a reading for your review.');
-        }
-    }
-
-    function setReviewBar(showApprovedState) {
-        var bar = byId('assistReviewBar');
-        if (!bar) return;
-        var p = currentPatient();
-        var approved = p && p.assist && p.assist.approved;
-        bar.hidden = !showApprovedState;
-        bar.classList.toggle('is-approved', !!approved);
-        var text = ui.qs('.assist-review-text strong', bar);
-        if (text) text.textContent = approved ? 'Reading approved' : 'Doctor review required';
-    }
-
-    function approveAssist() {
-        var p = currentPatient();
-        if (!p || !p.assist) return;
-        p.assist.approved = true;
-        p.assist.approvedBy = currentStaffName();
-        p.assist.approvedAt = new Date().toISOString();
-        persist();
-        setReviewBar(true);
-        window.MediTrackNotify.flash('Reading approved',
-            'The Gemini reading was signed off by ' + p.assist.approvedBy + '.');
-    }
-
-    function discardAssist() {
-        var p = currentPatient();
-        var input = byId('assistInput');
-        var out = byId('assistOutput');
-        if (input) input.value = '';
-        if (out) out.innerHTML = '';
-        setReviewBar(false);
-        if (p && p.assist) { p.assist = null; persist(); }
-    }
-
-    function assistHtml(r) {
-        var urgencyCls = 'u-' + String(r.suggestedUrgency).toLowerCase();
-
-        var summary =
-            '<div class="assist-summary">' +
-                '<span class="assist-summary-label">Suggested triage</span>' +
-                '<span class="assist-urgency ' + urgencyCls + '">' + esc(r.suggestedUrgency) + '</span>' +
-                '<span class="assist-summary-label">Vitals</span>' +
-                '<span>' + esc(r.vitals.overallLabel) + '</span>' +
-            '</div>';
-
-        if (!r.differentials.length) {
-            return summary +
-                '<div class="notice notice-info">' +
-                    '<span class="ico" data-icon="info" data-icon-size="15"></span>' +
-                    '<div><strong>No pattern matched</strong>' +
-                    'The notes did not match any rule in the knowledge base. ' +
-                    'Add more specific symptom terms, or proceed on clinical judgement alone.</div>' +
-                '</div>';
-        }
-
-        var dx = '<div class="assist-group">' +
-            '<h5>Considerations (ranked)</h5>' +
-            '<div class="assist-dx-list">' +
-            r.differentials.map(function (d, i) {
-                var terms = d.matchedTerms.map(function (t) {
-                    return '<span class="assist-term">' + esc(t) + '</span>';
-                }).join('') +
-                d.vitalSupport.map(function (v) {
-                    return '<span class="assist-term from-vitals">' + esc(v) + '</span>';
-                }).join('');
-
-                return '<div class="assist-dx rank-' + (i + 1) + '">' +
-                    '<div class="assist-dx-head">' +
-                        '<div>' +
-                            '<span class="assist-dx-name">' + esc(d.name) + '</span>' +
-                            '<span class="assist-dx-system"> \u00b7 ' + esc(d.system) + '</span>' +
-                        '</div>' +
-                        '<span class="assist-dx-confidence c-' + String(d.confidence).toLowerCase() + '">' +
-                            esc(d.confidence) + ' match' +
-                        '</span>' +
-                    '</div>' +
-                    '<div class="assist-meter"><span style="width:' + d.confidencePct + '%"></span></div>' +
-                    '<div class="assist-terms">' + terms + '</div>' +
-                '</div>';
-            }).join('') +
-            '</div></div>';
-
-        var flags = r.redFlags.length
-            ? '<div class="assist-group"><h5>Red flags to exclude</h5><div class="assist-flags">' +
-                r.redFlags.map(function (f) {
-                    return '<div class="assist-flag">' +
-                        '<span class="ico" data-icon="warning" data-icon-size="13"></span>' +
-                        '<span>' + esc(f) + '</span>' +
-                    '</div>';
-                }).join('') +
-              '</div></div>'
-            : '';
-
-        var workup = r.suggestedWorkup.length
-            ? '<div class="assist-group"><h5>Commonly indicated workup</h5><ul class="assist-workup">' +
-                r.suggestedWorkup.map(function (w) {
-                    return '<li><span class="ico" data-icon="vial" data-icon-size="13"></span><span>' + esc(w) + '</span></li>';
-                }).join('') +
-              '</ul></div>'
-            : '';
-
-        return summary + dx + flags + workup;
     }
 
     /* ==================================================================
@@ -1159,9 +1005,6 @@
         byId('inputClinicalNotes').value = '';
 
         renderWorkspace();
-
-        /* Fresh notes flow straight into Clinical Assist. */
-        setTimeout(function () { runAssist(true); }, 150);
 
         window.MediTrackNotify.flash('Note saved',
             'Clinical note attached to this visit under ' + currentStaffName() + '.');
@@ -1350,7 +1193,10 @@
                 );
                 return;
             }
-            openWorkspace(queue[0].id);
+            /* Doctors are served their own queue first; the general queue
+               redirects to them when nobody specifically booked them. */
+            var pick = doctorNextFromQueue(queue);
+            openWorkspace((pick ? pick.patient : queue[0]).id);
         }
 
         if (!p) { proceed(); return; }
@@ -1388,9 +1234,118 @@
             p.completedAt = new Date().toISOString();
             p.completedBy = currentStaffName();
             persist();
-            raiseFinalBill(p);
+            /* No separate final invoice is raised here — billing takes the
+               final payment on the patient's own card bill. */
             proceed();
         });
+    }
+
+    /* ==================================================================
+        Quick nursing orders + bed setup
+        Doctors dispatch bedside work with one tap. "Setup bed" reserves a
+        free bed from the nurse station's board and dispatches the order,
+        so two doctors can never grab the same bed.
+        ================================================================== */
+    function freeBeds() {
+        return store.read(store.KEYS.beds).filter(function (b) { return b.status === 'Free'; });
+    }
+
+    function renderBedsHint() {
+        var hint = byId('nurseBedsHint');
+        if (!hint) return;
+        var free = freeBeds();
+        hint.textContent = free.length
+            ? free.length + ' bed' + (free.length > 1 ? 's' : '') + ' free — "Setup bed" reserves one and dispatches the nurse.'
+            : 'No free beds — "Setup bed" will dispatch a normal bed request.';
+    }
+
+    function bindQuickOrders() {
+        var wrap = byId('nurseQuickOrders');
+        if (!wrap) return;
+        ui.qsa('[data-quick-task]', wrap).forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                if (chip.getAttribute('data-quick-bed')) {
+                    openBedSetup();
+                    return;
+                }
+                var input = byId('inputNurseTask');
+                if (input) {
+                    input.value = chip.getAttribute('data-quick-task');
+                    input.focus();
+                }
+            });
+        });
+    }
+
+    function openBedSetup() {
+        var menu = byId('bedPickMenu');
+        if (!menu) return;
+        var free = freeBeds();
+        if (!free.length) {
+            menu.innerHTML = '<li class="cs-option" data-value="" data-label="No free beds">No free beds — dispatch a normal order instead</li>';
+            ui.setSelectValue('bedPickWrapper', '', 'No free beds');
+        } else {
+            menu.innerHTML = free.map(function (b, i) {
+                var label = (b.ward || 'General') + ' \u00b7 ' + b.label;
+                return '<li class="cs-option' + (i === 0 ? ' selected' : '') + '" data-value="' + esc(b.id) +
+                    '" data-label="' + esc(label) + '">' + esc(label) + '</li>';
+            }).join('');
+            ui.setSelectValue('bedPickWrapper', String(free[0].id),
+                (free[0].ward || 'General') + ' \u00b7 ' + free[0].label);
+        }
+        var note = byId('bedSetupNote');
+        if (note) note.value = '';
+        ui.openModal('bedSetupModal');
+    }
+
+    function confirmBedSetup() {
+        var p = currentPatient();
+        if (!p) return;
+        var bedId = ui.getSelectValue('bedPickWrapper');
+        if (!bedId) {
+            window.MediTrackNotify.flash('Choose a bed', 'Pick a free bed, or send a normal order instead.', 'warning');
+            return;
+        }
+        var bedList = store.read(store.KEYS.beds);
+        var bed = null;
+        bedList.forEach(function (b) { if (String(b.id) === String(bedId)) bed = b; });
+        if (!bed || bed.status !== 'Free') {
+            window.MediTrackNotify.flash('Bed unavailable', 'That bed was just taken — choose another.', 'warning');
+            ui.closeModal('bedSetupModal');
+            return;
+        }
+
+        var label = (bed.ward || 'General') + ' \u00b7 ' + bed.label;
+        var order = {
+            id: Date.now(),
+            patientId: p.id,
+            trackingId: p.trackingId,
+            patientName: p.name,
+            task: 'Setup bed \u2014 ' + label,
+            note: byId('bedSetupNote').value.trim() || 'Prepare the bed for the patient\u2019s arrival.',
+            doctor: currentStaffName(),
+            time: new Date().toISOString(),
+            status: 'Dispatched',
+            bedId: bed.id,
+            bedLabel: label
+        };
+
+        p.nurseOrders.push(order);
+        persist();
+        appendGlobal(store.KEYS.nurseTasks, order);
+
+        /* Reserve the bed for this patient so nobody else takes it. */
+        bed.status = 'Reserved';
+        bed.patientId = p.id;
+        bed.patientName = p.name;
+        bed.updatedAt = new Date().toISOString();
+        bed.updatedBy = currentStaffName();
+        store.write(store.KEYS.beds, bedList);
+
+        ui.closeModal('bedSetupModal');
+        renderWorkspace();
+        window.MediTrackNotify.flash('Bed reserved and nurse dispatched',
+            label + ' held for ' + p.name + '.');
     }
 
     /* ==================================================================
@@ -1434,7 +1389,7 @@
 
         ui.bindLiveValidation([
             'inputClinicalNotes', 'inputLabTestName', 'inputLabNote',
-            'inputNurseTask', 'inputNurseNote', 'inputRxMedName', 'inputRxDosage', 'assistInput'
+            'inputNurseTask', 'inputNurseNote', 'inputRxMedName', 'inputRxDosage'
         ]);
 
         var bindings = [
@@ -1445,39 +1400,30 @@
             ['sendPrescriptionBtn', sendPrescription],
             ['btnSetFinished', completeVisit],
             ['btnNextPatient', callNext],
-            ['assistRunBtn', function () { runAssist(true); }],
-            ['assistApproveBtn', approveAssist],
-            ['assistDiscardBtn', discardAssist]
+            ['confirmBedSetupBtn', confirmBedSetup]
         ];
         bindings.forEach(function (pair) {
             var el = byId(pair[0]);
             if (el) el.addEventListener('click', pair[1]);
         });
 
-        var useComplaint = byId('assistUseComplaintBtn');
-        if (useComplaint) {
-            useComplaint.addEventListener('click', function () {
-                var p = currentPatient();
-                var input = byId('assistInput');
-                if (!p || !input) return;
-                input.value = buildAssistNarrative(p) || (p.description || '');
-                ui.clearFieldError('assistInput');
-                runAssist(true);
-            });
-        }
+        bindQuickOrders();
 
-        var clearAssist = byId('assistClearBtn');
-        if (clearAssist) {
-            clearAssist.addEventListener('click', function () {
-                var input = byId('assistInput');
-                if (input) input.value = '';
-                var out = byId('assistOutput');
-                if (out) out.innerHTML = '';
-                setReviewBar(false);
-                ui.clearFieldError('assistInput');
-                var p = currentPatient();
-                if (p && p.assist) { p.assist = null; persist(); }
+        /* Role gate: doctors only see the Notes tab. Hide the Laboratory,
+           Nursing and Prescriptions tabs (and their panels) for doctors, and
+           make sure a still-visible tab is active. */
+        if (window.MediSession && window.MediSession.role() === 'doctor') {
+            ['tabLabOrders', 'tabNurseOrders', 'tabPharmacyOrders'].forEach(function (tabId) {
+                var btn = document.querySelector('.tab-nav-btn[data-tab="' + tabId + '"]');
+                var panel = byId(tabId);
+                if (btn) btn.hidden = true;
+                if (panel) panel.hidden = true;
             });
+            var activeBtn = document.querySelector('.tab-nav-btn.active');
+            if (!activeBtn || activeBtn.hidden) {
+                var notesBtn = document.querySelector('.tab-nav-btn[data-tab="tabNotes"]');
+                if (notesBtn) notesBtn.click();
+            }
         }
 
         store.onPatientsChanged(function () {

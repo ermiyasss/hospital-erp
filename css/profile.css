@@ -1,0 +1,90 @@
+/* ==========================================================================
+   MediTrack - My Profile
+   ========================================================================== */
+
+.profile-hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 20px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e3e8ef);
+    border-radius: 16px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.profile-photo-wrap {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    flex: none;
+}
+
+.profile-photo {
+    width: 84px;
+    height: 84px;
+    border-radius: 20px;
+    object-fit: cover;
+    border: 2px solid var(--border, #e3e8ef);
+    background: color-mix(in srgb, var(--accent, #0e7490) 10%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--accent, #0e7490);
+    overflow: hidden;
+}
+
+.profile-photo img { width: 100%; height: 100%; object-fit: cover; }
+
+.profile-photo-edit {
+    position: absolute;
+    bottom: -6px;
+    right: -6px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid var(--surface, #fff);
+    background: var(--accent, #0e7490);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.profile-hero-main { flex: 1; min-width: 220px; }
+
+.profile-hero-name {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text, #16212e);
+}
+
+.profile-hero-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.profile-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .profile-cols { grid-template-columns: 1fr; }
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    display: block;
+}

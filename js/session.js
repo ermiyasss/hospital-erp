@@ -1,14 +1,17 @@
 /* ==========================================================================
    MediTrack Hospital ERP - Session & Role Access
 
-   This build has no server, so "who is signed in" is a value in localStorage
-   chosen at the sign-in screen. That is honest about what it is: a way to see
-   the application from each role's point of view, not a security boundary.
-   Anyone who can open the developer tools can change it.
+   When the app is served by the hospital server (server.js), identity comes
+   from the server: signing in returns an API token plus the account's real
+   role, and every page load re-verifies that token against /api/auth/me.
+   Signing out invalidates the token server-side. The local session record is
+   only a mirror so the sidebar and page guards can render instantly.
 
-   Real enforcement has to live in the backend. What this file does provide is
-   the single list of what each role is allowed to see, so the sidebar, the
-   page guard and the alert routing can never disagree with each other.
+   What this file also provides is the single list of what each role is
+   allowed to see, so the sidebar, the page guard and the alert routing can
+   never disagree with each other. The server enforces permissions on every
+   API call regardless of what this file allows — it is convenience, not
+   security.
 
    Load order: this file must come before ui.js and common.js, and before any
    page script, because pages ask it whether they are allowed to render.
@@ -26,6 +29,11 @@
        ================================================================== */
     var PAGES = {
         dashboard:    { file: 'pages/default.html',    title: 'Dashboard',       section: 'Overview' },
+        messages:     { file: 'pages/messages.html',   title: 'Messages',        section: 'Overview' },
+        appointments: { file: 'pages/appointments.html', title: 'Appointments',  section: 'Overview' },
+        announcements:{ file: 'pages/announcements.html', title: 'Announcements', section: 'Overview' },
+        attendance:   { file: 'pages/attendance.html', title: 'Attendance',      section: 'Overview' },
+        inventory:    { file: 'pages/inventory.html',  title: 'Inventory',       section: 'Overview' },
         registry:     { file: 'pages/patients.html',   title: 'Patient Records', section: 'Patient flow' },
         queue:        { file: 'pages/queue.html',      title: 'Waiting List',    section: 'Patient flow' },
         consultation: { file: 'pages/track.html',      title: 'Consultation',    section: 'Patient flow' },
@@ -34,7 +42,8 @@
         pharmacy:     { file: 'pages/pharmacy.html',   title: 'Pharmacy',        section: 'Clinical services' },
         billing:      { file: 'pages/billing.html',    title: 'Billing',         section: 'Front office' },
         archive:      { file: 'pages/storage.html',    title: 'Past Visits',     section: 'Administration' },
-        staff:        { file: 'pages/staff.html',      title: 'Staff',           section: 'Administration' },
+        manageStaff:  { file: 'pages/manage-staff.html', title: 'Manage Staff',  section: 'Administration' },
+        profile:      { file: 'pages/profile.html',    title: 'My Profile',      section: 'Account' },
         settings:     { file: 'pages/settings.html',   title: 'Settings',        section: 'Administration' }
     };
 
@@ -59,9 +68,8 @@
             label: 'Administrator',
             short: 'Admin',
             icon: 'shield-check',
-            summary: 'Full access to every screen, including past visits and staff records.',
-            pages: ['dashboard', 'registry', 'queue', 'consultation', 'laboratory',
-                    'nurse', 'pharmacy', 'billing', 'archive', 'staff', 'settings'],
+            summary: 'Oversees the hospital: dashboard, attendance, appointments, staff settings and data backup.',
+            pages: ['dashboard', 'messages', 'attendance', 'appointments', 'inventory', 'manageStaff', 'settings', 'profile'],
             landing: 'dashboard',
             settingsScope: 'full'
         },
@@ -70,42 +78,54 @@
             label: 'Doctor',
             short: 'Doctor',
             icon: 'stethoscope',
-            summary: 'Full access apart from the past visits archive.',
-            pages: ['dashboard', 'registry', 'queue', 'consultation', 'laboratory',
-                    'nurse', 'pharmacy', 'billing', 'staff', 'settings'],
+            summary: 'Clinical consultation desk only. Billing, laboratory, pharmacy, nurse, waiting list and patient records are out of scope.',
+            pages: ['dashboard', 'messages', 'attendance', 'appointments', 'inventory',
+                    'consultation', 'settings', 'profile'],
             landing: 'dashboard',
-            settingsScope: 'full'
+            settingsScope: 'preferences'
         },
         nurse: {
             key: 'nurse',
             label: 'Nurse',
             short: 'Nurse',
             icon: 'nurse',
-            summary: 'Nurse station, pharmacy, waiting list and patient records.',
-            pages: ['nurse', 'pharmacy', 'queue', 'registry', 'settings'],
-            landing: 'nurse',
-            settingsScope: 'full'
+            summary: 'Nurse station, patient tracking, pharmacy, waiting list and patient records.',
+            pages: ['dashboard', 'messages', 'attendance', 'nurse', 'pharmacy', 'queue',
+                    'registry', 'inventory', 'settings', 'profile'],
+            landing: 'dashboard',
+            settingsScope: 'preferences'
         },
-        reception: {
-            key: 'reception',
-            label: 'Reception',
-            short: 'Reception',
-            icon: 'patients',
-            summary: 'Waiting list, billing and patient records.',
-            pages: ['queue', 'billing', 'registry', 'settings'],
-            landing: 'queue',
-            settingsScope: 'full'
+        billing: {
+            key: 'billing',
+            label: 'Billing',
+            short: 'Billing',
+            icon: 'receipt',
+            summary: 'Waiting list, billing desk, registration and patient records.',
+            pages: ['dashboard', 'messages', 'attendance', 'queue', 'billing', 'registry', 'inventory', 'settings', 'profile'],
+            landing: 'dashboard',
+            settingsScope: 'preferences'
+        },
+        lab: {
+            key: 'lab',
+            label: 'Lab Assistant',
+            short: 'Lab',
+            icon: 'lab',
+            summary: 'Laboratory worklist, specimen processing and release of results.',
+            pages: ['dashboard', 'messages', 'attendance', 'laboratory', 'queue', 'registry', 'inventory', 'settings', 'profile'],
+            landing: 'dashboard',
+            settingsScope: 'preferences'
         }
     };
 
-    var ROLE_ORDER = ['admin', 'doctor', 'nurse', 'reception'];
+    var ROLE_ORDER = ['admin', 'doctor', 'nurse', 'billing', 'lab'];
 
     /* Default display name per role, used until Settings overrides it. */
     var DEFAULT_NAMES = {
         admin: 'Site Administrator',
         doctor: 'Dr. Sarah Chen',
         nurse: 'Nurse on Duty',
-        reception: 'Reception Desk'
+        billing: 'Billing Desk',
+        lab: 'Lab Assistant'
     };
 
     /* ==================================================================
@@ -116,23 +136,25 @@
        laboratory values. Anything not listed here goes to everyone.
        ================================================================== */
     var ALERT_AUDIENCE = {
-        Vitals:    ['admin', 'doctor', 'nurse'],
-        Lab:       ['admin', 'doctor', 'nurse'],
-        Pharmacy:  ['admin', 'doctor', 'nurse'],
-        Inventory: ['admin', 'doctor', 'nurse'],
-        Queue:     ['admin', 'doctor', 'nurse', 'reception'],
-        Patient:   ['admin', 'doctor', 'nurse', 'reception'],
-        Doctor:    ['admin', 'doctor'],
-        Billing:   ['admin', 'doctor', 'reception'],
-        Staff:     ['admin'],
-        System:    ['admin', 'doctor', 'nurse', 'reception']
+        Vitals:      ['admin', 'doctor', 'nurse'],
+        Lab:         ['admin', 'doctor', 'nurse', 'lab'],
+        Pharmacy:    ['admin', 'doctor', 'nurse'],
+        Inventory:   ['admin', 'doctor', 'nurse'],
+        Queue:       ['admin', 'doctor', 'nurse', 'billing', 'lab'],
+        Patient:     ['admin', 'doctor', 'nurse', 'billing', 'lab'],
+        Doctor:      ['admin', 'doctor'],
+        Billing:     ['admin', 'doctor', 'billing'],
+        Staff:       ['admin'],
+        Attendance:  ['admin'],
+        Appointment: ['admin', 'doctor'],
+        System:      ['admin', 'doctor', 'nurse', 'billing', 'lab']
     };
 
     /* ==================================================================
-       Storage
-       Guarded the same way as js/store.js: localStorage is unavailable on
-       opaque origins and can be switched off in private windows.
-       ================================================================== */
+        Storage
+        Guarded the same way as js/store.js: localStorage is unavailable on
+        opaque origins and can be switched off in private windows.
+        ================================================================== */
     var memory = {};
 
     function rawGet(key) {
@@ -155,15 +177,75 @@
     }
 
     /* ==================================================================
+        Server-backed session
+
+        When the app is served by the hospital server, the browser-side
+        session record is only a mirror of what the server knows. The API
+        bearer token is the real proof of identity: it is verified against
+        /api/auth/me once per page load, and signing out invalidates the
+        token on the server so a copied token stops working everywhere.
+        ================================================================== */
+    var ON_SERVER = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    var TOKEN_KEY = 'erp_token';
+
+    function xhr(method, url, body) {
+        try {
+            var xhrReq = new XMLHttpRequest();
+            xhrReq.open(method, url, false);
+            var token = rawGet(TOKEN_KEY);
+            if (token) xhrReq.setRequestHeader('Authorization', 'Bearer ' + token);
+            if (body !== undefined) xhrReq.setRequestHeader('Content-Type', 'application/json');
+            xhrReq.send(body === undefined ? null : JSON.stringify(body));
+            return { status: xhrReq.status, text: xhrReq.responseText };
+        } catch (e) {
+            return { status: 0, text: '' };
+        }
+    }
+
+    function clearStoredIdentity() {
+        rawRemove(SESSION_KEY);
+        rawRemove(TOKEN_KEY);
+    }
+
+    function reconcileWithServer() {
+        if (!ON_SERVER) return;
+        var res = xhr('GET', '/api/auth/me');
+        if (res.status !== 200) {
+            /* Expired, revoked or unreachable. A network failure (status 0)
+               also blocks every data call, so treating it as signed-out keeps
+               the UI honest instead of showing stale records as live. */
+            clearStoredIdentity();
+            return;
+        }
+        try {
+            var me = JSON.parse(res.text).user;
+            if (!me || !me.role) { clearStoredIdentity(); return; }
+            var existing = readSession();
+            rawSet(SESSION_KEY, JSON.stringify({
+                role: normalizeRole(me.role),
+                user: me.username || '',
+                name: me.name || '',
+                since: existing ? existing.since : new Date().toISOString()
+            }));
+        } catch (e) {
+            clearStoredIdentity();
+        }
+    }
+
+    /* ==================================================================
        Current session
        ================================================================== */
     function normalizeRole(value) {
         var key = String(value == null ? '' : value).trim().toLowerCase();
         if (ROLES[key]) return key;
-        /* Tolerate the labels used by the staff directory. */
-        if (key === 'registry') return 'reception';
+        /* Tolerate the labels used by the staff directory and any roles that
+           existed in older builds, so saved sessions and staff records keep
+           working after a role is renamed. */
+        if (key === 'registry' || key === 'reception' || key === 'cashier') return 'billing';
         if (key === 'clinician') return 'doctor';
         if (key === 'administrator') return 'admin';
+        if (key === 'laboratory' || key === 'lab assistant' || key === 'labassistant') return 'lab';
+        if (key === 'pharmacy' || key === 'pharmacist') return 'lab';
         return null;
     }
 
@@ -198,7 +280,11 @@
     }
 
     function signOut() {
-        rawRemove(SESSION_KEY);
+        /* Tell the server first, while the token is still in storage — this
+           invalidates the session server-side so the token cannot be reused
+           from this or any other workstation. */
+        if (ON_SERVER) xhr('POST', '/api/auth/logout', {});
+        clearStoredIdentity();
     }
 
     /* Falls back to administrator so a direct page open is never a blank
@@ -247,10 +333,18 @@
         return (PAGES[key] || PAGES.dashboard).file;
     }
 
-    function wantsAlert(category, roleKey) {
-        var list = ALERT_AUDIENCE[category];
+    /* A notification may carry its own explicit audience list (an array of
+       role keys). When it does, that list wins — it lets a single event reach
+       exactly the ranks that should act on it (e.g. a "patient called" chime
+       for the nurse and billing desk only) while still falling back to the
+       category-based ALERT_AUDIENCE map when no explicit audience is set. */
+    function wantsAlert(itemOrCategory, roleKey) {
+        var item = (itemOrCategory && typeof itemOrCategory === 'object') ? itemOrCategory : { category: itemOrCategory };
+        var rk = normalizeRole(roleKey) || role();
+        if (Array.isArray(item.audience)) return item.audience.indexOf(rk) !== -1;
+        var list = ALERT_AUDIENCE[item.category];
         if (!list) return true;
-        return list.indexOf(normalizeRole(roleKey) || role()) !== -1;
+        return list.indexOf(rk) !== -1;
     }
 
     /* ==================================================================
@@ -323,6 +417,16 @@
     };
 
     /* Pages guard themselves as soon as this file runs, so a disallowed
-       screen never gets the chance to paint patient data. */
-    guard();
+       screen never gets the chance to paint patient data. Before guarding,
+       confirm with the hospital server that this browser really holds a live
+       session — an expired or revoked token sends the user back to sign-in.
+       The sign-in screen is exempt, or it would reload in a loop. */
+    var onSignInScreen = /(^|\/)index\.html$/.test(window.location.pathname) ||
+        window.location.pathname === '/' || window.location.pathname === '';
+    if (ON_SERVER) reconcileWithServer();
+    if (ON_SERVER && !isSignedIn() && !onSignInScreen) {
+        window.location.replace('/index.html');
+    } else {
+        guard();
+    }
 })(window, document);

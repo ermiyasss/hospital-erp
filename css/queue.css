@@ -178,16 +178,16 @@
    -------------------------------------------------------------------------- */
 .ticket {
     padding: var(--space-5) var(--space-4);
-    background: #FFFFFF;
-    color: #16202C;
-    border: 1px dashed #9AA4B0;
+    background: var(--surface);
+    color: var(--text-body);
+    border: 1px dashed var(--border-strong);
     border-radius: var(--radius-md);
     text-align: center;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
 }
-.ticket .ticket-org, .ticket .ticket-pos-value, .ticket .ticket-token-value { color: #16202C; }
+.ticket .ticket-org, .ticket .ticket-pos-value, .ticket .ticket-token-value { color: var(--text-body); }
 .ticket-head { display: flex; flex-direction: column; gap: 2px; }
 .ticket-org { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-strong); }
 .ticket-dept {

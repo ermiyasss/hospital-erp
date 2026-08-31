@@ -40,8 +40,15 @@
        ================================================================== */
     function updateClock() {
         var now = new Date();
-        var h = now.getHours();
-        var m = String(now.getMinutes()).padStart(2, '0');
+        /* Display in East Africa Time (UTC+3) so every workstation shows the
+           same hospital clock regardless of the computer's timezone. */
+        var eat;
+        try {
+            eat = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }));
+        } catch (e) { eat = now; }
+
+        var h = eat.getHours();
+        var m = String(eat.getMinutes()).padStart(2, '0');
         var ampm = h >= 12 ? 'PM' : 'AM';
         h = h % 12 || 12;
 
@@ -50,7 +57,7 @@
 
         var date = byId('liveDate');
         if (date) {
-            date.textContent = now.toLocaleDateString('en-US', {
+            date.textContent = eat.toLocaleDateString('en-US', {
                 weekday: 'short', month: 'short', day: 'numeric'
             });
         }
@@ -80,7 +87,7 @@
         });
 
         /* Same for the profile menu shortcuts. */
-        ['menuSettingsLink', 'menuStaffLink'].forEach(function (id) {
+        ['menuProfileLink', 'menuSettingsLink', 'menuStaffLink'].forEach(function (id) {
             var el = byId(id);
             if (!el) return;
             var key = el.getAttribute('data-page');
@@ -90,9 +97,6 @@
         });
     }
 
-    /* ==================================================================
-       Identity + facility name
-       ================================================================== */
     function readSettings() {
         try {
             var raw = store.rawGet(SETTINGS_KEY);
@@ -120,7 +124,14 @@
         });
 
         var avatar = byId('topbarAvatar');
-        if (avatar) avatar.textContent = store.initials(name);
+        if (avatar) {
+            var photo = myProfilePhoto();
+            if (photo) {
+                avatar.innerHTML = '<img src="' + photo + '" alt="" class="avatar-img" />';
+            } else {
+                avatar.textContent = store.initials(name);
+            }
+        }
 
         var roleLabel = byId('topbarUserRole');
         if (roleLabel) roleLabel.textContent = def.label;
@@ -130,6 +141,24 @@
             menuDept.textContent = def.label +
                 (s.departmentName ? ' · ' + s.departmentName : '');
         }
+    }
+
+    /* The signed-in user's profile photo, cached from the shared profiles
+       collection so the topbar never has to ask the server again. */
+    var cachedPhoto = null;
+    var cachedPhotoFor = null;
+    function myProfilePhoto() {
+        var who = store.sessionUser() || {};
+        var username = String(who.user || '');
+        if (!username) return null;
+        if (cachedPhotoFor === username) return cachedPhoto;
+        var photo = null;
+        store.read(store.KEYS.profiles).forEach(function (p) {
+            if (String(p.username).toLowerCase() === username.toLowerCase() && p.photo) photo = p.photo;
+        });
+        cachedPhoto = photo;
+        cachedPhotoFor = username;
+        return photo;
     }
 
     /* ==================================================================
@@ -209,6 +238,8 @@
         var labs = store.read(store.KEYS.labRequests);
         var scripts = store.read(store.KEYS.prescriptions);
         var invoices = store.read('clinic_invoices');
+        var messages = store.read(store.KEYS.messages);
+        var appointments = store.read(store.KEYS.appointments);
 
         var counts = {
             queue: store.queueOrder(patients).length,
@@ -216,7 +247,11 @@
             lab: labs.filter(function (l) { return l.status !== 'Completed'; }).length,
             nurse: 0,
             pharmacy: scripts.filter(function (r) { return r.status !== 'Dispensed'; }).length,
-            billing: invoices.filter(function (i) { return i.status !== 'Paid' && i.status !== 'Cancelled'; }).length
+            billing: invoices.filter(function (i) { return i.status !== 'Paid' && i.status !== 'Cancelled'; }).length,
+            messages: store.unreadMessageCount(messages),
+            appointments: appointments.filter(function (a) {
+                return a && a.status === 'Pending';
+            }).length
         };
 
         patients.forEach(function (p) {
@@ -392,7 +427,7 @@
     }
 
     function bindProfileLinks() {
-        ['menuSettingsLink', 'menuStaffLink'].forEach(function (id) {
+        ['menuProfileLink', 'menuSettingsLink', 'menuStaffLink'].forEach(function (id) {
             var el = byId(id);
             if (!el) return;
             el.addEventListener('click', function () {
@@ -408,7 +443,7 @@
             topbarProfileWrap.classList.remove('active');
             ui.confirmAction({
                 title: 'Sign out',
-                message: 'Patient records stay on this computer. Whoever signs in next will see the same records.',
+                message: 'You will be signed out on this computer. All records stay saved on the hospital server.',
                 confirmLabel: 'Sign out',
                 tone: 'warning',
                 icon: 'logout'
@@ -454,6 +489,11 @@
                 break;
             case 'appearance_changed':
                 refreshThemeButton();
+                break;
+            case 'profile_updated':
+                cachedPhotoFor = null;
+                cachedPhoto = null;
+                applyIdentity();
                 break;
             case 'new_notification':
             case 'notifications_read':
@@ -507,6 +547,11 @@
         window.addEventListener('meditrack:appearance-updated', refreshThemeButton);
         window.addEventListener('storage', function (e) {
             if (e.key === SETTINGS_KEY) applyIdentity();
+            if (e.key === store.KEYS.profiles) {
+                cachedPhotoFor = null;
+                cachedPhoto = null;
+                applyIdentity();
+            }
             refreshBadges();
             renderNotifications();
         });

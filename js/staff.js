@@ -1,10 +1,10 @@
 /* ==========================================================================
    MediTrack Hospital ERP - Staff Directory
 
-   Personnel records only. This build has no backend, so it deliberately does
-   not pretend to manage credentials: storing passwords in localStorage would be
-   security theatre. Access requests are recorded for an administrator to action
-   through whatever real identity system is in place.
+   Personnel records AND their sign-in accounts. When the app runs against
+   the LAN server, saving this directory creates/updates real accounts on
+   the server; passwords are hashed there (scrypt) and never stored in any
+   browser. Access requests are recorded for an administrator to action.
    ========================================================================== */
 
 (function (window, document) {
@@ -23,12 +23,11 @@
     var editingId = null;
 
     var ROLES = {
-        Admin:      { label: 'Administrator', icon: 'shield-check', duties: 'System configuration, staff records, oversight of all departments.' },
-        Doctor:     { label: 'Clinician',     icon: 'stethoscope',  duties: 'Consultation desk: examination, diagnosis, ordering diagnostics and prescribing.' },
-        Nurse:      { label: 'Nurse',         icon: 'nurse',        duties: 'Nurse station: bedside tasks, observations, medication administration.' },
-        Laboratory: { label: 'Laboratory',    icon: 'lab',          duties: 'Specimen analysis and release of results with classification.' },
-        Pharmacy:   { label: 'Pharmacy',      icon: 'pill',         duties: 'Verification, dispensing and counselling on prescriptions.' },
-        Registry:   { label: 'Reception',     icon: 'patients',     duties: 'Registration, triage observations and the calling queue.' }
+        Admin:   { label: 'Administrator', icon: 'shield-check', duties: 'System configuration, staff records, oversight of all departments.' },
+        Doctor:  { label: 'Clinician',     icon: 'stethoscope',  duties: 'Consultation desk: examination, diagnosis, ordering diagnostics and prescribing.' },
+        Nurse:   { label: 'Nurse',         icon: 'nurse',        duties: 'Nurse station: bedside tasks, patient tracking and observations.' },
+        Lab:     { label: 'Lab Assistant', icon: 'lab',          duties: 'Specimen collection, analysis and release of results with classification.' },
+        Billing: { label: 'Billing',       icon: 'receipt',      duties: 'Registration support, invoices, payments and the calling queue.' }
     };
 
     function esc(s) { return store.escapeHtml(s); }
@@ -68,9 +67,9 @@
             { id: 2, name: 'Dr. Abebe Kebede',      username: 'akebede',  email: 'akebede@hospital.example', phone: '0912 345 678', role: 'Doctor',     department: 'Internal Medicine',       shift: 'Day',      joined: daysAgo(180) },
             { id: 3, name: 'Dr. Lelise Fikru',      username: 'lfikru',   email: 'lfikru@hospital.example',  phone: '0912 987 654', role: 'Doctor',     department: 'Emergency',               shift: 'Night',    joined: daysAgo(96) },
             { id: 4, name: 'Sr. Fatima Ali',        username: 'fali',     email: 'fali@hospital.example',    phone: '0913 456 789', role: 'Nurse',      department: 'Emergency Ward',          shift: 'Rotating', joined: daysAgo(120) },
-            { id: 5, name: 'Solomon Tadesse',       username: 'stadesse', email: 'stadesse@hospital.example',phone: '0914 567 890', role: 'Laboratory', department: 'Diagnostic Pathology',    shift: 'Day',      joined: daysAgo(90) },
-            { id: 6, name: 'Hana Getachew',         username: 'hgetachew',email: 'hgetachew@hospital.example',phone: '0915 678 901',role: 'Pharmacy',   department: 'Dispensary',              shift: 'Day',      joined: daysAgo(60) },
-            { id: 7, name: 'Meron Yilma',           username: 'myilma',   email: 'myilma@hospital.example',  phone: '0916 789 012', role: 'Registry',   department: 'Patient Registration',    shift: 'Evening',  joined: daysAgo(30) }
+            { id: 5, name: 'Solomon Tadesse',       username: 'stadesse', email: 'stadesse@hospital.example',phone: '0914 567 890', role: 'Lab',        department: 'Diagnostic Pathology',    shift: 'Day',      joined: daysAgo(90) },
+            { id: 6, name: 'Hana Getachew',         username: 'hgetachew',email: 'hgetachew@hospital.example',phone: '0915 678 901',role: 'Billing',    department: 'Cash Office',             shift: 'Day',      joined: daysAgo(60) },
+            { id: 7, name: 'Meron Yilma',           username: 'myilma',   email: 'myilma@hospital.example',  phone: '0916 789 012', role: 'Billing',    department: 'Patient Registration',    shift: 'Evening',  joined: daysAgo(30) }
         ];
     }
 
@@ -276,13 +275,29 @@
         }
 
         setText('memberModalTitle', member ? 'Edit staff member' : 'Add staff member');
-        setText('memberModalSub', member ? '@' + member.username : 'Personnel record and role assignment');
+        setText('memberModalSub', member ? '@' + member.username : 'Personnel record');
         setText('saveMemberLabel', member ? 'Save changes' : 'Add member');
 
-        ['inputStaffName', 'inputStaffUsername', 'inputStaffEmail', 'inputStaffPhone', 'inputStaffDept'].forEach(function (f) {
-            byId(f).value = '';
+        ['inputStaffName', 'inputStaffUsername', 'inputStaffEmail', 'inputStaffPhone',
+         'inputStaffDept', 'inputStaffPassword'].forEach(function (f) {
+            var el = byId(f);
+            if (el) el.value = '';
             ui.clearFieldError(f);
         });
+
+        /* On the server the password IS the sign-in credential: required for
+           a new account, optional (reset) when editing. */
+        var pwLabel = byId('labelStaffPassword');
+        var pwInput = byId('inputStaffPassword');
+        if (pwLabel && pwInput) {
+            if (member) {
+                pwLabel.innerHTML = 'Reset password';
+                pwInput.placeholder = 'Leave blank to keep the current password';
+            } else {
+                pwLabel.innerHTML = 'Sign-in password <span class="req">*</span>';
+                pwInput.placeholder = 'At least 6 characters';
+            }
+        }
 
         if (member) {
             byId('inputStaffName').value = member.name || '';
@@ -301,7 +316,9 @@
     }
 
     function saveMember() {
-        var ok = ui.requireFields([
+        var creating = editingId === null;
+
+        var specs = [
             { id: 'inputStaffName', message: 'Enter the member\u2019s full name.' },
             {
                 id: 'inputStaffUsername',
@@ -313,8 +330,16 @@
                 message: 'Enter a valid email address.',
                 test: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
             }
-        ]);
-        if (!ok) return;
+        ];
+        /* A brand-new account cannot sign in without a password. */
+        if (creating || !store.SERVER_MODE) {
+            specs.push({
+                id: 'inputStaffPassword',
+                message: 'Password must be at least 6 characters.',
+                test: function (v) { return v.length >= 6; }
+            });
+        }
+        if (!ui.requireFields(specs)) return;
 
         var username = byId('inputStaffUsername').value.trim();
         var clash = staff.some(function (s) {
@@ -335,11 +360,19 @@
             shift: ui.getSelectValue('inputShiftWrapper') || 'Day'
         };
 
+        /* The plaintext password travels once to the server, which hashes it
+           immediately; the stored directory never contains it. */
+        var pwField = byId('inputStaffPassword');
+        var password = pwField ? pwField.value : '';
+        if (password) payload.password = password;
+
         var existing = null;
         staff.forEach(function (s) { if (String(s.id) === String(editingId)) existing = s; });
 
         if (existing) {
-            Object.keys(payload).forEach(function (k) { existing[k] = payload[k]; });
+            Object.keys(payload).forEach(function (k) {
+                if (k !== 'password') existing[k] = payload[k];
+            });
         } else {
             var maxId = 0;
             staff.forEach(function (s) {
@@ -351,9 +384,13 @@
             staff.push(payload);
         }
 
+        /* One transient trip to the server, then gone from browser memory:
+           the password must travel on this save (a brand-new account cannot
+           be created without one) but never remain in the local snapshot. */
         save();
+        staff.forEach(function (s) { delete s.password; });
         ui.closeModal('memberModal');
-        render();
+        load();   /* re-read from the store so account sync results show */
 
         window.MediTrackNotify.flash(
             existing ? 'Member updated' : 'Member added',

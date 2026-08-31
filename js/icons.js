@@ -30,6 +30,9 @@
         settings: '<circle cx="12" cy="12" r="2.8"/><path d="M12 4v2.2M12 17.8V20M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M4 12h2.2M17.8 12H20M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/>',
         logout: '<path d="M9.5 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3.5"/><path d="M15.5 8l4 4-4 4"/><path d="M19 12H9"/>',
         menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+        /* Vertical "more actions" dots — filled so they read at 14-16px. */
+        more: '<circle cx="12" cy="5.2" r="1.45" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="12" cy="18.8" r="1.45" fill="currentColor" stroke="none"/>',
+        minus: '<path d="M6 12h12"/>',
         hospital: '<path d="M4 20.5V8.2a1.5 1.5 0 0 1 .8-1.3l6.4-3.6a1.5 1.5 0 0 1 1.6 0l6.4 3.6a1.5 1.5 0 0 1 .8 1.3V20.5"/><path d="M2.5 20.5h19"/><path d="M12 8.5v5M9.5 11h5"/><path d="M9.5 20.5v-3.2h5v3.2"/>',
 
         /* --- Actions ----------------------------------------------------- */
@@ -40,6 +43,10 @@
         edit: '<path d="M12 20h8"/><path d="M16.4 4.6a2 2 0 0 1 2.8 2.8L8.4 18.2 4 19.5l1.3-4.4L16.4 4.6Z"/>',
         save: '<path d="M19 20.5H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h10L20.5 9v10a1.5 1.5 0 0 1-1.5 1.5Z"/><path d="M7.5 3.5v5h7"/><path d="M7.5 20.5v-6h9v6"/>',
         send: '<path d="M20.5 3.5 10 14"/><path d="M20.5 3.5 14.5 20.5 10 14 3.5 9.5 20.5 3.5Z"/>',
+        paperclip: '<path d="M21 11.5 12.5 20a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.49 8.49a2 2 0 0 1-2.83-2.83l7.78-7.78"/>',
+        upload: '<path d="M12 19V8"/><path d="M8 12l4-4 4 4"/><path d="M5 20h14"/>',
+        image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="8.5" cy="9" r="1.6"/><path d="M4 17l4.5-4.5 4 4 3-3 4.5 4.5"/>',
+        key: '<circle cx="8" cy="8" r="4.5"/><path d="M11.2 11.2 20 20"/><path d="M16.5 16.5 19 14M18 18.5 20.5 16"/>',
         print: '<path d="M7 8.5V3.5h10v5"/><path d="M7 17.5H5.5A1.5 1.5 0 0 1 4 16v-4.5A1.5 1.5 0 0 1 5.5 10h13a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 1-1.5 1.5H17"/><rect x="7" y="14.5" width="10" height="6" rx="1"/>',
         trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.8 12.1a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10.5 11v6M13.5 11v6"/>',
         eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>',
@@ -89,6 +96,9 @@
         chart: '<path d="M4 20V4"/><path d="M4 20h16"/><path d="M8 16.5v-4M12 16.5v-8M16 16.5v-5.5"/>',
         users: '<circle cx="9" cy="8" r="3.2"/><path d="M15 19v-1.4a3.6 3.6 0 0 0-3.6-3.6H6.6A3.6 3.6 0 0 0 3 17.6V19"/><path d="M16.5 5.2a3.2 3.2 0 0 1 0 5.6"/><path d="M18 14.4a3.6 3.6 0 0 1 3 3.2V19"/>',
         user: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20v-1.2A4.8 4.8 0 0 1 9.8 14h4.4A4.8 4.8 0 0 1 19 18.8V20"/>',
+        'user-plus': '<circle cx="10" cy="8" r="3.6"/><path d="M3.5 20v-1.2A4.8 4.8 0 0 1 8.3 14h3.4"/><path d="M18 9v6M15 12h6"/>',
+        'user-minus': '<circle cx="10" cy="8" r="3.6"/><path d="M3.5 20v-1.2A4.8 4.8 0 0 1 8.3 14h3.4"/><path d="M17.5 12h5"/>',
+        'user-x': '<circle cx="10" cy="8" r="3.6"/><path d="M3.5 20v-1.2A4.8 4.8 0 0 1 8.3 14h3.4"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
         'user-check': '<circle cx="10" cy="8" r="3.6"/><path d="M3.5 20v-1.2A4.8 4.8 0 0 1 8.3 14h3.4a4.8 4.8 0 0 1 3.3 1.3"/><path d="M15.5 17.5 17.8 20l3.7-4.5"/>',
         phone: '<path d="M20.5 16.9v2.4a1.5 1.5 0 0 1-1.7 1.5 16.5 16.5 0 0 1-14.6-14.6A1.5 1.5 0 0 1 5.7 4.5H8a1.5 1.5 0 0 1 1.5 1.3c.1 1 .4 1.9.7 2.8a1.5 1.5 0 0 1-.4 1.6L8.6 11.4a12 12 0 0 0 4 4l1.2-1.2a1.5 1.5 0 0 1 1.6-.4c.9.3 1.8.6 2.8.7a1.5 1.5 0 0 1 1.3 1.5Z"/>',
         'bed': '<path d="M3.5 20v-9"/><path d="M3.5 15.5h17V20"/><path d="M20.5 15.5V13a2 2 0 0 0-2-2H9"/><circle cx="7" cy="9" r="2"/>',
@@ -102,6 +112,13 @@
         cash: '<rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 10v4M18 10v4"/>',
         card: '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/>',
         percent: '<path d="M19 5 5 19"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/>',
+
+        /* --- Communication / scheduling ---------------------------------- */
+        message: '<path d="M20.5 11.5a7.5 7.5 0 0 1-7.9 7.5 8.6 8.6 0 0 1-3.2-.6L4.5 20l1.3-3.9a7.2 7.2 0 0 1-1.3-4.1A7.5 7.5 0 0 1 12.6 4.5a7.5 7.5 0 0 1 7.9 7Z"/>',
+        'message-read': '<path d="M20.5 11.5a7.5 7.5 0 0 1-7.9 7.5 8.6 8.6 0 0 1-3.2-.6L4.5 20l1.3-3.9a7.2 7.2 0 0 1-1.3-4.1A7.5 7.5 0 0 1 12.6 4.5a7.5 7.5 0 0 1 7.9 7Z"/><path d="M9.3 11.7l2.2 2.2 4.2-4.4"/>',
+        'calendar-check': '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17"/><path d="M8 3.5V6.5M16 3.5V6.5"/><path d="M8.5 15l2.4 2.4 4.6-4.8"/>',
+        megaphone: '<path d="M4.5 10v4a1.5 1.5 0 0 0 1.5 1.5h1.5L12 19.5V4.5L7.5 8.5H6A1.5 1.5 0 0 0 4.5 10Z"/><path d="M15.5 9a4.4 4.4 0 0 1 0 6"/><path d="M18 6.8a8 8 0 0 1 0 10.4"/>',
+        'user-circle': '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="10" r="3"/><path d="M5.9 18.2a6.5 6.5 0 0 1 12.2 0"/>',
 
         /* --- Appearance -------------------------------------------------- */
         moon: '<path d="M20.5 14.8A8.5 8.5 0 0 1 9.2 3.5a8.5 8.5 0 1 0 11.3 11.3Z"/>',
@@ -133,7 +150,13 @@
         theme: 'contrast',
         sound: 'volume',
         reception: 'patients',
-        admin: 'shield-check'
+        admin: 'shield-check',
+        chat: 'message',
+        appointment: 'calendar-check',
+        appointments: 'calendar-check',
+        profile: 'user-circle',
+        account: 'user-circle',
+        archive: 'storage'
     };
 
     function resolve(name) {

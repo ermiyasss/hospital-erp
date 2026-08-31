@@ -37,10 +37,52 @@
        ================================================================== */
     var selectsBound = false;
 
+    function clearSelectEscape(wrapper) {
+        var m = qs('.cs-menu', wrapper);
+        if (m) { m.style.position = ''; m.style.top = ''; m.style.bottom = ''; m.style.left = ''; m.style.width = ''; m.style.right = ''; }
+        /* Release any modal ancestors we marked while this select was open. */
+        var node = wrapper.parentElement;
+        while (node) {
+            node.classList.remove('cs-escape');
+            if (node.classList.contains('modal-overlay')) break;
+            node = node.parentElement;
+        }
+    }
+
     function closeAllSelects(except) {
         qsa('.custom-select.active').forEach(function (el) {
-            if (el !== except) el.classList.remove('active');
+            if (el === except) return;
+            el.classList.remove('active', 'open-up');
+            el.setAttribute('aria-expanded', 'false');
+            clearSelectEscape(el);
         });
+    }
+
+    /* An open dropdown must not be clipped by a scrolling modal body or the
+       rounded modal box. While a select is open we let those ancestors paint
+       overflow, and we flip the menu upward when there is no room below. */
+    function positionSelectMenu(wrapper) {
+        var toggle = qs('.cs-toggle', wrapper);
+        var menu = qs('.cs-menu', wrapper);
+        if (!toggle || !menu) return;
+
+        menu.style.position = '';
+        wrapper.classList.remove('open-up');
+        var node = wrapper.parentElement;
+        while (node) {
+            if (node.classList.contains('modal-body') || node.classList.contains('modal-box')) {
+                node.classList.add('cs-escape');
+            }
+            if (node.classList.contains('modal-overlay')) break;
+            node = node.parentElement;
+        }
+
+        var rect = toggle.getBoundingClientRect();
+        var est = Math.min(252, (menu.scrollHeight || 220) + 6);
+        var below = window.innerHeight - rect.bottom - 8;
+        if (below < est && rect.top > below) {
+            wrapper.classList.add('open-up');
+        }
     }
 
     function bindGlobalSelectDismiss() {
@@ -50,6 +92,9 @@
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') closeAllSelects();
         });
+        /* A scroll or resize would misplace an open menu, so close it. */
+        window.addEventListener('scroll', function () { closeAllSelects(); }, true);
+        window.addEventListener('resize', function () { closeAllSelects(); });
     }
 
     function initSelect(target, onChange) {
@@ -70,6 +115,8 @@
             e.stopPropagation();
             var willOpen = !wrapper.classList.contains('active');
             closeAllSelects(wrapper);
+            if (willOpen) positionSelectMenu(wrapper);
+            else clearSelectEscape(wrapper);
             wrapper.classList.toggle('active', willOpen);
             toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
@@ -408,6 +455,13 @@
             '--surface-sunken:#F1F3F6!important;--gray-border:#E3E6EB!important;' +
             '--border-strong:#CFD4DC!important;color-scheme:light!important;}' +
             'body{color:#16202C!important;}' +
+            /* Belt-and-braces readability pass: dark ink on everything, no
+               fills that could swallow text, light rules between rows. Any
+               component whose stylesheet forgot a print rule still prints
+               legible, whatever theme the workstation was in. */
+            'body *{color:#16202C!important;background-color:transparent!important;' +
+            'box-shadow:none!important;text-shadow:none!important;border-color:#DDE2E9!important;}' +
+            '.data-table th,thead th,.list-head{background-color:#F1F3F6!important;}' +
             '.modal-overlay,.modal-box{position:static!important;background:none!important;padding:0!important;margin:0!important;border:none!important;box-shadow:none!important;max-width:none!important;max-height:none!important;overflow:visible!important;opacity:1!important;visibility:visible!important;transform:none!important;}' +
             '.modal-head,.modal-foot,.toolbar,.no-print{display:none!important;}' +
             '</style></head><body>' + el.outerHTML + '</body></html>');
@@ -425,6 +479,71 @@
 
         if (doc.readyState === 'complete') setTimeout(doPrint, 120);
         else frame.onload = function () { setTimeout(doPrint, 120); };
+    }
+
+    /* ==================================================================
+        Excel download
+        Writes an Excel 2003 XML workbook (.xls) — opens natively in Excel
+        with real headers and column types, no library or network needed.
+        opts: { filename, sheetName, title, headers: [..], rows: [[..], ..] }
+        ================================================================== */
+    function xmlCell(v) {
+        var t = v === null || v === undefined ? '' : String(v);
+        var isNum = t !== '' && !isNaN(Number(t)) && isFinite(Number(t));
+        return '<Cell' + (isNum ? '' : ' ss:StyleID="sText"') + '><Data ss:Type="' +
+            (isNum ? 'Number' : 'String') + '">' +
+            t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+            '</Data></Cell>';
+    }
+
+    function downloadExcel(opts) {
+        if (!opts || !opts.headers) return;
+        var rows = opts.rows || [];
+        var sheet = String(opts.sheetName || 'Sheet1')
+            .replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 31) || 'Sheet1';
+
+        var body = '';
+        if (opts.title) {
+            body += '<Row><Cell ss:StyleID="sTitle"><Data ss:Type="String">' +
+                esc(opts.title) + '</Data></Cell></Row>' +
+                '<Row><Cell><Data ss:Type="String">' +
+                esc(new Date().toLocaleString()) + '</Data></Cell></Row><Row/>';
+        }
+        body += '<Row>' + opts.headers.map(function (h) {
+            return '<Cell ss:StyleID="sHead"><Data ss:Type="String">' +
+                esc(h == null ? '' : h) + '</Data></Cell>';
+        }).join('') + '</Row>';
+        rows.forEach(function (r) {
+            body += '<Row>' + opts.headers.map(function (h, i) {
+                return xmlCell(r[i]);
+            }).join('') + '</Row>';
+        });
+
+        var xml =
+            '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>' +
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
+            'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+            '<Styles>' +
+            '<Style ss:ID="Default" ss:Name="Normal"><Font ss:FontName="Segoe UI" ss:Size="10"/></Style>' +
+            '<Style ss:ID="sTitle"><Font ss:FontName="Segoe UI" ss:Size="13" ss:Bold="1"/></Style>' +
+            '<Style ss:ID="sHead"><Font ss:Bold="1"/><Interior ss:Color="#EAF2FB" ss:Pattern="Solid"/></Style>' +
+            '<Style ss:ID="sText"><NumberFormat ss:Format="@"/></Style>' +
+            '</Styles>' +
+            '<Worksheet ss:Name="' + esc(sheet) + '"><Table>' + body + '</Table>' +
+            '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' +
+            '<FreezePanes/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane>' +
+            '<ActivePane>2</ActivePane></WorksheetOptions>' +
+            '</Worksheet></Workbook>';
+
+        var blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = opts.filename || ('MediTrack_' + new Date().toISOString().slice(0, 10) + '.xls');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 
     window.MediUI = {
@@ -446,6 +565,7 @@
         bindLiveValidation: bindLiveValidation,
         emptyState: emptyState,
         confirmAction: confirmAction,
-        printNode: printNode
+        printNode: printNode,
+        downloadExcel: downloadExcel
     };
 })(window, document);

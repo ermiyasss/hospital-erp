@@ -16,7 +16,7 @@
     <header class="page-head">
         <div class="page-head-text">
             <h1>Staff Directory</h1>
-            <p>Personnel records and role assignment. Roles determine which departments a member is expected to work in.</p>
+            <p>Personnel records and the departments each member works in.</p>
         </div>
         <div class="page-head-meta">
             <div class="meta-pill">
@@ -68,9 +68,8 @@
                         <li class="cs-option" data-value="Admin" data-label="Administrator">Administrator</li>
                         <li class="cs-option" data-value="Doctor" data-label="Clinician">Clinician</li>
                         <li class="cs-option" data-value="Nurse" data-label="Nurse">Nurse</li>
-                        <li class="cs-option" data-value="Laboratory" data-label="Laboratory">Laboratory</li>
-                        <li class="cs-option" data-value="Pharmacy" data-label="Pharmacy">Pharmacy</li>
-                        <li class="cs-option" data-value="Registry" data-label="Reception">Reception</li>
+                        <li class="cs-option" data-value="Lab" data-label="Lab Assistant">Lab Assistant</li>
+                        <li class="cs-option" data-value="Billing" data-label="Billing">Billing</li>
                     </ul>
                 </div>
                 <button type="button" class="btn-icon" id="resetStaffFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
@@ -87,8 +86,8 @@
         <div class="notice notice-info">
             <span class="ico" data-icon="info" data-icon-size="15"></span>
             <div>
-                <strong>Roles describe expected duties, not enforced permissions</strong>
-                This build is frontend only. Every screen is reachable by anyone signed in; role-based access control belongs in the backend once one exists.
+                <strong>Roles describe expected duties, and the server enforces access</strong>
+                The hospital server checks the signed-in account's role on every request, so what a member can open is never decided by the browser alone.
             </div>
         </div>
         <div class="card-grid" id="roleCoverageGrid"></div>
@@ -108,7 +107,7 @@
                 <span class="modal-head-icon tone-info"><span class="ico" data-icon="user-check" data-icon-size="17"></span></span>
                 <div class="modal-head-text">
                     <h3 id="memberModalTitle">Add staff member</h3>
-                    <span id="memberModalSub">Personnel record and role assignment</span>
+                    <span id="memberModalSub">Personnel record</span>
                 </div>
                 <button type="button" class="modal-close" data-modal-close aria-label="Close">
                     <span class="ico" data-icon="close" data-icon-size="16"></span>
@@ -149,9 +148,8 @@
                                 <li class="cs-option" data-value="Admin" data-label="Administrator">Administrator</li>
                                 <li class="cs-option selected" data-value="Doctor" data-label="Clinician">Clinician</li>
                                 <li class="cs-option" data-value="Nurse" data-label="Nurse">Nurse</li>
-                                <li class="cs-option" data-value="Laboratory" data-label="Laboratory">Laboratory</li>
-                                <li class="cs-option" data-value="Pharmacy" data-label="Pharmacy">Pharmacy</li>
-                                <li class="cs-option" data-value="Registry" data-label="Reception">Reception</li>
+                                <li class="cs-option" data-value="Lab" data-label="Lab Assistant">Lab Assistant</li>
+                                <li class="cs-option" data-value="Billing" data-label="Billing">Billing</li>
                             </ul>
                         </div>
                     </div>
@@ -173,6 +171,14 @@
                             <li class="cs-option" data-value="Night">Night</li>
                             <li class="cs-option" data-value="Rotating">Rotating</li>
                         </ul>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputStaffPassword" id="labelStaffPassword">Sign-in password <span class="req">*</span></label>
+                        <input type="password" id="inputStaffPassword" autocomplete="new-password"
+                               placeholder="At least 6 characters">
+                        <span class="field-hint">Used to sign in. At least 6 characters.</span>
                     </div>
                 </div>
             </div>

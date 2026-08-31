@@ -125,10 +125,10 @@
    -------------------------------------------------------------------------- */
 .rx-paper {
     padding: var(--space-5);
-    background: #FFFFFF;
-    border: 1px solid #DDE2E9;
+    background: var(--surface);
+    border: 1px solid var(--gray-border);
     border-radius: var(--radius-md);
-    color: #16202C;
+    color: var(--text-body);
 }
 
 .rx-head {

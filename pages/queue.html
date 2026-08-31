@@ -66,6 +66,16 @@
             </button>
         </div>
         <div class="toolbar-group">
+            <div class="custom-select" id="filterDoctorWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All queues</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu" id="filterDoctorMenu">
+                    <li class="cs-option selected" data-value="">All queues</li>
+                    <li class="cs-option" data-value="general">General queue (no doctor chosen)</li>
+                </ul>
+            </div>
             <div class="custom-select" id="filterUrgencyWrapper">
                 <button type="button" class="cs-toggle" data-value="">
                     <span class="cs-text">All priorities</span>
@@ -142,6 +152,7 @@
 </div>
 
 <script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
 <script src="../js/store.js"></script>
 <script src="../js/ui.js"></script>
 <script src="../js/notifications.js"></script>

@@ -231,7 +231,15 @@
               }).join('') + '</div>'
             : '<p class="rec-empty">No observations were recorded for this visit.</p>';
 
+        /* The printed sheet only contains #archiveModalBody, so the patient
+           name travels inside it as a record header. */
         byId('archiveModalBody').innerHTML =
+            '<div class="record-print-head">' +
+                '<h2>' + esc(p.name) + '</h2>' +
+                '<span>' + esc(p.trackingId) +
+                    ' · discharged ' + esc(store.formatDateTime(dischargedAt(p))) +
+                    (p.phone ? ' · ' + esc(p.phone) : '') + '</span>' +
+            '</div>' +
             '<div class="detail-badges">' +
                 '<span class="badge ' + urgencyClass(urgency) + '">' + esc(urgency) + '</span>' +
                 '<span class="badge status-finished">Completed</span>' +
@@ -320,9 +328,9 @@
     }
 
     /* ==================================================================
-       Export
-       ================================================================== */
-    function exportCsv() {
+        Export
+        ================================================================== */
+    function exportRecords() {
         var rows = archived.filter(function (p) {
             if (urgencyFilter && store.normalizeUrgency(p.urgency) !== urgencyFilter) return false;
             return withinPeriod(p);
@@ -337,41 +345,28 @@
             return;
         }
 
-        var headers = ['Tracking ID', 'Name', 'Age', 'Sex', 'Phone', 'Priority', 'Diagnosis',
-            'Complaint', 'BP', 'Pulse', 'Temperature', 'SpO2', 'Registered', 'Discharged', 'Stay (minutes)'];
+        var name = 'MediTrack_Archive_' + new Date().toISOString().slice(0, 10) + '.xls';
 
-        function cell(v) {
-            var s = v === null || v === undefined ? '' : String(v);
-            return '"' + s.replace(/"/g, '""') + '"';
-        }
-
-        var lines = rows.map(function (p) {
-            return [
-                p.trackingId, p.name, p.age, p.sex, p.phone,
-                store.normalizeUrgency(p.urgency),
-                latestDiagnosis(p) || '',
-                p.description,
-                store.bloodPressureText(p.vitals),
-                p.vitals.pulse, p.vitals.temperature, p.vitals.spo2,
-                store.formatDateTime(p.registered),
-                store.formatDateTime(dischargedAt(p)),
-                stayMinutes(p)
-            ].map(cell).join(',');
+        ui.downloadExcel({
+            filename: name,
+            sheetName: 'Past visits',
+            title: 'MediTrack — Past visit records',
+            headers: ['Tracking ID', 'Name', 'Age', 'Sex', 'Phone', 'Priority', 'Diagnosis',
+                'Complaint', 'BP', 'Pulse', 'Temperature', 'SpO2', 'Registered', 'Discharged', 'Stay (minutes)'],
+            rows: rows.map(function (p) {
+                return [
+                    p.trackingId, p.name, p.age, p.sex, p.phone,
+                    store.normalizeUrgency(p.urgency),
+                    latestDiagnosis(p) || '',
+                    p.description || '',
+                    store.bloodPressureText(p.vitals),
+                    p.vitals.pulse, p.vitals.temperature, p.vitals.spo2,
+                    store.formatDateTime(p.registered),
+                    store.formatDateTime(dischargedAt(p)),
+                    stayMinutes(p)
+                ];
+            })
         });
-
-        /* BOM so Excel opens UTF-8 correctly on Windows. */
-        var csv = '\uFEFF' + headers.map(cell).join(',') + '\r\n' + lines.join('\r\n');
-        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        var url = URL.createObjectURL(blob);
-        var name = 'MediTrack_Archive_' + new Date().toISOString().slice(0, 10) + '.csv';
-
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 
         window.MediTrackNotify.flash('Export ready', rows.length + ' records written to ' + name + '.');
     }
@@ -421,7 +416,7 @@
         }
 
         var exportBtn = byId('exportCsvBtn');
-        if (exportBtn) exportBtn.addEventListener('click', exportCsv);
+        if (exportBtn) exportBtn.addEventListener('click', exportRecords);
 
         var printSummary = byId('printSummaryBtn');
         if (printSummary) printSummary.addEventListener('click', function () { ui.printNode('archiveTableCard'); });

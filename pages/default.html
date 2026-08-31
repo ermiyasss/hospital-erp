@@ -15,14 +15,18 @@
 
     <header class="page-head">
         <div class="page-head-text">
-            <h1>Clinical Overview</h1>
-            <p>Live position across triage, consultation, diagnostics, nursing and dispensing.</p>
+            <h1 id="dashTitle">Dashboard</h1>
+            <p id="dashSubtitle">Live position across the hospital.</p>
         </div>
         <div class="page-head-meta">
             <div class="meta-pill">
                 <span class="ico" data-icon="calendar" data-icon-size="15"></span>
                 <span id="dashDate">—</span>
             </div>
+            <button type="button" class="btn-secondary btn-sm is-hidden" id="exportAnalyticsBtn">
+                <span class="ico" data-icon="download" data-icon-size="14"></span>
+                <span>Download Excel</span>
+            </button>
             <div class="meta-pill meta-pill-live">
                 <span class="live-dot" aria-hidden="true"></span>
                 <span>Live</span>
@@ -30,115 +34,13 @@
         </div>
     </header>
 
-    <!-- Attention strip: only rendered when something needs acting on --- -->
-    <section class="attention-stack" id="attentionStack"></section>
-
-    <!-- Key figures ----------------------------------------------------- -->
-    <section class="stats-grid" aria-label="Key figures">
-        <button type="button" class="stat-card" data-go="pages/queue.html">
-            <span class="stat-top">
-                <span class="stat-icon tone-warning"><span class="ico" data-icon="queue" data-icon-size="18"></span></span>
-                <span class="stat-trend" id="trendQueue">Waiting</span>
-            </span>
-            <span class="stat-number" id="statQueue">0</span>
-            <span class="stat-label">In triage queue</span>
-            <span class="stat-foot" id="footQueue">Longest wait —</span>
-        </button>
-
-        <button type="button" class="stat-card" data-go="pages/track.html">
-            <span class="stat-top">
-                <span class="stat-icon tone-success"><span class="ico" data-icon="stethoscope" data-icon-size="18"></span></span>
-                <span class="stat-trend" id="trendConsult">Active</span>
-            </span>
-            <span class="stat-number" id="statConsulting">0</span>
-            <span class="stat-label">In consultation</span>
-            <span class="stat-foot" id="footConsult">With a clinician now</span>
-        </button>
-
-        <button type="button" class="stat-card" data-go="pages/track.html">
-            <span class="stat-top">
-                <span class="stat-icon tone-neutral"><span class="ico" data-icon="hourglass" data-icon-size="18"></span></span>
-                <span class="stat-trend" id="trendAwaiting">Parked</span>
-            </span>
-            <span class="stat-number" id="statAwaiting">0</span>
-            <span class="stat-label">Awaiting results</span>
-            <span class="stat-foot" id="footAwaiting">Diagnostics in progress</span>
-        </button>
-
-        <button type="button" class="stat-card" data-go="pages/laboratory.html">
-            <span class="stat-top">
-                <span class="stat-icon tone-info"><span class="ico" data-icon="lab" data-icon-size="18"></span></span>
-                <span class="stat-trend" id="trendLab">Laboratory</span>
-            </span>
-            <span class="stat-number" id="statLab">0</span>
-            <span class="stat-label">Open lab requests</span>
-            <span class="stat-foot" id="footLab">Awaiting analysis or release</span>
-        </button>
-
-        <button type="button" class="stat-card" data-go="pages/storage.html">
-            <span class="stat-top">
-                <span class="stat-icon tone-neutral"><span class="ico" data-icon="check-circle" data-icon-size="18"></span></span>
-                <span class="stat-trend">Today</span>
-            </span>
-            <span class="stat-number" id="statCompleted">0</span>
-            <span class="stat-label">Visits completed</span>
-            <span class="stat-foot" id="footCompleted">Median stay —</span>
-        </button>
-    </section>
-
-    <!-- Main grid ------------------------------------------------------- -->
-    <div class="dash-grid">
-
-        <section class="card">
-            <div class="card-header">
-                <div class="card-header-text">
-                    <h3>Next in queue</h3>
-                    <span class="card-sub" id="queuePolicyNote">Ordered by triage priority, then arrival time</span>
-                </div>
-                <button type="button" class="btn-text" data-go="pages/queue.html">
-                    <span>Open queue</span>
-                    <span class="ico" data-icon="arrow-right" data-icon-size="14"></span>
-                </button>
-            </div>
-            <div class="list-group" id="queuePreview"></div>
-        </section>
-
-        <div class="dash-side">
-            <section class="card">
-                <div class="card-header">
-                    <div class="card-header-text">
-                        <h3>Department load</h3>
-                        <span class="card-sub">Open items per service</span>
-                    </div>
-                </div>
-                <div class="dept-load" id="deptLoad"></div>
-            </section>
-
-            <section class="card">
-                <div class="card-header">
-                    <div class="card-header-text">
-                        <h3>Triage mix</h3>
-                        <span class="card-sub">Active patients by priority</span>
-                    </div>
-                </div>
-                <div class="triage-mix" id="triageMix"></div>
-            </section>
-        </div>
-    </div>
-
-    <!-- Recent clinical activity ---------------------------------------- -->
-    <section class="card">
-        <div class="card-header">
-            <div class="card-header-text">
-                <h3>Recent clinical activity</h3>
-                <span class="card-sub">Notes, orders and released results across all departments</span>
-            </div>
-        </div>
-        <div class="activity-list" id="activityList"></div>
-    </section>
+    <!-- Everything below is composed per role by js/dashboard.js so each
+         rank lands on a dashboard built around its own work. -->
+    <div id="dashRoot"></div>
 </div>
 
 <script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
 <script src="../js/store.js"></script>
 <script src="../js/ui.js"></script>
 <script src="../js/notifications.js"></script>

@@ -23,6 +23,9 @@
     --primary-light: #EAF2FB;
     --primary-border: #C7DCF2;
     --primary-contrast: #FFFFFF;     /* text drawn on top of --primary */
+    /* Ink for tinted accent fills (--primary-light): dark in light theme,
+       white in dark theme, so selected chips and rows stay legible everywhere. */
+    --on-primary-fill: #164A84;
 
     /* --- Neutral surfaces ----------------------------------------------- */
     --white: #FFFFFF;
@@ -40,6 +43,17 @@
     --gray-muted: #6B7480;
     --text-faint: #8A929C;
     --text-invert: #FFFFFF;
+
+    /* --- Backwards-compatible aliases ------------------------------------
+       Several page stylesheets were written against shorthand names that are
+       not defined above. Defining them here (pointing at the canonical
+       tokens) keeps those pages theme-aware instead of falling back to the
+       hard-coded dark hex that made text invisible in dark mode. */
+    --text: var(--text-body);
+    --text-soft: var(--gray-muted);
+    --border: var(--gray-border);
+    --accent: var(--primary);
+    --accent-bg: var(--primary-light);
 
     /* --- Clinical status colours ---------------------------------------- */
     --info: #1C5FA8;
@@ -164,8 +178,16 @@
     --text-faint: #787878;
     --text-invert: #0A0A0A;
 
-    --primary-light: #1D1D1D;
+    --primary-light: color-mix(in srgb, var(--primary-red) 18%, transparent);
+    --primary-lighter: color-mix(in srgb, var(--primary-red) 12%, transparent);
     --primary-border: #333333;
+    --on-primary-fill: var(--primary-contrast);
+
+    /* Accent tints for selected/highlighted fills so they read as colour,
+       not as a near-black box on top of the dark surface. */
+    --primary-soft: color-mix(in srgb, var(--primary-red) 24%, transparent);
+    --primary-tint: color-mix(in srgb, var(--primary-red) 18%, transparent);
+    --primary-tint-strong: color-mix(in srgb, var(--primary-red) 30%, transparent);
 
     --info: #D6D6D6;
     --info-bg: #1A1A1A;
@@ -184,7 +206,7 @@
     --danger-bg: #1B1010;
     --danger-border: #38201F;
 
-    --critical: #F49197;
+    --critical: #C5343C;
     --critical-bg: #211314;
 
     --accent-lab: #D6D6D6;
@@ -207,13 +229,13 @@
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.66);
     --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.75);
 
-    /* Monochrome brand ramp: dark mode is black and white only, whatever
-       accent the workstation uses in the light theme. */
-    --primary: #FFFFFF;
-    --primary-red: #FFFFFF;
-    --primary-dark: #D9D9D9;
-    --primary-hover: #EBEBEB;
-    --primary-contrast: #0A0A0A;
+    /* Visible brand ramp for dark mode: a blue accent so buttons and the
+       theme switch never become white-on-white. */
+    --primary: #2E7DD1;
+    --primary-red: #2E7DD1;
+    --primary-dark: #1C5FA8;
+    --primary-hover: #4A92DD;
+    --primary-contrast: #FFFFFF;
 }
 
 [data-accent="crimson"] {

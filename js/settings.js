@@ -1,14 +1,15 @@
 /* ==========================================================================
    MediTrack Hospital ERP - Settings
 
-   Scope is deliberately narrow: this build has no backend, so the page only
-   offers settings it can actually honour. Three things it honours properly:
+   Scope is deliberately narrow: the page only offers settings it can honour.
 
      - appearance (theme, accent, density, motion, sound), which js/theme.js
        applies to <html> and relays into every page inside the dashboard
        frame. Everything is persisted in localStorage under clinic_settings.
      - the calling policy, which js/store.js reads when ordering the queue
      - alert routing, which js/notifications.js reads before raising anything
+     - administrators additionally get the data backup (export / restore /
+       reset) and the staff & accounts section
 
    Critical alerts are excluded from routing on purpose. A panic laboratory
    value must not be silenceable from a preferences screen.
@@ -265,11 +266,21 @@
         ['Laboratory archive', store.KEYS.labArchive],
         ['Prescriptions', store.KEYS.prescriptions],
         ['Nursing tasks', store.KEYS.nurseTasks],
+        ['Nurse tracking', 'clinic_nurse_tracking'],
+        ['Beds', store.KEYS.beds],
+        ['Messages', store.KEYS.messages],
+        ['Appointments', store.KEYS.appointments],
+        ['Attendance', store.KEYS.attendance],
         ['Inventory', store.KEYS.inventory],
         ['Bills', store.KEYS.invoices],
         ['Staff directory', 'clinic_staff_members'],
         ['Notifications', store.KEYS.notifications]
     ];
+
+    /* Server-managed collections can only be appended through their own
+       endpoints; restoring them wholesale is refused by the server, so the
+       restore step skips them instead of throwing mid-way. */
+    var RESTORE_SKIP = [store.KEYS.attendance, store.KEYS.messages, store.KEYS.profiles];
 
     function renderUsage() {
         var host = byId('storageUsage');
@@ -278,8 +289,10 @@
         var totalBytes = 0;
 
         var rows = TRACKED.map(function (pair) {
-            var raw = store.rawGet(pair[1]) || '';
-            var bytes = raw.length * 2;   /* UTF-16 code units in localStorage */
+            /* Server mode keeps records on the LAN server, so sizes are read
+               from the live cache rather than this browser's localStorage. */
+            var raw = store.SERVER_MODE ? JSON.stringify(store.read(pair[1])) : (store.rawGet(pair[1]) || '');
+            var bytes = raw.length * 2;
             totalBytes += bytes;
 
             var count = 0;
@@ -324,7 +337,7 @@
         };
 
         TRACKED.forEach(function (pair) {
-            try { payload.data[pair[1]] = JSON.parse(store.rawGet(pair[1]) || '[]'); }
+            try { payload.data[pair[1]] = store.read(pair[1]); }
             catch (e) { payload.data[pair[1]] = []; }
         });
 
@@ -382,7 +395,9 @@
                 icon: 'warning'
             }, function () {
                 Object.keys(payload.data).forEach(function (key) {
-                    if (Array.isArray(payload.data[key])) store.write(key, payload.data[key]);
+                    if (!Array.isArray(payload.data[key])) return;
+                    if (RESTORE_SKIP.indexOf(key) !== -1) return;
+                    store.write(key, payload.data[key]);
                 });
 
                 if (payload.settings) {
@@ -410,35 +425,12 @@
     }
 
     /* ==================================================================
-        Demo data / erase
+        Erase
         ================================================================== */
-    function loadDemoData() {
-        ui.confirmAction({
-            title: 'Load demonstration data',
-            message: 'This replaces every patient record, order and result on this workstation with a sample data set. Export a backup first if the current records matter.',
-            confirmLabel: 'Replace with demo data',
-            tone: 'danger',
-            icon: 'warning'
-        }, function () {
-            [store.KEYS.patients, store.KEYS.labRequests, store.KEYS.labArchive,
-             store.KEYS.prescriptions, store.KEYS.nurseTasks].forEach(function (k) {
-                store.remove(k);
-            });
-
-            store.seedIfEmpty();
-            renderUsage();
-            window.MediTrackNotify.push(
-                'Demonstration Data Loaded',
-                'Sample patients and orders are in place. Reload any open department screen.',
-                'success', 'System', 'normal'
-            );
-        });
-    }
-
     function eraseEverything() {
         ui.confirmAction({
             title: 'Clear all data',
-            message: 'This permanently removes every record on this workstation — patients, orders, results, bills, staff, inventory, notifications and the sample demo data. The app starts completely empty and the demo data will not come back. There is no server copy and no undo.',
+            message: 'This permanently removes every record — patients, orders, results, bills, inventory and notifications. Staff accounts are kept so everyone can sign in again. There is no undo.',
             confirmLabel: 'Clear all data',
             cancelLabel: 'Keep my data',
             tone: 'danger',
@@ -448,7 +440,7 @@
             renderUsage();
             window.MediTrackNotify.push(
                 'All Data Cleared',
-                'Everything was removed from this workstation, including saved settings. Reloading a blank application.',
+                'Every record was removed. Reloading a blank application.',
                 'warning', 'System', 'high'
             );
             /* Settings themselves were wiped too, so reload into the
@@ -461,9 +453,10 @@
         Init
         ================================================================== */
     function init() {
-        /* Low-privilege roles never see the Data section: backups, restores,
-           demo data and the erase-everything switch stay with admins and
-           doctors so hospital records cannot be wiped from a ward terminal. */
+        /* Full scope (the administrator) unlocks the clinical defaults, the
+           data backup and the staff & accounts sections. Every role gets
+           appearance and alerts; hospital data management stays with the
+           admin so records cannot be wiped from a ward terminal. */
         var fullScope = window.MediSession && window.MediSession.hasFullSettings();
 
         settings = readSettings();
@@ -476,14 +469,15 @@
             attribute: 'data-settab'
         });
 
-        var dataNav = document.querySelector('[data-settab="panelData"]');
-        var dataPanel = byId('panelData');
-        if (!fullScope) {
-            /* Default landing tab is Appearance, so simply removing the Data
-               entry from the nav and the DOM leaves a clean page behind. */
-            if (dataNav) dataNav.parentNode.removeChild(dataNav);
-            if (dataPanel) dataPanel.parentNode.removeChild(dataPanel);
-        }
+        ['panelClinical', 'panelData'].forEach(function (panelId) {
+            if (fullScope) return;
+            var nav = document.querySelector('[data-settab="' + panelId + '"]');
+            var panel = byId(panelId);
+            /* Default landing tab is Appearance, so simply removing the
+               entries from the nav and the DOM leaves a clean page behind. */
+            if (nav) nav.parentNode.removeChild(nav);
+            if (panel) panel.parentNode.removeChild(panel);
+        });
 
         ui.initSelect('setToastDurationWrapper');
 
@@ -531,7 +525,7 @@
                 fromForm();
                 writeSettings();
                 window.MediTrackNotify.event('lab.result.ready', {
-                    title: 'Test Alert',
+                    title: 'Alert preview',
                     message: 'This is what a released laboratory result looks like with the current routing.'
                 });
             });
@@ -549,9 +543,6 @@
                 fileInput.value = '';
             });
         }
-
-        var demoBtn = byId('btnResetDemoData');
-        if (demoBtn) demoBtn.addEventListener('click', loadDemoData);
 
         var eraseBtn = byId('btnEraseData');
         if (eraseBtn) eraseBtn.addEventListener('click', eraseEverything);

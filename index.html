@@ -7,14 +7,11 @@
     <link rel="stylesheet" href="css/variables.css" />
     <link rel="stylesheet" href="css/login.css" />
     <link rel="stylesheet" href="css/notifications.css" />
-    <!-- Loaded here, before anything paints, so dark mode does not flash. -->
     <script src="js/theme.js"></script>
 </head>
 <body class="login-body">
-
     <main class="login-shell">
 
-        <!-- Left: identity ------------------------------------------------ -->
         <section class="login-aside">
             <div class="la-brand">
                 <span class="la-mark"><span class="ico" data-icon="hospital" data-icon-size="22"></span></span>
@@ -26,7 +23,7 @@
 
             <div class="la-copy">
                 <h1>One record, from the front desk to the pharmacy.</h1>
-                <p>Waiting list, consultation, laboratory, nursing, dispensing and billing in a single patient record — running entirely on this computer.</p>
+                <p>Waiting list, consultation, laboratory, nursing, dispensing and billing in a single patient record — served from the hospital's own server.</p>
             </div>
 
             <ul class="la-points">
@@ -52,38 +49,33 @@
                     </span>
                 </li>
             </ul>
-
             <p class="la-foot">
                 <span class="ico" data-icon="shield-check" data-icon-size="14"></span>
-                <span>Works without internet. No patient data leaves this computer.</span>
+                <span>Your role decides which screens you can open.</span>
             </p>
         </section>
-
-        <!-- Right: form --------------------------------------------------- -->
         <section class="login-panel">
             <div class="lp-inner">
                 <header class="lp-head">
                     <h2>Sign in</h2>
                     <p>Enter your staff details to open the system.</p>
                 </header>
-
                 <form id="loginForm" novalidate>
                     <div class="lf-group">
-                        <label for="employeeId">Staff ID or email</label>
+                        <label for="employeeId">Username, email or phone</label>
                         <div class="lf-input">
                             <span class="lf-icon ico" data-icon="user" data-icon-size="16"></span>
                             <input type="text" id="employeeId" autocomplete="username"
-                                   placeholder="for example schen or schen@hospital.example" />
+                                    placeholder="for example admin, admin@hospital or 0912..." />
                         </div>
                         <span class="lf-error" id="errEmployeeId"></span>
                     </div>
-
                     <div class="lf-group">
                         <label for="password">Password</label>
                         <div class="lf-input">
                             <span class="lf-icon ico" data-icon="lock" data-icon-size="16"></span>
                             <input type="password" id="password" autocomplete="current-password"
-                                   placeholder="Enter your password" />
+                                    placeholder="Enter your password" />
                             <button type="button" class="lf-reveal" id="togglePassword"
                                     aria-label="Show password" aria-pressed="false">
                                 <span class="ico" data-icon="eye" data-icon-size="15"></span>
@@ -91,16 +83,6 @@
                         </div>
                         <span class="lf-error" id="errPassword"></span>
                     </div>
-
-                    <!-- Temporary: the role decides which pages you see. Once a
-                         real login server exists this comes from the account. -->
-                    <div class="lf-group">
-                        <label for="roleChoice">Sign in as</label>
-                        <div class="role-choice" id="roleChoice" role="radiogroup" aria-label="Choose your role"></div>
-                        <span class="lf-error" id="errRoleChoice"></span>
-                        <span class="lf-hint" id="roleChoiceHint">Choose your role to continue.</span>
-                    </div>
-
                     <div class="lf-row">
                         <label class="lf-check" for="rememberMe">
                             <input type="checkbox" id="rememberMe" />
@@ -109,7 +91,6 @@
                         </label>
                         <button type="button" class="lf-link" id="requestAccessBtn">Need help getting in?</button>
                     </div>
-
                     <button type="submit" class="lf-submit" id="loginSubmitBtn">
                         <span id="loginSubmitLabel">Sign in</span>
                         <span class="ico" data-icon="arrow-right" data-icon-size="16"></span>
@@ -123,21 +104,19 @@
 
                 <div class="lp-demo">
                     <div class="lp-demo-head">
-                        <span class="ico" data-icon="info" data-icon-size="14"></span>
-                        <strong>Test version</strong>
+                        <span class="ico" data-icon="shield-check" data-icon-size="14"></span>
+                        <strong>Staff sign-in</strong>
                     </div>
-                    <p>There is no login server yet, so any staff ID with a password of six characters or more will open the system. The role you pick decides which pages you see. Please do not enter real patient details.</p>
+                    <p>Your account is verified and your role decides which screens you can open. If you cannot sign in, use "Need help getting in?" below.</p>
                 </div>
-
                 <footer class="lp-foot">
                     <span>MediTrack Hospital ERP</span>
-                    <span>Offline version</span>
+                    <span>Hospital server edition</span>
                 </footer>
             </div>
         </section>
     </main>
 
-    <!-- Access request ------------------------------------------------- -->
     <div class="login-modal" id="accessModal" hidden>
         <div class="lm-box" role="dialog" aria-modal="true" aria-labelledby="accessModalTitle">
             <header class="lm-head">
@@ -147,7 +126,7 @@
                 </button>
             </header>
             <div class="lm-body">
-                <p class="lm-text">Your request is saved on this computer and shows up under Staff for an administrator to deal with.</p>
+                <p class="lm-text">Your request is sent to the hospital server and shows up under Staff &amp; accounts for an administrator to deal with.</p>
                 <div class="lf-group">
                     <label for="reqName">Your name</label>
                     <div class="lf-input">
@@ -165,6 +144,46 @@
                 <button type="button" class="lf-secondary" id="cancelAccessModal">Cancel</button>
                 <button type="button" class="lf-submit lf-submit-inline" id="submitAccessRequest">Send request</button>
             </footer>
+        </div>
+    </div>
+    <!-- Forced first password: an account created without one lands here
+         straight after signing in. There is deliberately no close button,
+         no backdrop dismiss and Escape does nothing — nothing else in the
+         system opens until a password exists. -->
+    <div class="login-modal" id="resetModal" hidden>
+        <div class="lm-box" role="dialog" aria-modal="true" aria-labelledby="resetModalTitle" aria-describedby="resetModalText">
+            <header class="lm-head">
+                <span class="lm-head-mark"><span class="ico" data-icon="key" data-icon-size="18"></span></span>
+                <h3 id="resetModalTitle">Choose your password</h3>
+            </header>
+            <div class="lm-body">
+                <p class="lm-text" id="resetModalText">This account has no password yet. Pick one you will remember — at least 6 characters — and it will be the only one that opens your account.</p>
+                <div class="lf-group">
+                    <label for="resetPassword">New password</label>
+                    <div class="lf-input">
+                        <span class="lf-icon ico" data-icon="lock" data-icon-size="16"></span>
+                        <input type="password" id="resetPassword" placeholder="At least 6 characters" autocomplete="new-password" />
+                    </div>
+                    <span class="lf-error" id="errResetPassword"></span>
+                </div>
+                <div class="lf-group">
+                    <label for="resetPassword2">Confirm password</label>
+                    <div class="lf-input">
+                        <span class="lf-icon ico" data-icon="lock" data-icon-size="16"></span>
+                        <input type="password" id="resetPassword2" placeholder="Type it again" autocomplete="new-password" />
+                    </div>
+                    <span class="lf-error" id="errResetPassword2"></span>
+                </div>
+            </div>
+            <footer class="lm-foot">
+                <button type="button" class="lf-submit lf-submit-inline" id="submitResetBtn">
+                    <span id="submitResetLabel">Set password &amp; continue</span>
+                </button>
+            </footer>
+            <p class="lm-lock-note">
+                <span class="ico" data-icon="shield-check" data-icon-size="13"></span>
+                <span>You cannot skip this step.</span>
+            </p>
         </div>
     </div>
 

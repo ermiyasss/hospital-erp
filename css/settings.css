@@ -40,12 +40,14 @@
 .set-nav-item:hover { background: var(--surface-alt); }
 .set-nav-item .ico { color: var(--gray-muted); margin-top: 1px; }
 
+/* Solid accent fill, matching a selected conversation in Messages. */
 .set-nav-item.active {
-    background: var(--primary-light);
-    border-left-color: var(--primary-red);
+    background: var(--primary);
+    border-left-color: var(--primary);
 }
-.set-nav-item.active .ico { color: var(--primary-red); }
-.set-nav-item.active .set-nav-text strong { color: var(--primary-dark); }
+.set-nav-item.active .ico { color: var(--primary-contrast); }
+.set-nav-item.active .set-nav-text strong { color: var(--primary-contrast); }
+.set-nav-item.active .set-nav-text span { color: var(--primary-contrast); opacity: 0.85; }
 
 .set-nav-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .set-nav-text strong {
@@ -83,7 +85,16 @@
     transition: border-color var(--t-fast), background var(--t-fast);
 }
 .policy-option:hover { border-color: var(--border-strong); }
-.policy-option.active { border-color: var(--primary-red); background: var(--primary-light); }
+/* The chosen policy is filled with the solid accent (the same treatment as a
+   selected conversation in Messages); the pale tint read as "unselected". */
+.policy-option.active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-contrast);
+}
+/* Labels must flip to the on-primary ink, otherwise a solid fill hides them. */
+.policy-option.active .po-body strong,
+.policy-option.active .po-body span { color: var(--primary-contrast); }
 
 /* Radio mark drawn in CSS so no icon is needed for a control state. */
 .po-mark {
@@ -95,13 +106,13 @@
     background: var(--white);
     position: relative;
 }
-.policy-option.active .po-mark { border-color: var(--primary-red); }
+.policy-option.active .po-mark { border-color: var(--primary-contrast); background: var(--primary-contrast); }
 .policy-option.active .po-mark::after {
     content: '';
     position: absolute;
     inset: 2px;
     border-radius: 50%;
-    background: var(--primary-red);
+    background: var(--primary);
 }
 
 .po-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -270,9 +281,14 @@
 .theme-mode-option:hover { border-color: var(--border-strong); }
 .theme-mode-option.active {
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px var(--primary-light);
-    background: var(--primary-light);
+    background: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary);
 }
+/* Solid primary fill means the labels must flip to the on-primary colour in
+   both light and dark mode, otherwise the selected tile becomes white-on-white
+   or black-on-black. */
+.theme-mode-option.active .po-body strong,
+.theme-mode-option.active .po-body span { color: var(--primary-contrast); }
 .tmo-preview {
     width: 40px; height: 40px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;

@@ -202,24 +202,36 @@
                 <div class="card workspace-card">
                     <div class="workspace-tabs" role="tablist">
                         <button type="button" class="tab-nav-btn active" role="tab" data-tab="tabNotes">
-                            <span class="ico" data-icon="edit" data-icon-size="15"></span>
-                            <span>Notes</span>
-                        </button>
-                        <button type="button" class="tab-nav-btn" role="tab" data-tab="tabAssist">
-                            <span class="ico" data-icon="insight" data-icon-size="15"></span>
-                            <span>Clinical Assist</span>
+                            <span class="tab-ico tab-ico-notes"><span class="ico" data-icon="edit" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Clinical Notes</span>
+                                <span class="tab-desc">Diagnosis &amp; findings</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
                         </button>
                         <button type="button" class="tab-nav-btn" role="tab" data-tab="tabLabOrders">
-                            <span class="ico" data-icon="lab" data-icon-size="15"></span>
-                            <span>Laboratory</span>
+                            <span class="tab-ico tab-ico-lab"><span class="ico" data-icon="lab" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Laboratory</span>
+                                <span class="tab-desc">Request diagnostics</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
                         </button>
                         <button type="button" class="tab-nav-btn" role="tab" data-tab="tabNurseOrders">
-                            <span class="ico" data-icon="nurse" data-icon-size="15"></span>
-                            <span>Nursing</span>
+                            <span class="tab-ico tab-ico-nurse"><span class="ico" data-icon="nurse" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Nursing</span>
+                                <span class="tab-desc">Bedside tasks</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
                         </button>
                         <button type="button" class="tab-nav-btn" role="tab" data-tab="tabPharmacyOrders">
-                            <span class="ico" data-icon="pill" data-icon-size="15"></span>
-                            <span>Prescriptions</span>
+                            <span class="tab-ico tab-ico-rx"><span class="ico" data-icon="pill" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Prescriptions</span>
+                                <span class="tab-desc">Dispense medication</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
                         </button>
                     </div>
 
@@ -256,62 +268,6 @@
                             <h5>This visit</h5>
                             <div class="history-list" id="clinicalNotesHistory"></div>
                         </div>
-                    </div>
-
-                    <!-- TAB: clinical assist ------------------------------ -->
-                    <div class="tab-panel-content" id="tabAssist" role="tabpanel">
-                        <div class="assist-head">
-                            <div class="assist-head-icon"><span class="ico" data-icon="ai" data-icon-size="17"></span></div>
-                            <div>
-                                <h4>Clinical Assist <span class="assist-engine-pill">Gemini 2.5 Flash</span></h4>
-                                <p>The doctor's notes are analysed automatically together with the presenting complaint and recorded vitals. Output is a prompt for consideration, never a diagnosis.</p>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="assistInput">Notes sent to the assistant</label>
-                            <textarea id="assistInput" rows="4" placeholder="Doctor's notes are pasted here automatically — edit them before re-running if needed"></textarea>
-                            <span class="field-hint">Pulled automatically from the chief complaint and your saved clinical notes.</span>
-                        </div>
-
-                        <div class="assist-actions">
-                            <button type="button" class="btn-primary" id="assistRunBtn">
-                                <span class="ico" data-icon="ai" data-icon-size="15"></span>
-                                <span>Re-analyse</span>
-                            </button>
-                            <button type="button" class="btn-ghost" id="assistUseComplaintBtn">
-                                <span class="ico" data-icon="file-text" data-icon-size="15"></span>
-                                <span>Load chief complaint</span>
-                            </button>
-                            <button type="button" class="btn-ghost" id="assistClearBtn">
-                                <span class="ico" data-icon="reset" data-icon-size="15"></span>
-                                <span>Clear</span>
-                            </button>
-                        </div>
-
-                        <div id="assistOutput" class="assist-output"></div>
-
-                        <div class="assist-review-bar" id="assistReviewBar" hidden>
-                            <span class="assist-review-text">
-                                <strong>Doctor review required</strong>
-                                Approve to attach this reading to the visit record, or discard it.
-                            </span>
-                            <div class="assist-review-actions">
-                                <button type="button" class="btn-primary btn-sm" id="assistApproveBtn">
-                                    <span class="ico" data-icon="check" data-icon-size="14"></span>
-                                    <span>Approve</span>
-                                </button>
-                                <button type="button" class="btn-secondary btn-sm" id="assistDiscardBtn">
-                                    <span class="ico" data-icon="close" data-icon-size="14"></span>
-                                    <span>Discard</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <p class="assist-disclaimer">
-                            <span class="ico" data-icon="shield-check" data-icon-size="13"></span>
-                            <span>Decision support only — clinician judgement governs all care.</span>
-                        </p>
                     </div>
 
                     <!-- TAB: laboratory ---------------------------------- -->
@@ -374,6 +330,22 @@
                             <div class="form-group">
                                 <label for="inputNurseTask">Task *</label>
                                 <input type="text" id="inputNurseTask" placeholder="e.g. Monitor blood pressure every 15 minutes">
+                            </div>
+                            <div class="form-group">
+                                <label>Quick orders</label>
+                                <div class="nurse-quick-orders" id="nurseQuickOrders">
+                                    <button type="button" class="filter-chip" data-quick-task="Setup bed" data-quick-bed="1">
+                                        <span class="ico" data-icon="bed" data-icon-size="12"></span> Setup bed
+                                    </button>
+                                    <button type="button" class="filter-chip" data-quick-task="Record vital signs">Vital signs</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Start IV line">IV line</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Wound dressing">Wound dressing</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Insert urinary catheter">Catheter</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Give nebulisation">Nebulisation</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Draw blood sample">Blood draw</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Reposition patient">Reposition</button>
+                                </div>
+                                <span class="field-hint" id="nurseBedsHint"></span>
                             </div>
                             <div class="form-group">
                                 <label for="inputNurseNote">Remarks *</label>
@@ -506,9 +478,52 @@
             </div>
         </div>
     </section>
+
+    <!-- ==================================================================
+         Bed setup (nursing quick order)
+         ================================================================== -->
+    <div class="modal-overlay" id="bedSetupModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="bedSetupTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="bed" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="bedSetupTitle">Order bed setup</h3>
+                    <span>Reserve a free bed and dispatch the nurse</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Free bed <span class="req">*</span></label>
+                    <div class="custom-select" id="bedPickWrapper">
+                        <button type="button" class="cs-toggle" data-value="">
+                            <span class="cs-text">Choose a free bed</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu" id="bedPickMenu"></ul>
+                    </div>
+                    <span class="field-hint" id="bedPickHint"></span>
+                </div>
+                <div class="form-group">
+                    <label for="bedSetupNote">Instructions for the nurse</label>
+                    <textarea id="bedSetupNote" rows="2" placeholder="e.g. Cardiac monitoring, oxygen accessible."></textarea>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmBedSetupBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Reserve &amp; dispatch</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
 <script src="../js/store.js"></script>
 <script src="../js/ui.js"></script>
 <script src="../js/notifications.js"></script>

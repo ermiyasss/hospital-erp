@@ -37,17 +37,30 @@
 
     /* This module also loads on the sign-in screen, where js/store.js is not
        present, so it carries its own guarded storage access. localStorage is
-       unavailable on opaque origins (file://) and in some private windows. */
+       unavailable on opaque origins (file://) and in some private windows.
+       The shared alert log goes through MediStore.read/write when available,
+       which keeps it on the LAN server rather than this browser. */
     var memory = {};
 
     function lsGet(key) {
-        if (window.MediStore) return window.MediStore.rawGet(key);
+        if (window.MediStore) {
+            if (key === STORAGE_NOTIFS_KEY && window.MediStore.SERVER_MODE) {
+                return JSON.stringify(window.MediStore.read(key));
+            }
+            return window.MediStore.rawGet(key);
+        }
         try { return window.localStorage.getItem(key); }
         catch (e) { return memory[key] === undefined ? null : memory[key]; }
     }
 
     function lsSet(key, value) {
-        if (window.MediStore) return window.MediStore.rawSet(key, value);
+        if (window.MediStore) {
+            if (key === STORAGE_NOTIFS_KEY && window.MediStore.SERVER_MODE) {
+                try { return window.MediStore.write(key, JSON.parse(value || '[]')); }
+                catch (e) { return false; }
+            }
+            return window.MediStore.rawSet(key, value);
+        }
         try { window.localStorage.setItem(key, value); }
         catch (e) { memory[key] = value; }
     }
@@ -55,18 +68,18 @@
     /* Event catalogue: single source of truth for how each event behaves.
        Pages should prefer MediTrackNotify.event('lab.result.ready', {...}). */
     var EVENTS = {
-        'vitals.critical':      { type: 'error',   priority: 'critical', category: 'Vitals' },
-        'vitals.abnormal':      { type: 'warning', priority: 'high',     category: 'Vitals' },
-        'lab.result.critical':  { type: 'error',   priority: 'critical', category: 'Lab' },
-        'lab.result.ready':     { type: 'success', priority: 'high',     category: 'Lab' },
-        'lab.request.urgent':   { type: 'warning', priority: 'high',     category: 'Lab' },
-        'lab.request.created':  { type: 'info',    priority: 'normal',   category: 'Lab' },
-        'pharmacy.dispensed':   { type: 'success', priority: 'normal',   category: 'Pharmacy' },
-        'pharmacy.stock.low':   { type: 'warning', priority: 'high',     category: 'Inventory' },
-        'queue.emergency':      { type: 'error',   priority: 'critical', category: 'Queue' },
-        'queue.called':         { type: 'info',    priority: 'normal',   category: 'Queue' },
-        'patient.registered':   { type: 'info',    priority: 'normal',   category: 'Patient' },
-        'consult.completed':    { type: 'success', priority: 'normal',   category: 'Doctor' },
+        'vitals.critical':      { type: 'error',   priority: 'critical', category: 'Vitals',   audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'vitals.abnormal':      { type: 'warning', priority: 'high',     category: 'Vitals',   audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'lab.result.critical':  { type: 'error',   priority: 'critical', category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'lab.result.ready':     { type: 'success', priority: 'high',     category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'lab.request.urgent':   { type: 'warning', priority: 'high',     category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'lab.request.created':  { type: 'info',    priority: 'normal',   category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
+        'pharmacy.dispensed':   { type: 'success', priority: 'normal',   category: 'Pharmacy', audience: ['admin', 'doctor', 'nurse'] },
+        'pharmacy.stock.low':   { type: 'warning', priority: 'high',     category: 'Inventory',audience: ['admin', 'doctor', 'nurse'] },
+        'queue.emergency':      { type: 'error',   priority: 'critical', category: 'Queue',    audience: ['admin', 'doctor', 'nurse', 'billing', 'lab'] },
+        'queue.called':         { type: 'info',    priority: 'high',     category: 'Queue',    audience: ['admin', 'nurse', 'billing'] },
+        'patient.registered':   { type: 'info',    priority: 'normal',   category: 'Patient',  audience: ['admin', 'billing', 'nurse', 'lab'] },
+        'consult.completed':    { type: 'success', priority: 'normal',   category: 'Doctor',   audience: ['admin', 'doctor'] },
         'record.saved':         { type: 'success', priority: 'low',      category: 'System' }
     };
 
@@ -120,7 +133,7 @@
     function routeFor(item, cfg) {
         /* Role comes first. An alert a role has no use for is not logged for
            them at all, otherwise the panel fills with other people's work. */
-        if (window.MediSession && !window.MediSession.wantsAlert(item.category)) {
+        if (window.MediSession && !window.MediSession.wantsAlert(item)) {
             return 'drop';
         }
 
@@ -275,6 +288,7 @@
             category: opts.category || 'System',
             event: opts.event || null,
             key: opts.key || null,
+            audience: opts.audience || null,
             timestamp: new Date().toISOString(),
             read: false
         };
@@ -339,6 +353,7 @@
             type: payload.type || def.type,
             priority: payload.priority || def.priority,
             category: payload.category || def.category,
+            audience: payload.audience || def.audience || null,
             event: eventKey,
             key: payload.key || null
         });
@@ -411,7 +426,9 @@
        ================================================================== */
     function snapshotCounts() {
         try {
-            var patients = JSON.parse(lsGet(STORAGE_KEY_PATIENTS) || '[]');
+            var patients = window.MediStore
+                ? window.MediStore.readPatients()
+                : JSON.parse(lsGet(STORAGE_KEY_PATIENTS) || '[]');
             prevPatientCount = patients.length;
             prevPatientsState = {};
             patients.forEach(function (p) {
@@ -423,7 +440,9 @@
         }
 
         try {
-            var labs = JSON.parse(lsGet(STORAGE_KEY_LAB) || '[]');
+            var labs = window.MediStore
+                ? window.MediStore.read(window.MediStore.KEYS.labRequests)
+                : JSON.parse(lsGet(STORAGE_KEY_LAB) || '[]');
             prevLabCount = labs.length;
             prevLabCompletedCount = labs.filter(function (l) { return l.status === 'Completed'; }).length;
         } catch (e) {
@@ -495,14 +514,19 @@
         MediTrackNotify.event('queue.called', {
             key: 'callalert:' + data.trackingId + ':' + data.at,
             title: 'Now Calling Patient',
-            message: data.name + ' (' + (data.trackingId || '\u2014') + ') has been called' +
+            message: data.name + ' (' + (data.trackingId || '—') + ') has been called' +
                      doctor + '. Please direct them to the consultation room.',
-            priority: 'critical'
+            audience: ['admin', 'nurse', 'billing']
         });
 
-        [0, 900, 1800].forEach(function (delay) {
-            setTimeout(function () { playSound('critical'); }, delay);
-        });
+        /* The repeating chime must only sound for the ranks that act on a call
+           (nurse and billing desk), so a doctor at their desk is not disturbed by
+           every patient call. */
+        if (window.MediSession && ['admin', 'nurse', 'billing'].indexOf(window.MediSession.role()) !== -1) {
+            [0, 900, 1800].forEach(function (delay) {
+                setTimeout(function () { playSound('critical'); }, delay);
+            });
+        }
     }
 
     function handleLabChange(newValue) {

@@ -31,6 +31,15 @@
         notifications: 'clinic_notifications_log',
         invoices: 'clinic_invoices',
         priceList: 'clinic_price_list',
+        messages: 'clinic_messages',
+        groups: 'clinic_groups',
+        staffMembers: 'clinic_staff_members',
+        chatHidden: 'clinic_chat_hidden',
+        appointments: 'clinic_appointments',
+        beds: 'clinic_beds',
+        profiles: 'clinic_profiles',
+        attendance: 'clinic_attendance',
+        inventory: 'clinic_inventory',
         seeded: 'clinic_seeded'
     };
 
@@ -144,6 +153,242 @@
         try { window.sessionStorage.removeItem(key); } catch (e) { delete memory['__s_' + key]; }
     }
 
+    /* ==================================================================
+       LAN server transport
+
+       When this app is served over http(s) by server.js, every hospital
+       collection lives in the server's SQLite database and this browser is
+       only a cache. The single source of truth is always the server:
+
+         - on load      : one snapshot fetch fills the cache (/api/state)
+         - on write     : the cache updates immediately (UI stays snappy)
+                          and an authenticated PUT persists to the server
+         - other devices: a light version poll notices changes and fires the
+                          same events the old cross-tab localStorage sync
+                          used, so no page component needed rewriting
+
+       Preferences under 'clinic_settings' (theme, accent, sound…) are NOT
+       hospital data and deliberately stay in this browser only.
+       ================================================================== */
+    var TOKEN_KEY = 'erp_token';
+    var SERVER_MODE = false;
+    try {
+        SERVER_MODE = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    } catch (e) { SERVER_MODE = false; }
+
+    var serverVersion = -1;
+    var serverCache = {};        /* storage key -> array */
+    var serverScalarCache = {};  /* storage key -> string */
+    var serverReachable = true;
+    var pollTimer = null;
+
+    var OFFLINE_TEXT = 'Unable to reach the hospital server. Check the network connection — ' +
+        'changes cannot be saved until it is back.';
+
+    function authToken() {
+        if (!storageAvailable()) return memory[TOKEN_KEY] || null;
+        try { return window.localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+    }
+
+    function setAuthToken(token) {
+        if (token === null || token === undefined) { rawRemove(TOKEN_KEY); return; }
+        rawSet(TOKEN_KEY, token);
+    }
+
+    function authHeaders(extra) {
+        var h = extra || {};
+        h['Authorization'] = 'Bearer ' + (authToken() || '');
+        return h;
+    }
+
+    /* Synchronous request — used only for the initial snapshot so that every
+       page keeps reading its data synchronously exactly as before. */
+    function xhrSync(method, url, body) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open(method, url, false);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + (authToken() || ''));
+            if (body !== undefined) xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(body === undefined ? null : JSON.stringify(body));
+            return { status: xhr.status, text: xhr.responseText };
+        } catch (e) {
+            return { status: 0, text: '' };
+        }
+    }
+
+    function sessionExpired() {
+        setAuthToken(null);
+        try { window.localStorage.removeItem('meditrack_session'); } catch (e) {}
+        try {
+            if (window.top && window.top !== window.self) window.top.location.href = '/index.html';
+            else window.location.href = '/index.html';
+        } catch (e) {}
+    }
+
+    /* A red strip pinned to the top of whatever screen is open. */
+    function connectionBanner(text, sticky) {
+        var id = 'meditrack-connection-banner';
+        var el = document.getElementById(id);
+        if (!text) {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            return;
+        }
+        if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
+                'background:#A31B22;color:#fff;padding:9px 16px;font-size:13px;' +
+                'font-family:sans-serif;text-align:center;';
+            (document.body || document.documentElement).appendChild(el);
+        }
+        el.textContent = text;
+        if (!sticky) setTimeout(function () { connectionBanner(null); }, 6000);
+    }
+
+    function applyStatePayload(payload) {
+        var changed = [];
+        serverVersion = payload.version;
+        Object.keys(payload.collections || {}).forEach(function (key) {
+            var incoming = payload.collections[key];
+            if (key === 'clinic_queue_policy') {
+                if (String(incoming) !== String(serverScalarCache[key])) changed.push(key);
+                serverScalarCache[key] = incoming;
+                return;
+            }
+            var prev = JSON.stringify(serverCache[key] || []);
+            var next = JSON.stringify(incoming === undefined ? [] : incoming);
+            if (prev !== next) changed.push(key);
+            serverCache[key] = incoming === undefined ? [] : incoming;
+        });
+        serverReachable = true;
+        connectionBanner(null);
+        return changed;
+    }
+
+    /* Fire the same signals pages already listen to. */
+    function announceChanges(keys) {
+        keys.forEach(function (key) {
+            try { window.dispatchEvent(new StorageEvent('storage', { key: key })); } catch (e) {}
+        });
+        if (keys.indexOf('clinic_patients_data') !== -1 ||
+            keys.indexOf('clinic_lab_requests') !== -1 ||
+            keys.indexOf('clinic_queue_policy') !== -1) {
+            try { window.dispatchEvent(new CustomEvent('meditrack:patients-updated')); } catch (e) {}
+        }
+    }
+
+    function refreshFromServer(thenAnnounce) {
+        return fetch('/api/state', { headers: authHeaders() })
+            .then(function (r) {
+                if (r.status === 401) { sessionExpired(); return null; }
+                return r.json().then(function (j) { return { ok: r.status === 200, j: j }; });
+            })
+            .then(function (out) {
+                if (!out) return;
+                if (!out.ok) throw new Error(out.j && out.j.error);
+                var changed = applyStatePayload(out.j);
+                if (thenAnnounce && changed.length) announceChanges(changed);
+                else if (thenAnnounce) announceChanges([]);   /* repaint anyway */
+            })
+            .catch(function () {
+                serverReachable = false;
+                connectionBanner(OFFLINE_TEXT, true);
+            });
+    }
+
+    function startPolling() {
+        if (pollTimer) return;
+        pollTimer = setInterval(function () {
+            fetch('/api/version', { headers: authHeaders() })
+                .then(function (r) {
+                    if (r.status === 401) { sessionExpired(); return null; }
+                    return r.json();
+                })
+                .then(function (j) {
+                    if (!j) return;
+                    serverReachable = true;
+                    connectionBanner(null);
+                    if (Number(j.version) !== serverVersion) refreshFromServer(true);
+                })
+                .catch(function () {
+                    if (serverReachable) {
+                        serverReachable = false;
+                        connectionBanner(OFFLINE_TEXT, true);
+                    }
+                });
+        }, 4000);
+    }
+
+    function persistToServer(key, value) {
+        fetch('/api/data/' + encodeURIComponent(key), {
+            method: 'PUT',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(value)
+        })
+            .then(function (r) {
+                return r.json().then(function (j) { return { status: r.status, j: j }; });
+            })
+            .then(function (out) {
+                if (out.status === 200) {
+                    serverVersion = Number(out.j.version);
+                    if (!serverReachable) { serverReachable = true; connectionBanner(null); }
+                } else if (out.status === 401) {
+                    sessionExpired();
+                } else {
+                    /* Rejected by validation or permissions: the local edit is
+                       NOT authoritative — pull the server copy back over it. */
+                    connectionBanner((out.j && out.j.error) || 'The server rejected this change.');
+                    refreshFromServer(true);
+                }
+            })
+            .catch(function () {
+                serverReachable = false;
+                connectionBanner(OFFLINE_TEXT, true);
+                /* Keep retrying through the poll loop; when connectivity
+                   returns the version poll reconciles the data. */
+            });
+    }
+
+    function hydrateOnLoad() {
+        var res = xhrSync('GET', '/api/state');
+        if (res.status === 200) {
+            try {
+                applyStatePayload(JSON.parse(res.text));
+            } catch (e) {
+                serverReachable = false;
+            }
+        } else if (res.status === 401) {
+            sessionExpired();
+        } else {
+            serverReachable = false;
+        }
+        startPolling();
+    }
+
+    function documentReady(fn) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fn);
+        } else { fn(); }
+    }
+
+    if (SERVER_MODE) {
+        hydrateOnLoad();
+        if (!serverReachable) {
+            documentReady(function () { connectionBanner(OFFLINE_TEXT, true); });
+        }
+    }
+
+    /* Server-mode implementations of read/write below branch on these. */
+    function serverRead(key) {
+        return (key in serverCache) ? JSON.parse(JSON.stringify(serverCache[key])) : [];
+    }
+
+    function serverWrite(key, value) {
+        serverCache[key] = JSON.parse(JSON.stringify(value));
+        persistToServer(key, value);
+        return true;
+    }
+
     /* Shown once per page so the operator knows records are volatile. */
     function warnIfVolatile() {
         if (storageAvailable() || warnIfVolatile.done) return;
@@ -158,6 +403,7 @@
     }
 
     function read(key) {
+        if (SERVER_MODE) return serverRead(key);
         try {
             var parsed = JSON.parse(rawGet(key) || '[]');
             return isArray(parsed) ? parsed : [];
@@ -167,6 +413,7 @@
     }
 
     function write(key, value) {
+        if (SERVER_MODE) return serverWrite(key, value);
         var ok = rawSet(key, JSON.stringify(value));
         warnIfVolatile();
         return ok;
@@ -331,20 +578,32 @@
         return isNaN(d.getTime()) ? null : d;
     }
 
+    /* All timestamps are stored as UTC. The hospital runs on East Africa Time
+       (Addis Ababa, UTC+3), so display them in that zone everywhere instead of
+       the browser's local clock — the ward clock must read the same in every
+       workstation. */
+    var EAT_ZONE = 'Africa/Addis_Ababa';
+
     function formatDate(value) {
         var d = parseDate(value);
         if (!d) return '—';
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        try {
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: EAT_ZONE });
+        } catch (e) {
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
     }
 
     function formatTime(value) {
         var d = parseDate(value);
         if (!d) return '—';
-        var h = d.getHours();
-        var m = String(d.getMinutes()).padStart(2, '0');
-        var ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return h + ':' + m + ' ' + ampm;
+        try {
+            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: EAT_ZONE }) + ' EAT';
+        } catch (e) {
+            var h = (d.getUTCHours() + 3) % 24;
+            var m = String(d.getUTCMinutes()).padStart(2, '0');
+            return String(h).padStart(2, '0') + ':' + m + ' EAT';
+        }
     }
 
     function formatDateTime(value) {
@@ -526,13 +785,22 @@
     var POLICIES = { PRIORITY: 'priority_first', FIFO: 'arrival_order' };
 
     function queuePolicy() {
+        if (SERVER_MODE) {
+            return serverScalarCache[QUEUE_POLICY_KEY] === POLICIES.FIFO
+                ? POLICIES.FIFO : POLICIES.PRIORITY;
+        }
         var v = rawGet(QUEUE_POLICY_KEY);
         return v === POLICIES.FIFO ? POLICIES.FIFO : POLICIES.PRIORITY;
     }
 
     function setQueuePolicy(policy) {
         var value = policy === POLICIES.FIFO ? POLICIES.FIFO : POLICIES.PRIORITY;
-        rawSet(QUEUE_POLICY_KEY, value);
+        if (SERVER_MODE) {
+            serverScalarCache[QUEUE_POLICY_KEY] = value;
+            persistToServer(QUEUE_POLICY_KEY, value);
+        } else {
+            rawSet(QUEUE_POLICY_KEY, value);
+        }
         try { window.dispatchEvent(new CustomEvent('meditrack:patients-updated')); } catch (e) {}
         return value;
     }
@@ -616,6 +884,174 @@
         window.location.href = file;
     }
 
+    /* ----------------------------------------------------- staff messaging */
+    /* Messages live in one shared server collection. Delivery is resolved
+       from the signed-in account, so the same helpers work in the shell
+       (badge) and inside the messages page. */
+    function sessionUser() {
+        try {
+            var raw = rawGet('meditrack_session');
+            var parsed = raw ? JSON.parse(raw) : null;
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /* Group rosters are read once per pass, not once per message. */
+    function groupMemberIndex() {
+        var index = {};
+        var groups = read('clinic_groups');
+        (groups || []).forEach(function (g) {
+            if (!g) return;
+            index[String(g.id)] = (g.members || []).map(function (m) {
+                return String(m.username || '').toLowerCase();
+            });
+        });
+        return index;
+    }
+
+    function messagesForUser(messages, user) {
+        var who = user || sessionUser() || {};
+        var username = String(who.user || '');
+        var role = String(who.role || '');
+        var lower = username.toLowerCase();
+        var groups = null;                 /* built lazily, only if needed */
+        return (messages || []).filter(function (m) {
+            if (!m || typeof m !== 'object') return false;
+            if (m.fromUsername && m.fromUsername === username) return true;
+            if (m.toType === 'user') return String(m.toUsername || '').toLowerCase() === lower;
+            if (m.toType === 'role') return String(m.toRole || '') === role;
+            /* Group traffic reaches members only, otherwise every group in
+               the hospital would ring the badge on every workstation. */
+            if (m.toType === 'group') {
+                if (!groups) groups = groupMemberIndex();
+                var roster = groups[String(m.groupId)];
+                return !!roster && roster.indexOf(lower) !== -1;
+            }
+            return true;   /* 'all' */
+        });
+    }
+
+    function messageReadKey() {
+        var who = sessionUser() || {};
+        return 'meditrack_msg_read_' + String(who.user || 'anon').toLowerCase();
+    }
+
+    function lastMessageReadAt() {
+        var v = rawGet(messageReadKey());
+        var n = toNumber(v);
+        return n === null ? 0 : n;
+    }
+
+    function markMessagesRead() {
+        rawSet(messageReadKey(), String(Date.now()));
+    }
+
+    function unreadMessageCount(messages) {
+        var cutoff = lastMessageReadAt();
+        var who = sessionUser() || {};
+        var username = String(who.user || '');
+        return messagesForUser(messages || [], who).filter(function (m) {
+            if (!m || m.fromUsername === username) return false;
+            var t = parseDate(m.time);
+            return t ? t.getTime() > cutoff : false;
+        }).length;
+    }
+
+    /* Send through the dedicated server endpoint so the author is stamped
+       server-side; falls back to a local write when no server is present. */
+    function sendMessage(payload) {
+        var body = {
+            toType: payload.toType || 'all',
+            toRole: payload.toRole,
+            toUsername: payload.toUsername,
+            groupId: payload.groupId,
+            groupName: payload.groupName,
+            /* 'system' marks a notice the UI renders as a centred line
+               ("Abebe deleted the chat on …") instead of a chat bubble. */
+            kind: payload.kind === 'system' ? 'system' : 'chat',
+            body: payload.body || '',
+            attachments: payload.attachments || []
+        };
+        if (SERVER_MODE) {
+            var res = xhrSync('POST', '/api/messages', body);
+            if (res.status === 200) {
+                try {
+                    var out = JSON.parse(res.text);
+                    serverVersion = Number(out.version) || serverVersion;
+                    /* The server is the only writer, so its copy of the
+                       thread is the truth. Push it straight into the cache
+                       and announce the change: without this the sender's own
+                       message stayed invisible until the whole page was
+                       reloaded, because the version poll now matched the
+                       version we just received and never re-fetched. */
+                    if (out.message) {
+                        var cached = ('clinic_messages' in serverCache)
+                            ? serverCache['clinic_messages'].slice() : [];
+                        if (!cached.some(function (m) { return m && m.id === out.message.id; })) {
+                            cached.unshift(out.message);
+                            serverCache['clinic_messages'] = cached.slice(0, 500);
+                        }
+                        announceChanges([KEYS.messages]);
+                    }
+                    return { ok: true, message: out.message };
+                } catch (e) {}
+            }
+            var errText = '';
+            try { errText = (JSON.parse(res.text || '{}') || {}).error || ''; } catch (e) {}
+            return { ok: false, error: errText || 'The message could not be sent.' };
+        }
+        var who = sessionUser() || {};
+        var msg = {
+            id: 'msg_' + Date.now(),
+            fromUsername: who.user || '',
+            fromName: who.name || 'Unknown',
+            fromRole: who.role || '',
+            toType: body.toType,
+            toRole: body.toRole || null,
+            toUsername: body.toUsername || null,
+            toName: payload.toName || body.toUsername || null,
+            kind: body.kind,
+            body: body.body,
+            attachments: body.attachments || [],
+            time: new Date().toISOString()
+        };
+        var list = read(KEYS.messages);
+        list.unshift(msg);
+        write(KEYS.messages, list.slice(0, 500));
+        return { ok: true, message: msg };
+    }
+
+    /* Remove one message. The thread is append-only for ordinary writes, so
+       deletion goes through its own endpoint where the server can check that
+       you actually wrote the thing. Falls back to a local splice offline. */
+    function deleteMessage(id) {
+        if (!id) return { ok: false, error: 'No message was chosen.' };
+        if (SERVER_MODE) {
+            var res = xhrSync('POST', '/api/messages/delete', { id: id });
+            if (res.status === 200) {
+                try {
+                    var out = JSON.parse(res.text);
+                    serverVersion = Number(out.version) || serverVersion;
+                    var cached = ('clinic_messages' in serverCache)
+                        ? serverCache['clinic_messages'].slice() : [];
+                    serverCache['clinic_messages'] = cached.filter(function (m) {
+                        return !m || m.id !== id;
+                    });
+                    announceChanges([KEYS.messages]);
+                    return { ok: true };
+                } catch (e) {}
+            }
+            var errText = '';
+            try { errText = (JSON.parse(res.text || '{}') || {}).error || ''; } catch (e) {}
+            return { ok: false, error: errText || 'The message could not be deleted.' };
+        }
+        var kept = read(KEYS.messages).filter(function (m) { return !m || m.id !== id; });
+        write(KEYS.messages, kept);
+        return { ok: true };
+    }
+
     function setOverlayBlur(state) {
         if (window.parent && window.parent !== window) {
             try { window.parent.postMessage({ action: 'toggleBlur', state: !!state }, '*'); } catch (e) {}
@@ -636,6 +1072,9 @@
        is not a blank screen. Real data always wins. A deliberate wipe sets
        the seeded flag to "none" so the demo data never comes back. */
     function seedIfEmpty() {
+        /* The server database starts empty on purpose — a hospital does not
+           want demo patients mixed into real records. */
+        if (SERVER_MODE) return readPatients();
         if (rawGet(KEYS.patients)) return readPatients();
         if (rawGet(KEYS.seeded) === 'none') return [];
 
@@ -706,6 +1145,19 @@
        settings/appearance defaults. The app restarts from a completely
        blank slate. The demo data set is never re-seeded afterwards. */
     function clearAllData() {
+        /* Server mode: wipe the hospital data on the server (accounts are
+           kept), then fall through to clearing this browser's own prefs. */
+        if (SERVER_MODE) {
+            var res = xhrSync('POST', '/api/admin/reset', {});
+            if (res.status !== 200) {
+                try {
+                    var j = JSON.parse(res.text || '{}');
+                    connectionBanner(j.error ||
+                        (res.status === 0 ? OFFLINE_TEXT : 'The server refused to reset data.'), true);
+                } catch (e) {}
+                if (res.status === 401) { sessionExpired(); return; }
+            }
+        }
         Object.keys(KEYS).forEach(function (name) {
             rawRemove(KEYS[name]);
         });
@@ -743,19 +1195,16 @@
         { category: 'Other', name: 'Dressing / procedure', amount: 140 }
     ];
 
+    /* The price list is hospital-wide (every billing desk must quote the
+       same amounts), so in server mode it lives in the shared database
+       exactly like every other collection. */
     function readPriceList() {
-        var raw = rawGet(KEYS.priceList);
-        if (!raw) return DEFAULT_PRICE_LIST.slice();
-        try {
-            var parsed = JSON.parse(raw);
-            return isArray(parsed) && parsed.length ? parsed : DEFAULT_PRICE_LIST.slice();
-        } catch (e) {
-            return DEFAULT_PRICE_LIST.slice();
-        }
+        var list = read(KEYS.priceList);
+        return isArray(list) && list.length ? list : DEFAULT_PRICE_LIST.slice();
     }
 
     function writePriceList(list) {
-        rawSet(KEYS.priceList, JSON.stringify(list || []));
+        return write(KEYS.priceList, isArray(list) ? list : []);
     }
 
     function lookupPrice(category, name) {
@@ -1030,6 +1479,10 @@
         STATUS: STATUS,
         POLICIES: POLICIES,
 
+        SERVER_MODE: SERVER_MODE,
+        authToken: authToken,
+        setAuthToken: setAuthToken,
+
         read: read,
         write: write,
         rawGet: rawGet,
@@ -1105,6 +1558,22 @@
 
         navigate: navigate,
         setOverlayBlur: setOverlayBlur,
-        onPatientsChanged: onPatientsChanged
+        onPatientsChanged: onPatientsChanged,
+
+        sessionUser: sessionUser,
+        messagesForUser: messagesForUser,
+        unreadMessageCount: unreadMessageCount,
+        lastMessageReadAt: lastMessageReadAt,
+        markMessagesRead: markMessagesRead,
+        sendMessage: sendMessage,
+        deleteMessage: deleteMessage,
+
+        /* Pull the latest snapshot from the server now (used after an admin
+           action so the screen reflects the change without waiting for the
+           background poll). */
+        refresh: function (thenAnnounce) {
+            if (!SERVER_MODE) return;
+            refreshFromServer(!!thenAnnounce);
+        }
     };
 })(window);

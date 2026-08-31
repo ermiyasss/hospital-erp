@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Staff · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/staff.css">
+</head>
+<body>
+<div class="page">
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Manage Staff</h1>
+            <p>Add staff, reset their password, suspend accounts and lock them to a device. Everything here writes straight to the login accounts.</p>
+        </div>
+        <div class="page-head-meta">
+            <button type="button" class="btn-primary" id="addStaffBtn">
+                <span class="ico" data-icon="user-plus" data-icon-size="15"></span>
+                <span>Add staff member</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="staff-app">
+        <aside class="staff-side" id="staffListWrap">
+            <div class="search-field staff-search">
+                <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+                <input type="text" id="staffSearch" placeholder="Search staff" aria-label="Search">
+                <button type="button" class="search-clear" id="staffSearchClear" aria-label="Clear search">
+                    <span class="ico" data-icon="close" data-icon-size="14"></span>
+                </button>
+            </div>
+            <div class="staff-list" id="staffList"></div>
+        </aside>
+
+        <section class="staff-detail" id="staffDetail">
+            <div class="empty-state">
+                <span class="empty-state-icon"><span class="ico" data-icon="users" data-icon-size="24"></span></span>
+                <p>Select a staff member</p>
+                <span>Pick someone on the left to see their details and manage their account.</span>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Add / edit staff -->
+<div class="modal-overlay" id="addStaffModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="addStaffTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-info"><span class="ico" data-icon="user-plus" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="addStaffTitle">Add staff member</h3>
+                <span>Name, role and phone are required.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-group span-2">
+                    <label for="sfName">Full name <span class="req">*</span></label>
+                    <input type="text" id="sfName" placeholder="e.g. Abel Mekonnen" />
+                </div>
+                <div class="form-group span-2">
+                    <label for="sfUsername">Username</label>
+                    <input type="text" id="sfUsername" placeholder="filled in from the name" autocomplete="off" spellcheck="false" />
+                    <span class="field-hint" id="sfUsernameHint">Lower-case, no spaces — made from the name. Type over it if you want something else.</span>
+                    <div class="field-warn" id="sfUserWarn" hidden></div>
+                </div>
+                <div class="form-group">
+                    <label for="sfRole">Role <span class="req">*</span></label>
+                    <div class="custom-select" id="sfRole">
+                        <button type="button" class="cs-toggle" data-value="nurse"><span class="cs-text">Nurse</span><span class="ico" data-icon="chevron-down" data-icon-size="14"></span></button>
+                        <ul class="cs-menu">
+                            <li class="cs-option" data-value="admin" data-label="Administrator">Administrator</li>
+                            <li class="cs-option" data-value="doctor" data-label="Doctor">Doctor</li>
+                            <li class="cs-option" data-value="nurse" data-label="Nurse">Nurse</li>
+                            <li class="cs-option" data-value="billing" data-label="Billing">Billing</li>
+                            <li class="cs-option" data-value="lab" data-label="Lab Assistant">Lab Assistant</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="sfPhone">Phone <span class="req">*</span></label>
+                    <input type="text" id="sfPhone" placeholder="09..." />
+                    <div class="field-warn" id="sfPhoneWarn" hidden></div>
+                </div>
+                <div class="form-group">
+                    <label for="sfEmail">Email</label>
+                    <input type="text" id="sfEmail" placeholder="name@hospital" />
+                </div>
+                <div class="form-group">
+                    <label for="sfAge">Age</label>
+                    <input type="number" id="sfAge" min="0" max="120" placeholder="—" />
+                </div>
+                <div class="form-group span-2">
+                    <label for="sfShift">Usual shift</label>
+                    <input type="text" id="sfShift" placeholder="e.g. Day 08:00–16:00" />
+                </div>
+            </div>
+            <div class="field-note">
+                <span class="ico" data-icon="shield-check" data-icon-size="15"></span>
+                <span>No password is set. The first time they sign in they type anything, and the system makes them choose their own password before anything else opens.</span>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="saveStaffBtn"><span class="ico" data-icon="check" data-icon-size="15"></span><span>Create account</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Administrator sets a password for someone else -->
+<div class="modal-overlay" id="pwModal" aria-hidden="true">
+    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-warning"><span class="ico" data-icon="key" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="pwTitle">Set a password</h3>
+                <span id="pwModalSub">Choose what they sign in with.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="pwInput">New password</label>
+                <input type="text" id="pwInput" placeholder="At least 6 characters" autocomplete="off" />
+                <span class="field-hint">They sign in with this straight away. Leave it blank to empty the account instead — then they choose their own password the next time they sign in.</span>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="pwApplyBtn"><span class="ico" data-icon="key" data-icon-size="15"></span><span>Set password</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Suspend duration -->
+<div class="modal-overlay" id="suspendModal" aria-hidden="true">
+    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="suspendTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-warning"><span class="ico" data-icon="clock" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="suspendTitle">Suspend account</h3>
+                <span>Choose how long the sign-in is blocked.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="suspendChoice">Duration</label>
+                <div class="custom-select" id="suspendChoice">
+                    <button type="button" class="cs-toggle" data-value="day"><span class="cs-text">1 day</span><span class="ico" data-icon="chevron-down" data-icon-size="14"></span></button>
+                    <ul class="cs-menu">
+                        <li class="cs-option" data-value="hour" data-label="1 hour">1 hour</li>
+                        <li class="cs-option selected" data-value="day" data-label="1 day">1 day</li>
+                        <li class="cs-option" data-value="indefinite" data-label="Until I clear it">Until I clear it</li>
+                        <li class="cs-option" data-value="none" data-label="Clear suspension">Clear suspension</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="suspendApplyBtn"><span class="ico" data-icon="clock" data-icon-size="15"></span><span>Apply</span></button>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/manage-staff.js"></script>
+</body>
+</html>

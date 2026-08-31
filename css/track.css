@@ -318,7 +318,8 @@
     transition: all var(--t-fast);
 }
 .wb-chip:hover { border-color: var(--border-strong); color: var(--text-strong); }
-.wb-chip.active { background: var(--primary-light); border-color: var(--primary-border); color: var(--primary-dark); }
+/* Solid accent fill for the selected chip — see .msg-conv.active. */
+.wb-chip.active { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); }
 
 .wb-note {
     display: inline-flex;
@@ -663,48 +664,165 @@
 /* --------------------------------------------------------------------------
    Clinician action column
    -------------------------------------------------------------------------- */
-.workspace-card { display: flex; flex-direction: column; overflow: hidden; }
+/* Action tabs are now a vertical icon rail on the left of the workspace
+   card, with the active panel filling the remaining space. The markup is
+   unchanged (track.js toggles .active on .tab-nav-btn / .tab-panel-content),
+   so the rail is a pure layout redesign. */
+.workspace-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
 
+/* Consultation action tabs are now a row of large, card-style buttons. Each
+   card carries a tinted icon, a bold label, a one-line descriptor and a live
+   count badge. Markup and the .tab-nav-btn / data-tab contract are unchanged,
+   so ui.initTabs keeps working and init() can hide/activate tabs per role. */
 .workspace-tabs {
     display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 0 var(--space-2);
-    border-bottom: 1px solid var(--gray-border);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-4);
     background: var(--surface-alt);
-    overflow-x: auto;
-    scrollbar-width: none;
+    border-bottom: 1px solid var(--gray-border);
 }
-.workspace-tabs::-webkit-scrollbar { display: none; }
 
 .tab-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1 1 220px;
+    min-width: 0;
+    padding: 14px var(--space-4);
+    text-align: left;
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+    color: var(--text-body);
+    position: relative;
+    cursor: pointer;
+    transition: color var(--t-fast), background var(--t-fast),
+                border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+}
+.tab-nav-btn:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+.tab-nav-btn:focus-visible {
+    outline: 2px solid var(--primary-border);
+    outline-offset: 2px;
+}
+.tab-nav-btn[hidden] { display: none; }
+
+.tab-ico {
+    width: 42px; height: 42px;
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 11px 13px;
-    font-size: var(--fs-base);
-    font-weight: var(--fw-medium);
+    justify-content: center;
+    background: var(--surface-sunken);
     color: var(--gray-muted);
-    border-bottom: 2px solid transparent;
+    transition: background var(--t-fast), color var(--t-fast);
+}
+.tab-ico-notes { background: var(--primary-light);  color: var(--primary-dark); }
+.tab-ico-lab   { background: var(--accent-lab-bg);   color: var(--accent-lab); }
+.tab-ico-nurse { background: var(--accent-nurse-bg); color: var(--accent-nurse); }
+.tab-ico-rx    { background: var(--accent-rx-bg);    color: var(--accent-rx); }
+
+.tab-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tab-label {
+    font-size: var(--fs-base);
+    font-weight: var(--fw-bold);
+    color: var(--text-strong);
+    letter-spacing: -0.01em;
+}
+.tab-desc {
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
-    transition: color var(--t-fast), border-color var(--t-fast);
-}
-.tab-nav-btn:hover { color: var(--text-strong); }
-.tab-nav-btn.active {
-    color: var(--primary-dark);
-    border-bottom-color: var(--primary-red);
-    font-weight: var(--fw-semibold);
-    background: var(--white);
-}
-.tab-nav-btn .tab-alert-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--danger);
-    flex-shrink: 0;
 }
 
-.tab-panel-content { display: none; padding: var(--space-4); }
+.tab-count {
+    flex-shrink: 0;
+    min-width: 22px; height: 20px;
+    padding: 0 7px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
+    color: var(--text-body);
+    font-size: 11px;
+    font-weight: var(--fw-bold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+}
+.tab-count[hidden] { display: none; }
+.tab-count.tab-count-alert { background: var(--danger-bg); color: var(--danger); }
+
+.tab-nav-btn.active {
+    border-color: var(--primary);
+    background: var(--white);
+    box-shadow: 0 0 0 1px var(--primary), var(--shadow-sm);
+}
+.tab-nav-btn.active .tab-label { color: var(--primary-dark); }
+.tab-nav-btn.active::before {
+    content: '';
+    position: absolute;
+    left: -1px; right: -1px; top: -1px;
+    height: 3px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: var(--primary-red);
+}
+.tab-nav-btn.has-alert .tab-ico { color: var(--danger); }
+
+.tab-panel-content {
+    display: none;
+    padding: var(--space-5);
+    flex: 1;
+    min-width: 0;
+}
 .tab-panel-content.active { display: block; }
+
+/* Each order/dispense form is now its own card for clearer separation. */
+.action-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+}
+.action-block-header { margin-bottom: 0; }
+.action-block .form-actions-row { margin-top: var(--space-1); }
+
+.history-sub-section {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px dashed var(--gray-border);
+}
+.history-sub-section h6 {
+    font-size: 10px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 8px;
+}
+
+/* Tabs already wrap as a row of cards; stack them full-width on small
+   screens so the descriptor and count badge stay legible. */
+@media (max-width: 760px) {
+    .tab-nav-btn { flex-basis: 100%; }
+    .tab-nav-btn.active::before { left: -1px; right: -1px; }
+}
 
 .section-intro { margin-bottom: var(--space-4); }
 .section-intro h4 { font-size: var(--fs-md); font-weight: var(--fw-bold); }
@@ -740,155 +858,6 @@
 .action-icon-badge.nurse-badge { background: var(--accent-nurse-bg); color: var(--accent-nurse); }
 .action-icon-badge.rx-badge    { background: var(--accent-rx-bg);    color: var(--accent-rx); }
 
-/* Clinical assist ------------------------------------------------------ */
-.assist-head { display: flex; align-items: flex-start; gap: 11px; margin-bottom: var(--space-4); }
-.assist-head-icon {
-    width: 34px; height: 34px;
-    flex-shrink: 0;
-    border-radius: var(--radius-md);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--accent-triage-bg);
-    color: var(--accent-triage);
-}
-.assist-head h4 { font-size: var(--fs-md); font-weight: var(--fw-bold); }
-.assist-head p { font-size: var(--fs-xs); color: var(--text-faint); line-height: 1.55; margin-top: 2px; max-width: 80ch; }
-
-.assist-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-
-.assist-output { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
-.assist-output:empty { display: none; }
-
-.assist-summary {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 11px 13px;
-    border-radius: var(--radius-md);
-    background: var(--surface-alt);
-    border: 1px solid var(--gray-border);
-    flex-wrap: wrap;
-}
-.assist-summary-label {
-    font-size: 10px;
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-}
-.assist-urgency {
-    font-size: var(--fs-sm);
-    font-weight: var(--fw-bold);
-    padding: 3px 10px;
-    border-radius: var(--radius-pill);
-}
-.assist-urgency.u-emergency { background: var(--danger-bg);  color: var(--danger); }
-.assist-urgency.u-urgent    { background: var(--warning-bg); color: var(--warning); }
-.assist-urgency.u-routine   { background: var(--success-bg); color: var(--success); }
-
-.assist-group h5 {
-    font-size: 10px;
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-    margin-bottom: 7px;
-}
-
-.assist-dx-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.assist-dx {
-    padding: 11px 13px;
-    border: 1px solid var(--gray-border);
-    border-left: 2px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    background: var(--white);
-}
-.assist-dx.rank-1 { border-left-color: var(--accent-triage); }
-.assist-dx.rank-2 { border-left-color: var(--border-strong); }
-.assist-dx.rank-3,
-.assist-dx.rank-4 { border-left-color: var(--gray-border); }
-.assist-dx-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-}
-.assist-dx-name { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-strong); }
-.assist-dx-system { font-size: var(--fs-xs); color: var(--text-faint); }
-.assist-dx-confidence {
-    font-size: 10px;
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: var(--radius-pill);
-    background: var(--surface-sunken);
-    color: var(--gray-muted);
-    white-space: nowrap;
-}
-.assist-dx-confidence.c-high { background: var(--info-bg); color: var(--info); }
-.assist-dx-confidence.c-moderate { background: var(--warning-bg); color: var(--warning); }
-.assist-dx-confidence.c-low { background: var(--surface-sunken); color: var(--gray-muted); }
-
-.assist-meter {
-    height: 4px;
-    border-radius: var(--radius-pill);
-    background: var(--surface-sunken);
-    margin: 8px 0;
-    overflow: hidden;
-}
-.assist-meter span { display: block; height: 100%; background: var(--accent-triage); border-radius: var(--radius-pill); }
-
-.assist-terms { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.assist-term {
-    font-size: 10.5px;
-    padding: 2px 7px;
-    border-radius: var(--radius-sm);
-    background: var(--surface-sunken);
-    color: var(--gray-muted);
-}
-.assist-term.from-vitals { background: var(--info-bg); color: var(--info); }
-
-.assist-flags { display: flex; flex-direction: column; gap: 6px; }
-.assist-flag {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    padding: 8px 10px;
-    border-radius: var(--radius-md);
-    background: var(--danger-bg);
-    border: 1px solid var(--danger-border);
-    font-size: var(--fs-xs);
-    color: var(--danger);
-    line-height: 1.5;
-}
-.assist-flag .ico { flex-shrink: 0; margin-top: 1px; }
-
-.assist-workup { display: flex; flex-direction: column; gap: 5px; }
-.assist-workup li {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    font-size: var(--fs-xs);
-    color: var(--text-body);
-    line-height: 1.55;
-}
-.assist-workup li .ico { flex-shrink: 0; margin-top: 1px; color: var(--accent-lab); }
-
-.assist-disclaimer {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    margin-top: var(--space-4);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--gray-border);
-    font-size: var(--fs-xs);
-    color: var(--text-faint);
-    line-height: 1.55;
-}
-.assist-disclaimer .ico { flex-shrink: 0; margin-top: 1px; }
 
 /* Status bar ----------------------------------------------------------- */
 .clinical-status-bar {
@@ -1025,39 +994,6 @@
     color: var(--primary-dark);
 }
 
-/* Clinical Assist · Gemini ---------------------------------------------- */
-.assist-engine-pill {
-    display: inline-block;
-    vertical-align: middle;
-    margin-left: 8px;
-    padding: 2px 9px;
-    border-radius: var(--radius-pill);
-    font-size: 10px;
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--primary-dark);
-    background: var(--primary-light);
-    border: 1px solid var(--primary-border);
-}
-.assist-review-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    margin-top: var(--space-3);
-    padding: 10px var(--space-3);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--primary-border);
-    background: var(--primary-light);
-}
-.assist-review-bar.is-approved {
-    border-color: var(--success-border);
-    background: var(--success-bg);
-}
-.assist-review-text { font-size: var(--fs-sm); color: var(--text-body); }
-.assist-review-actions { display: flex; gap: 6px; }
 
 /* --------------------------------------------------------------------------
    Responsive
@@ -1077,4 +1013,11 @@
     .wb-list { grid-template-columns: 1fr; }
     .status-bar-actions { width: 100%; }
     .status-bar-actions > * { flex: 1; }
+}
+
+/* Quick nursing orders + bed setup -------------------------------------- */
+.nurse-quick-orders {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }

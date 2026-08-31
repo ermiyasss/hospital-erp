@@ -1,23 +1,28 @@
 /* ==========================================================================
    MediTrack Hospital ERP - Sign in
 
-   There is no login server in this build, so this screen is honest about that
-   rather than pretending to verify anything. It checks the shape of what was
-   typed, records the chosen role in the session, and hands off to the shell.
+   Authentication happens on the hospital server (server.js): usernames,
+   emails and phone numbers plus scrypt-hashed passwords live in the server
+   database. A successful sign-in returns an API token AND the account's real
+   role — the role is decided by the server, never by this form, so there is
+   no role picker to get wrong.
 
-   The role picker is deliberately temporary. When a real login server exists,
-   the role comes back from the server and this control is deleted — nothing
-   else needs to change, because everything downstream asks js/session.js.
+   Accounts are created WITHOUT a password. On the first sign-in the server
+   accepts whatever was typed and flags needsPassword; the member is then
+   walked into choosing their own password and cannot reach the dashboard
+   until one exists. An administrator asking for a change (mustReset) lands
+   in the same place, with different wording.
    ========================================================================== */
 
 (function (window, document) {
     'use strict';
 
-    var REQUESTS_KEY = 'clinic_admin_requests';
-    var LAST_ROLE_KEY = 'meditrack_last_role';
+    var ON_SERVER = window.location.protocol === 'http:' || window.location.protocol === 'https:';
 
     var session = window.MediSession;
-    var selectedRole = null;
+    var signingIn = false;
+    var pendingToken = null;
+    var pendingUser = null;
 
     function byId(id) { return document.getElementById(id); }
 
@@ -29,6 +34,22 @@
 
     function icon(name, size) {
         return window.MediIcons ? window.MediIcons.svg(name, size || 16) : '';
+    }
+
+    /* A stable per-browser device id, used for the optional HWID lock that
+       restricts a staff account to the machine it first signed in from. */
+    function getDeviceId() {
+        try {
+            var id = window.localStorage.getItem('meditrack_device_id');
+            if (id) return id;
+            id = 'dev_' + crypto.randomUUID
+                ? 'dev_' + crypto.randomUUID()
+                : 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            window.localStorage.setItem('meditrack_device_id', id);
+            return id;
+        } catch (e) {
+            return 'dev_' + Date.now();
+        }
     }
 
     function showError(inputId, message) {
@@ -63,74 +84,9 @@
         box.hidden = false;
     }
 
-    /* ==================================================================
-       Role picker
-       ================================================================== */
-    function renderRoles() {
-        var host = byId('roleChoice');
-        if (!host || !session) return;
-
-        host.innerHTML = session.ROLE_ORDER.map(function (key) {
-            var def = session.ROLES[key];
-            return '<button type="button" class="role-option" role="radio" aria-checked="false" ' +
-                        'data-role="' + esc(key) + '">' +
-                    '<span class="ro-icon">' + icon(def.icon, 16) + '</span>' +
-                    '<span class="ro-text">' +
-                        '<strong>' + esc(def.label) + '</strong>' +
-                        '<span>' + esc(def.summary) + '</span>' +
-                    '</span>' +
-                    '<span class="ro-mark" aria-hidden="true"></span>' +
-                '</button>';
-        }).join('');
-
-        host.addEventListener('click', function (e) {
-            var btn = e.target.closest ? e.target.closest('[data-role]') : null;
-            if (!btn || !host.contains(btn)) return;
-            chooseRole(btn.getAttribute('data-role'));
-        });
-
-        /* Arrow keys should move between options like a real radio group. */
-        host.addEventListener('keydown', function (e) {
-            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' &&
-                e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-
-            var options = Array.prototype.slice.call(host.querySelectorAll('[data-role]'));
-            var index = options.indexOf(document.activeElement);
-            if (index === -1) return;
-
-            e.preventDefault();
-            var step = (e.key === 'ArrowDown' || e.key === 'ArrowRight') ? 1 : -1;
-            var next = options[(index + step + options.length) % options.length];
-            next.focus();
-            chooseRole(next.getAttribute('data-role'));
-        });
-    }
-
-    function chooseRole(key) {
-        if (!session) return;
-        var role = session.normalizeRole(key);
-        if (!role) return;
-
-        selectedRole = role;
-        clearError('roleChoice');
-
-        var host = byId('roleChoice');
-        if (host) {
-            Array.prototype.slice.call(host.querySelectorAll('[data-role]')).forEach(function (btn) {
-                var on = btn.getAttribute('data-role') === role;
-                btn.classList.toggle('selected', on);
-                btn.setAttribute('aria-checked', on ? 'true' : 'false');
-            });
-        }
-
-        var hint = byId('roleChoiceHint');
-        if (hint) {
-            var def = session.ROLES[role];
-            var pages = def.pages.map(function (p) {
-                return session.PAGES[p] ? session.PAGES[p].title : p;
-            });
-            hint.textContent = 'You will see: ' + pages.join(', ') + '.';
-        }
+    function hideNotice() {
+        var box = byId('loginNotice');
+        if (box) box.hidden = true;
     }
 
     /* ==================================================================
@@ -138,6 +94,7 @@
        ================================================================== */
     function submit(e) {
         e.preventDefault();
+        if (signingIn) return;
 
         var idField = byId('employeeId');
         var pwField = byId('password');
@@ -145,63 +102,156 @@
         var pw = pwField ? pwField.value : '';
 
         var ok = true;
-        if (!id) ok = showError('employeeId', 'Enter your staff ID or email.');
+        if (!id) { ok = showError('employeeId', 'Enter your username, email or phone.'); }
         else clearError('employeeId');
 
-        if (pw.length < 6) {
-            ok = showError('password', 'Your password must be at least 6 characters.');
-        } else {
-            clearError('password');
-        }
+        if (!pw) ok = showError('password', 'Enter your password.');
+        else clearError('password');
 
-        if (!selectedRole) {
-            showError('roleChoice', 'Choose the role you are signing in as.');
-            ok = false;
-        }
-
-        if (!ok) {
-            if (!id && idField) idField.focus();
-            else if (pw.length < 6 && pwField) pwField.focus();
-            return;
-        }
+        if (!ok) { if (idField) idField.focus(); return; }
 
         var btn = byId('loginSubmitBtn');
         var label = byId('loginSubmitLabel');
         if (btn) btn.disabled = true;
         if (label) label.textContent = 'Signing in…';
+        signingIn = true;
+        hideNotice();
 
-        /* The session is the only thing that decides what this user can see. */
-        session.signIn({ role: selectedRole, user: id, name: displayName(id) });
+        fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: id,
+                password: pw,
+                hwid: ON_SERVER ? getDeviceId() : ''
+            })
+        })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+            .then(function (out) {
+                if (out.status !== 200) {
+                    failSignIn((out.j && out.j.error) || 'Sign-in failed.');
+                    return;
+                }
+                pendingToken = out.j.token;
+                pendingUser = out.j.user || {};
+                try { window.localStorage.setItem('erp_token', pendingToken); } catch (err) {}
 
-        var remember = byId('rememberMe');
-        if (remember && remember.checked) {
-            try {
-                localStorage.setItem('meditrack_last_user', id);
-                localStorage.setItem(LAST_ROLE_KEY, selectedRole);
-            } catch (err) {}
-        }
-
-        setTimeout(function () { window.location.href = 'dashboard.html'; }, 260);
+                /* No password has ever been set on this account: stop here and
+                   make them choose one. The password they typed to get this
+                   far is discarded — it was never real. */
+                if (out.j.needsPassword) {
+                    showReset('This account has no password yet. Pick one you will remember — at least 6 characters — and it will be the only one that opens your account.',
+                        'Choose your password');
+                    return;
+                }
+                /* An administrator asked for a change; their old password
+                   still works until it is replaced here. */
+                if (out.j.mustReset) {
+                    showReset('Your administrator asked you to change your password. Choose a new one — at least 6 characters.',
+                        'Set a new password');
+                    return;
+                }
+                finishSignIn();
+            })
+            .catch(function () {
+                failSignIn('Unable to reach the server. Check the connection and try again.');
+            });
     }
 
-    /* Prefer the real name from the staff directory when the typed ID matches
-       a username or email; it makes the topbar and record attribution useful
-       even without a login server. Returning null lets js/session.js fall back
-       to the role's default name. */
-    function displayName(id) {
-        var needle = String(id).trim().toLowerCase();
-        if (!needle) return null;
-        try {
-            var staff = JSON.parse(localStorage.getItem('clinic_staff_members') || '[]');
-            if (Array.isArray(staff)) {
-                for (var i = 0; i < staff.length; i++) {
-                    var s = staff[i];
-                    if (String(s.username || '').toLowerCase() === needle) return s.name;
-                    if (String(s.email || '').toLowerCase() === needle) return s.name;
+    function finishSignIn() {
+        session.signIn({
+            role: pendingUser.role,
+            user: pendingUser.username,
+            name: pendingUser.name
+        });
+        setTimeout(function () { window.location.href = 'dashboard.html'; }, 200);
+    }
+
+    function failSignIn(message) {
+        signingIn = false;
+        var btn = byId('loginSubmitBtn');
+        var label = byId('loginSubmitLabel');
+        if (btn) btn.disabled = false;
+        if (label) label.textContent = 'Sign in';
+
+        if (/suspend|locked/i.test(message)) notice(message);
+        else if (/network|reach/i.test(message)) notice(message);
+        else showError('password', message);
+    }
+
+    /* ==================================================================
+       Forced password set
+
+       Deliberately inescapable: no close button, no backdrop dismiss, and
+       Escape is ignored. Once it is open the only way forward is a real
+       password, because an account with no usable password is a hole in
+       the hospital's audit trail.
+       ================================================================== */
+    function showReset(message, title) {
+        var modal = byId('resetModal');
+        if (!modal) { finishSignIn(); return; }
+        clearError('resetPassword');
+        clearError('resetPassword2');
+        var text = byId('resetModalText');
+        var heading = byId('resetModalTitle');
+        if (text && message) text.textContent = message;
+        if (heading && title) heading.textContent = title;
+        var p1 = byId('resetPassword');
+        var p2 = byId('resetPassword2');
+        if (p1) p1.value = '';
+        if (p2) p2.value = '';
+        modal.hidden = false;
+        document.body.classList.add('modal-open');
+        /* Stop the sign-in form underneath from being submitted again. */
+        var submitBtn = byId('loginSubmitBtn');
+        if (submitBtn) submitBtn.disabled = true;
+        if (p1) { try { p1.focus(); } catch (e) {} }
+    }
+
+    function closeReset() {
+        var modal = byId('resetModal');
+        if (modal) modal.hidden = true;
+        document.body.classList.remove('modal-open');
+    }
+
+    function submitReset() {
+        var p1 = byId('resetPassword');
+        var p2 = byId('resetPassword2');
+        var v1 = p1 ? p1.value : '';
+        var v2 = p2 ? p2.value : '';
+        var ok = true;
+        if (v1.length < 6) { ok = showError('resetPassword', 'Use at least 6 characters.'); }
+        else clearError('resetPassword');
+        if (v1 !== v2) { ok = showError('resetPassword2', 'The passwords do not match.'); }
+        else clearError('resetPassword2');
+        if (!ok) return;
+
+        var btn = byId('submitResetBtn');
+        var label = byId('submitResetLabel');
+        if (btn) btn.disabled = true;
+        if (label) label.textContent = 'Saving…';
+
+        fetch('/api/auth/force-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pendingToken || '') },
+            body: JSON.stringify({ next: v1 })
+        })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+            .then(function (out) {
+                if (out.status !== 200) {
+                    if (btn) btn.disabled = false;
+                    if (label) label.textContent = 'Set password & continue';
+                    showError('resetPassword', (out.j && out.j.error) || 'Could not set the password. Try again.');
+                    return;
                 }
-            }
-        } catch (e) {}
-        return null;
+                closeReset();
+                finishSignIn();
+            })
+            .catch(function () {
+                if (btn) btn.disabled = false;
+                if (label) label.textContent = 'Set password & continue';
+                showError('resetPassword', 'Could not reach the server. Try again.');
+            });
     }
 
     /* ==================================================================
@@ -210,14 +260,12 @@
     function openAccessModal() {
         var modal = byId('accessModal');
         if (!modal) return;
-
         var nameField = byId('reqName');
         var idField = byId('employeeId');
         if (nameField) {
             nameField.value = idField ? idField.value.trim() : '';
             clearError('reqName');
         }
-
         modal.hidden = false;
         document.body.classList.add('modal-open');
         if (nameField) nameField.focus();
@@ -234,33 +282,35 @@
         var nameField = byId('reqName');
         var detailField = byId('reqDetail');
         var name = nameField ? nameField.value.trim() : '';
-
         if (!name) {
             showError('reqName', 'Enter your name so the administrator knows who is asking.');
             if (nameField) nameField.focus();
             return;
         }
         clearError('reqName');
-
         var detail = detailField ? detailField.value.trim() : '';
 
-        var list = [];
-        try {
-            var raw = localStorage.getItem(REQUESTS_KEY);
-            var parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed)) list = parsed;
-        } catch (e) {}
-
-        list.unshift({
-            id: Date.now(),
-            name: name,
-            message: detail || 'Asked for help signing in.',
-            time: new Date().toISOString(),
-            status: 'Pending'
-        });
-
-        try { localStorage.setItem(REQUESTS_KEY, JSON.stringify(list)); } catch (e) {}
-
+        if (ON_SERVER) {
+            fetch('/api/access-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, message: detail || 'Asked for help signing in.' })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (j && j.ok) {
+                        closeAccessModal();
+                        notice('Request saved for ' + name + '. An administrator will see it under Staff.');
+                        if (detailField) detailField.value = '';
+                    } else {
+                        showError('reqName', (j && j.error) || 'The server could not save the request.');
+                    }
+                })
+                .catch(function () {
+                    notice('Unable to reach the server. Please try again in a moment.');
+                });
+            return;
+        }
         closeAccessModal();
         notice('Request saved for ' + name + '. An administrator will see it under Staff.');
         if (detailField) detailField.value = '';
@@ -270,8 +320,6 @@
        Init
        ================================================================== */
     function init() {
-        renderRoles();
-
         var form = byId('loginForm');
         if (form) form.addEventListener('submit', submit);
 
@@ -280,17 +328,15 @@
             if (el) el.addEventListener('input', function () { clearError(id); });
         });
 
-        /* Pre-fill the last user and role when they asked to be remembered. */
+        /* Pre-fill the last user when they asked to be remembered. */
         try {
-            var last = localStorage.getItem('meditrack_last_user');
+            var last = window.localStorage.getItem('meditrack_last_user');
             var idField = byId('employeeId');
             var remember = byId('rememberMe');
             if (last && idField) {
                 idField.value = last;
                 if (remember) remember.checked = true;
             }
-            var lastRole = localStorage.getItem(LAST_ROLE_KEY);
-            if (lastRole) chooseRole(lastRole);
         } catch (e) {}
 
         var toggle = byId('togglePassword');
@@ -302,9 +348,7 @@
                 pw.type = show ? 'text' : 'password';
                 toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
                 toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
-                if (window.MediIcons) {
-                    toggle.innerHTML = window.MediIcons.svg(show ? 'eye-off' : 'eye', 15);
-                }
+                if (window.MediIcons) toggle.innerHTML = window.MediIcons.svg(show ? 'eye-off' : 'eye', 15);
             });
         }
 
@@ -319,14 +363,28 @@
         var submitReq = byId('submitAccessRequest');
         if (submitReq) submitReq.addEventListener('click', submitAccessRequest);
 
-        var modal = byId('accessModal');
-        if (modal) {
-            modal.addEventListener('click', function (e) {
-                if (e.target === modal) closeAccessModal();
-            });
+        var accessModal = byId('accessModal');
+        if (accessModal) {
+            accessModal.addEventListener('click', function (e) { if (e.target === accessModal) closeAccessModal(); });
         }
 
+        var submitResetBtn = byId('submitResetBtn');
+        if (submitResetBtn) submitResetBtn.addEventListener('click', submitReset);
+
+        /* Enter submits the forced password form, which is the only thing on
+           screen while it is open. */
+        ['resetPassword', 'resetPassword2'].forEach(function (id) {
+            var el = byId(id);
+            if (!el) return;
+            el.addEventListener('input', function () { clearError(id); });
+            el.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); submitReset(); }
+            });
+        });
+
         document.addEventListener('keydown', function (e) {
+            /* Escape closes the help request only. The password window is
+               not dismissible. */
             if (e.key === 'Escape') closeAccessModal();
         });
 

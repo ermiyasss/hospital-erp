@@ -46,7 +46,7 @@ button {
 }
 
 input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
-::selection { background: var(--primary-light); color: var(--primary-dark); }
+::selection { background: var(--primary); color: var(--primary-contrast); }
 
 :focus-visible {
     outline: 2px solid var(--info);
@@ -72,7 +72,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     padding: var(--space-6);
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-4);
     max-width: 1560px;
     margin: 0 auto;
 }
@@ -275,11 +275,14 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     justify-content: center;
     border: 1px solid var(--gray-border);
     border-radius: var(--radius-md);
-    background: var(--white);
-    color: var(--gray-muted);
+    background: var(--surface);
+    color: var(--text-body);
+    cursor: pointer;
     transition: all var(--t-fast);
 }
-.btn-icon:hover { border-color: var(--border-strong); color: var(--text-strong); background: var(--surface-alt); }
+.btn-icon:hover { border-color: var(--border-strong); color: var(--text-strong); background: var(--surface-sunken); }
+.btn-icon.danger:hover { color: var(--danger); border-color: var(--danger-border); background: var(--surface-sunken); }
+.btn-icon:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* --------------------------------------------------------------------------
    Buttons
@@ -302,14 +305,14 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     white-space: nowrap;
     transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
-.btn-primary { background: var(--primary-red); color: var(--white); }
+.btn-primary { background: var(--primary-red); color: var(--primary-contrast); }
 .btn-primary:hover { background: var(--primary-hover); }
 
 .btn-secondary { background: var(--white); color: var(--text-body); border-color: var(--gray-border); }
 .btn-secondary:hover { background: var(--surface-alt); border-color: var(--border-strong); color: var(--text-strong); }
 
-.btn-danger { background: var(--danger); color: var(--white); }
-.btn-danger:hover { background: var(--primary-dark); }
+.btn-danger { background: var(--danger); color: var(--primary-contrast); }
+.btn-danger:hover { background: var(--critical); border-color: var(--danger-border); }
 
 .btn-ghost { background: transparent; color: var(--text-body); }
 .btn-ghost:hover { background: var(--surface-sunken); color: var(--text-strong); }
@@ -338,7 +341,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     white-space: nowrap;
     transition: background var(--t-fast), color var(--t-fast);
 }
-.btn-text:hover { background: var(--primary-light); color: var(--primary-dark); }
+.btn-text:hover { background: var(--primary-light); color: var(--primary-contrast); }
 
 /* --------------------------------------------------------------------------
    Badges + status vocabulary
@@ -362,7 +365,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 
 .status-pending   { background: var(--surface-sunken); color: var(--text-body);    border-color: var(--gray-border); }
 .status-consulting,
-.status-treatment { background: var(--primary-light);  color: var(--primary-dark); border-color: var(--primary-border); }
+.status-treatment { background: var(--primary-light);  color: var(--primary-contrast); border-color: var(--primary-border); }
 .status-awaiting,
 .status-waiting   { background: var(--warning-bg);     color: var(--warning);      border-color: var(--warning-border); }
 .status-awaiting-payment { background: var(--info-bg); color: var(--info);         border-color: var(--info-border); }
@@ -411,6 +414,17 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 
 /* Avatar --------------------------------------------------------------- */
+.avatar {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--surface-sunken);
+    color: var(--text-body);
+    overflow: hidden;
+}
+.avatar .mt-icon { width: 60%; height: 60%; }
 .avatar-sq {
     display: inline-flex;
     align-items: center;
@@ -502,6 +516,59 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     color: var(--danger);
 }
 .field-error.visible { display: inline-flex; }
+
+/* A heads-up that does not stop you: "this phone is already used, create
+   anyway?" — the administrator decides, the form does not. */
+.field-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-top: 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--warning-border);
+    border-left: 3px solid var(--warning);
+    border-radius: var(--radius-md);
+    background: var(--warning-bg);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text-body);
+}
+.field-warn[hidden] { display: none; }
+.field-warn .fw-icon { color: var(--warning); flex: none; margin-top: 1px; }
+.field-warn .fw-icon svg { stroke: currentColor; fill: none; stroke-width: 1.8; }
+.field-warn .fw-text { flex: 1 1 auto; }
+.field-warn .fw-text strong { color: var(--text-strong); font-weight: var(--fw-semibold); }
+.field-warn .fw-action {
+    flex: none;
+    padding: 3px 9px;
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text-strong);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
+}
+.field-warn .fw-action:hover { background: var(--surface-alt); border-color: var(--warning); }
+
+/* A quiet line of reassurance under a form ("no password is set …"). */
+.field-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+    font-size: var(--fs-xs);
+    line-height: 1.55;
+    color: var(--text-muted);
+}
+.field-note .ico { flex: none; margin-top: 1px; color: var(--info); }
+.field-note .ico svg { stroke: currentColor; fill: none; stroke-width: 1.8; }
 
 .form-actions-row {
     display: flex;
@@ -602,7 +669,36 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     white-space: nowrap;
 }
 .cs-option:hover { background: var(--surface-alt); }
-.cs-option.selected { background: var(--primary-light); color: var(--primary-dark); font-weight: var(--fw-semibold); }
+/* Selected options are filled with the solid brand colour and always use the
+   contrasting ink (--primary-contrast: white-on-blue in light, black-on-white
+   in dark), so the label can never disappear into the fill. */
+.cs-option.selected {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    font-weight: var(--fw-semibold);
+}
+.cs-option.selected:hover { background: var(--primary-hover); }
+
+/* While a dropdown is open we let the modal body/box paint their overflow so
+   the menu is never clipped, and flip it above the toggle when low on screen. */
+.modal-body.cs-escape,
+.modal-box.cs-escape { overflow: visible; }
+.custom-select.open-up .cs-menu { top: auto; bottom: calc(100% + 3px); }
+
+/* --------------------------------------------------------------------------
+   Printed record header (Past Visits detail)
+   -------------------------------------------------------------------------- */
+.record-print-head {
+    margin: 0 0 var(--space-4);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--gray-border);
+}
+.record-print-head h2 {
+    margin: 0 0 2px;
+    font-size: var(--fs-xl);
+    color: var(--text-dark);
+}
+.record-print-head span { font-size: var(--fs-sm); color: var(--gray-muted); }
 
 /* --------------------------------------------------------------------------
    Tabs
@@ -631,7 +727,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 .tab-btn:hover { color: var(--text-strong); background: var(--surface-alt); }
 .tab-btn.active {
-    color: var(--primary-dark);
+    color: var(--on-primary-fill);
     border-bottom-color: var(--primary-red);
     font-weight: var(--fw-semibold);
 }
@@ -651,7 +747,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     justify-content: center;
     font-variant-numeric: tabular-nums;
 }
-.tab-btn.active .tab-count { background: var(--primary-light); color: var(--primary-dark); }
+.tab-btn.active .tab-count { background: var(--primary-light); color: var(--primary-contrast); }
 .tab-count.count-alert { background: var(--danger-bg); color: var(--danger); }
 
 .tab-panel { display: none; }
@@ -675,10 +771,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     transition: all var(--t-fast);
 }
 .chip:hover { border-color: var(--border-strong); color: var(--text-strong); }
+/* Solid accent fill for the selected chip — see .msg-conv.active. */
 .chip.active {
-    background: var(--primary-light);
-    border-color: var(--primary-border);
-    color: var(--primary-dark);
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-contrast);
 }
 
 /* --------------------------------------------------------------------------
@@ -1006,3 +1103,22 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 
 /* The hidden attribute must always win over more specific display rules. */
 [hidden] { display: none !important; }
+
+/* Generic filter chips (messages, appointments, dashboards) ------------- */
+.filter-chip {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--gray-muted);
+    padding: 4px 11px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-alt);
+    border: 1px solid transparent;
+    transition: all var(--t-fast);
+}
+.filter-chip:hover { color: var(--text-strong); background: var(--surface-sunken); }
+/* Solid accent fill for the selected chip — see .msg-conv.active. */
+.filter-chip.active {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    border-color: var(--primary);
+}

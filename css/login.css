@@ -237,9 +237,10 @@ ul { list-style: none; }
 }
 .role-option:hover { border-color: var(--border-strong); background: var(--surface-alt); }
 
+/* Solid accent fill for the picked role — see .msg-conv.active. */
 .role-option.selected {
-    border-color: var(--primary-red);
-    background: var(--primary-light);
+    border-color: var(--primary);
+    background: var(--primary);
 }
 
 .ro-icon {
@@ -252,7 +253,10 @@ ul { list-style: none; }
     background: var(--surface-sunken);
     color: var(--gray-muted);
 }
-.role-option.selected .ro-icon { background: var(--white); color: var(--primary-red); }
+.role-option.selected .ro-icon {
+    background: var(--primary-contrast);
+    color: var(--primary);
+}
 
 .ro-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ro-text strong {
@@ -260,7 +264,7 @@ ul { list-style: none; }
     font-weight: var(--fw-semibold);
     color: var(--text-strong);
 }
-.role-option.selected .ro-text strong { color: var(--primary-dark); }
+.role-option.selected .ro-text strong { color: var(--primary-contrast); }
 
 /* The per-role summary is useful but long; it would crowd a two-up grid. */
 .ro-text span { display: none; }
@@ -275,16 +279,16 @@ ul { list-style: none; }
     background: var(--white);
 }
 .role-option.selected .ro-mark {
-    border-color: var(--primary-red);
-    background: var(--primary-red);
+    border-color: var(--primary-contrast);
+    background: var(--primary-contrast);
 }
 .role-option.selected .ro-mark::after {
     content: '';
     position: absolute;
     left: 4px; top: 1px;
     width: 4px; height: 7px;
-    border-right: 1.5px solid #FFFFFF;
-    border-bottom: 1.5px solid #FFFFFF;
+    border-right: 1.5px solid var(--primary);
+    border-bottom: 1.5px solid var(--primary);
     transform: rotate(40deg);
 }
 .role-option:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
@@ -458,6 +462,19 @@ ul { list-style: none; }
     background: var(--surface-alt);
 }
 .lm-head h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-strong); }
+.lm-head { gap: 10px; }
+.lm-head-mark {
+    width: 32px; height: 32px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    background: var(--info-bg);
+    color: var(--info);
+}
+.lm-head-mark svg { stroke: currentColor; fill: none; stroke-width: 1.8; }
+.lm-head h3 { flex: 1 1 auto; }
 .lm-close {
     width: 30px; height: 30px;
     display: inline-flex;
@@ -495,6 +512,42 @@ ul { list-style: none; }
     border-top: 1px solid var(--gray-border);
     background: var(--surface-alt);
 }
+
+.lm-foot-stack {
+    flex-direction: column-reverse;
+    align-items: stretch;
+}
+.lm-foot-stack .lf-submit-inline { width: 100%; justify-content: center; }
+
+.lf-input-static {
+    padding: 9px 12px;
+    background: var(--surface-sunken);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--border-strong);
+    font-family: var(--font-mono);
+    color: var(--text-body);
+    letter-spacing: 0.04em;
+    word-break: break-all;
+}
+
+/* The forced password dialog carries a line saying so, so nobody hunts for
+   a close button that was never going to be there. */
+.lm-lock-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px var(--space-4) 13px;
+    background: var(--surface-alt);
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+.lm-lock-note svg { stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+/* Center the single button of the forced password dialog. */
+.lm-foot:only-of-type { justify-content: center; }
+#resetModal .lm-foot { justify-content: center; }
+#resetModal .lm-box { max-width: 420px; }
 
 /* --------------------------------------------------------------------------
    Responsive

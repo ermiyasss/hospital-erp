@@ -29,23 +29,28 @@
 /* A critical unread alert tints the bell so it reads at a glance. */
 .topbar-notif-btn.has-critical { color: var(--danger); }
 
+/* A count sits on the bell's top-right corner, not across its face: small
+   enough that the whole bell shape stays readable, nudged outward so only
+   the very edge of the count touches the icon. */
 .notif-badge {
     position: absolute;
-    top: 2px;
+    top: 1px;
     right: 1px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
     border-radius: var(--radius-pill);
     background: var(--danger);
-    color: var(--white);
-    font-size: 10px;
+    color: #FFFFFF;
+    font-size: 9px;
     font-weight: var(--fw-bold);
-    line-height: 16px;
+    line-height: 12px;
     text-align: center;
-    border: 2px solid var(--white);
-    box-sizing: content-box;
+    border: 1.5px solid var(--white);
+    box-sizing: border-box;
     font-variant-numeric: tabular-nums;
+    transform: translate(16%, -16%);
+    pointer-events: none;
 }
 .notif-badge.hidden { display: none; }
 .notif-badge.is-critical { background: var(--critical); }
@@ -129,10 +134,11 @@
     transition: all var(--t-fast);
 }
 .notif-filter-chip:hover { color: var(--text-strong); background: var(--surface-sunken); }
+/* Solid accent fill for the selected chip — see .msg-conv.active. */
 .notif-filter-chip.active {
-    background: var(--primary-light);
-    color: var(--primary-dark);
-    border-color: var(--primary-border);
+    background: var(--primary);
+    color: var(--primary-contrast);
+    border-color: var(--primary);
 }
 
 /* List ------------------------------------------------------------------ */

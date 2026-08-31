@@ -16,7 +16,7 @@
     <header class="page-head">
         <div class="page-head-text">
             <h1>Settings</h1>
-            <p>Appearance, clinical defaults and alert routing. Data management is only available to administrator roles.</p>
+            <p>Appearance, clinical defaults and alert routing. Data backup and staff accounts belong to the administrator.</p>
         </div>
         <div class="page-head-meta">
             <button type="button" class="btn-secondary" id="btnResetSettings">
@@ -57,7 +57,7 @@
             <button type="button" class="set-nav-item" data-settab="panelData">
                 <span class="ico" data-icon="layers" data-icon-size="16"></span>
                 <span class="set-nav-text">
-                    <strong>Data</strong>
+                    <strong>Data backup</strong>
                     <span>Backup, restore, reset</span>
                 </span>
             </button>
@@ -323,7 +323,7 @@
                                 <label>&nbsp;</label>
                                 <button type="button" class="btn-secondary" id="btnTestAlert">
                                     <span class="ico" data-icon="bell" data-icon-size="15"></span>
-                                    <span>Send a test alert</span>
+                                    <span>Preview an alert</span>
                                 </button>
                             </div>
                         </div>
@@ -336,16 +336,16 @@
                 <div class="card">
                     <div class="card-header">
                         <div class="card-header-text">
-                            <h3>Local data</h3>
-                            <span class="card-sub">Everything is stored in this browser only</span>
+                            <h3>Data backup</h3>
+                            <span class="card-sub">Export a copy of the records whenever you need it</span>
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="notice notice-warning">
-                            <span class="ico" data-icon="warning" data-icon-size="15"></span>
+                        <div class="notice notice-info">
+                            <span class="ico" data-icon="shield-check" data-icon-size="15"></span>
                             <div>
-                                <strong>No server, no redundancy</strong>
-                                Clearing browser data, using a private window or switching machine loses every record. Export a backup before any maintenance.
+                                <strong>Every workstation sees the same data</strong>
+                                Restoring a backup replaces the current records for everyone on the system.
                             </div>
                         </div>
 
@@ -354,7 +354,7 @@
                         <div class="data-actions">
                             <button type="button" class="btn-secondary" id="btnExportData">
                                 <span class="ico" data-icon="download" data-icon-size="15"></span>
-                                <span>Export backup (JSON)</span>
+                                <span>Download backup (JSON)</span>
                             </button>
                             <button type="button" class="btn-secondary" id="btnImportData">
                                 <span class="ico" data-icon="save" data-icon-size="15"></span>
@@ -375,21 +375,16 @@
                     <div class="card-body">
                         <div class="danger-row">
                             <div class="dr-text">
-                                <strong>Load demonstration data</strong>
-                                <span>Replaces all patients, orders and results with a sample data set for training or testing.</span>
-                            </div>
-                            <button type="button" class="btn-secondary" id="btnResetDemoData">Load demo data</button>
-                        </div>
-                        <div class="danger-row">
-                            <div class="dr-text">
                                 <strong>Clear all data</strong>
-                                <span>Removes everything from this workstation — patients, orders, results, bills, staff, inventory, notifications and the demo sample data. The app starts at zero and the demo data will not come back.</span>
+                                <span>Removes every record — patients, orders, results, bills, inventory and notifications. Staff accounts are kept so everyone can sign in again.</span>
                             </div>
                             <button type="button" class="btn-danger" id="btnEraseData">Clear all data</button>
                         </div>
                     </div>
                 </div>
             </section>
+            </section>
+
         </div>
     </div>
 </div>
@@ -400,5 +395,6 @@
 <script src="../js/ui.js"></script>
 <script src="../js/notifications.js"></script>
 <script src="../js/settings.js"></script>
+<script src="../js/staff.js"></script>
 </body>
 </html>

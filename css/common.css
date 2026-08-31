@@ -32,7 +32,7 @@ button {
     color: inherit;
     text-align: left;
 }
-::selection { background: var(--primary-light); color: var(--primary-dark); }
+::selection { background: var(--primary); color: var(--primary-contrast); }
 
 :focus-visible {
     outline: 2px solid var(--info);
@@ -153,12 +153,12 @@ body.dashboard-body {
 .nav-item:hover a .ico { color: var(--text-body); }
 
 .nav-item.active a {
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--primary);
+    color: var(--primary-contrast);
     font-weight: var(--fw-semibold);
     border-left-color: var(--primary-red);
 }
-.nav-item.active a .ico { color: var(--primary-red); }
+.nav-item.active a .ico { color: var(--primary-contrast); }
 
 .nav-badge {
     min-width: 20px;

@@ -1,0 +1,137 @@
+/* ==========================================================================
+   MediTrack - Appointments
+   ========================================================================== */
+
+/* Toolbar: filter chips above, search below, with a clear gap. */
+.msg-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+}
+.msg-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+.msg-chip-row .search-field { margin-left: auto; max-width: 360px; }
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    color: var(--text-body, #16212e);
+    background: var(--surface-alt, #f4f6f9);
+    border: 1px solid var(--gray-border, #e3e8ef);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.filter-chip:hover { border-color: var(--border-strong, #cbd5e1); color: var(--text-strong, #0f172a); }
+/* The selected filter is filled with the solid accent, the same treatment a
+   selected conversation gets in Messages — a pale tint read as "unselected". */
+.filter-chip.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-contrast);
+    font-weight: var(--fw-semibold);
+}
+
+.appt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 14px;
+}
+
+.appt-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e3e8ef);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.appt-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.appt-patient {
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--text-strong, #16212e);
+}
+
+.appt-when {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-body, #16212e);
+}
+
+.appt-when .appt-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent, #0e7490) 10%, transparent);
+    color: var(--accent, #0e7490);
+    padding: 3px 9px;
+    border-radius: 8px;
+}
+
+.appt-doctor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text-soft, #64748b);
+}
+
+.appt-reason {
+    font-size: 13px;
+    color: var(--text-soft, #475569);
+    line-height: 1.45;
+}
+
+.appt-flags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.appt-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px dashed var(--border, #e3e8ef);
+    padding-top: 10px;
+    margin-top: auto;
+    flex-wrap: wrap;
+}
+
+.appt-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.appt-notify-note {
+    font-size: 12px;
+    color: var(--text-soft, #64748b);
+    background: color-mix(in srgb, var(--text-soft, #64748b) 8%, transparent);
+    border-radius: 8px;
+    padding: 6px 9px;
+    line-height: 1.4;
+}

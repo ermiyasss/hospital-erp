@@ -33,6 +33,36 @@
                 <li class="nav-item" data-page="dashboard" data-target="pages/default.html">
                     <a href="#"><span class="ico" data-icon="dashboard"></span><span class="nav-label">Dashboard</span></a>
                 </li>
+                <li class="nav-item" data-page="messages" data-target="pages/messages.html">
+                    <a href="#">
+                        <span class="ico" data-icon="message"></span>
+                        <span class="nav-label">Messages</span>
+                        <span class="nav-badge hidden" data-badge="messages">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="appointments" data-target="pages/appointments.html">
+                    <a href="#">
+                        <span class="ico" data-icon="calendar-check"></span>
+                        <span class="nav-label">Appointments</span>
+                        <span class="nav-badge hidden" data-badge="appointments">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="announcements" data-target="pages/announcements.html">
+                    <a href="#">
+                        <span class="ico" data-icon="bell"></span>
+                        <span class="nav-label">Announcements</span>
+                        <span class="nav-badge hidden" data-badge="announcements">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="attendance" data-target="pages/attendance.html">
+                    <a href="#"><span class="ico" data-icon="calendar"></span><span class="nav-label">Attendance</span></a>
+                </li>
+                <li class="nav-item" data-page="inventory" data-target="pages/inventory.html">
+                    <a href="#">
+                        <span class="ico" data-icon="archive"></span>
+                        <span class="nav-label">Inventory</span>
+                    </a>
+                </li>
 
                 <li class="nav-section" data-section="Patient flow">Patients</li>
                 <li class="nav-item" data-page="registry" data-target="pages/patients.html">
@@ -89,8 +119,11 @@
                 <li class="nav-item" data-page="archive" data-target="pages/storage.html">
                     <a href="#"><span class="ico" data-icon="layers"></span><span class="nav-label">Past visits</span></a>
                 </li>
-                <li class="nav-item" data-page="staff" data-target="pages/staff.html">
-                    <a href="#"><span class="ico" data-icon="users"></span><span class="nav-label">Staff</span></a>
+                <li class="nav-item" data-page="manageStaff" data-target="pages/manage-staff.html">
+                    <a href="#"><span class="ico" data-icon="users"></span><span class="nav-label">Manage Staff</span></a>
+                </li>
+                <li class="nav-item" data-page="profile" data-target="pages/profile.html">
+                    <a href="#"><span class="ico" data-icon="user-circle"></span><span class="nav-label">Profiles</span></a>
                 </li>
                 <li class="nav-item" data-page="settings" data-target="pages/settings.html">
                     <a href="#"><span class="ico" data-icon="settings"></span><span class="nav-label">Settings</span></a>
@@ -101,7 +134,7 @@
         <div class="sidebar-foot">
             <div class="offline-note">
                 <span class="ico" data-icon="shield-check" data-icon-size="14"></span>
-                <span>Works offline · everything is saved on this computer</span>
+                <span>Connected to the hospital server</span>
             </div>
         </div>
     </aside>
@@ -176,6 +209,10 @@
                             <span class="profile-menu-user" id="menuUserName">Dr. Sarah Chen</span>
                             <span class="profile-menu-dept" id="menuUserDept">Administrator</span>
                         </div>
+                        <button type="button" class="profile-menu-item" id="menuProfileLink" data-page="profile" data-target="pages/profile.html">
+                            <span class="ico" data-icon="user-circle" data-icon-size="15"></span>
+                            <span>My profile</span>
+                        </button>
                         <button type="button" class="profile-menu-item" id="menuSettingsLink" data-page="settings" data-target="pages/settings.html">
                             <span class="ico" data-icon="settings" data-icon-size="15"></span>
                             <span>Settings</span>

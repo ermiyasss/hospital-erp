@@ -1,10 +1,18 @@
 /* ==========================================================================
    MediTrack Hospital ERP - Nurse Station
 
-   Nursing orders live on the patient record, so this screen flattens them into
-   a worklist and writes completions straight back. Completing a task can also
-   record fresh observations, which are re-interpreted by js/clinical.js — that
-   is how deterioration reaches the clinician without a phone call.
+   Two jobs:
+   1. Nursing orders live on the patient record; this screen flattens them
+      into a worklist and writes completions straight back. Completing a task
+      can also record fresh observations, which are re-interpreted by
+      js/clinical.js — that is how deterioration reaches the clinician
+      without a phone call.
+   2. Patient tracking: a nurse can enrol a patient who has to come in for
+      check-ups across several days and log every follow-up visit, so the
+      whole team can follow the patient without waiting for the doctor.
+
+   Completed tasks older than 24 hours leave the Completed tab automatically
+   and stay in the patient record / Past Visits archive instead.
    ========================================================================== */
 
 (function (window, document) {
@@ -14,14 +22,22 @@
     var ui = window.MediUI;
     var clinical = window.MediClinical;
 
+    var TRACKING_KEY = 'clinic_nurse_tracking';
+    var BEDS_KEY = 'clinic_beds';
+    var ARCHIVE_AFTER_MS = 24 * 3600000;   /* completed tasks move to archive after 24h */
+
     var patients = [];
     var openTasks = [];
     var doneTasks = [];
-    var directives = [];
+    var tracking = [];
+    var beds = [];
     var searchTerm = '';
+    var typeFilter = '';
     var currentTab = 'panelOrders';
 
-    var activeTask = null;   /* { patientId, orderId } */
+    var activeTask = null;       /* { patientId, orderId } */
+    var activeTrackingId = null;
+    var trackPatientId = null;
 
     /* The signed-in nurse is the default performer; the name can be edited
        per task (e.g. a colleague covers one injection). */
@@ -32,7 +48,6 @@
         } catch (e) {}
         return 'Nurse on duty';
     }
-    var NURSE = 'Nurse on duty';
 
     var OBS_FIELDS = [
         ['obsSystolic', 'systolic'],
@@ -41,6 +56,13 @@
         ['obsTemp', 'temperature'],
         ['obsSpo2', 'spo2'],
         ['obsRespRate', 'respRate']
+    ];
+
+    var VISIT_FIELDS = [
+        ['visitSystolic', 'systolic'],
+        ['visitDiastolic', 'diastolic'],
+        ['visitPulse', 'pulse'],
+        ['visitTemp', 'temperature']
     ];
 
     function esc(s) { return store.escapeHtml(s); }
@@ -52,16 +74,46 @@
         if (el) el.textContent = value === null || value === undefined || value === '' ? '—' : value;
     }
 
+    function todayKey(d) {
+        var t = d || new Date();
+        return t.getFullYear() + '-' +
+            String(t.getMonth() + 1).padStart(2, '0') + '-' +
+            String(t.getDate()).padStart(2, '0');
+    }
+
     /* ==================================================================
-       Load
-       ================================================================== */
+        Load
+        ================================================================== */
     function load() {
         patients = store.readPatients();
         openTasks = [];
         doneTasks = [];
 
+        /* Auto-archive: completed tasks older than 24h leave the Completed
+           tab. They remain part of the patient record and appear in Past
+           Visits once the visit itself is finished. */
+        var cutoff = Date.now() - ARCHIVE_AFTER_MS;
+        var needsArchiveWrite = false;
         patients.forEach(function (p) {
             (p.nurseOrders || []).forEach(function (o) {
+                if (!store.isOrderOpen(o) && !o.archivedAt &&
+                        o.completedAt && new Date(o.completedAt).getTime() < cutoff) {
+                    o.archivedAt = new Date().toISOString();
+                    needsArchiveWrite = true;
+                }
+            });
+        });
+        /* Deferred: writePatients fires the change event this page listens
+           to, so writing synchronously would re-enter load(). */
+        if (needsArchiveWrite) {
+            var snapshot = patients;
+            setTimeout(function () { store.writePatients(snapshot); }, 0);
+        }
+
+        patients.forEach(function (p) {
+            (p.nurseOrders || []).forEach(function (o) {
+                if (o.archivedAt) return;   /* already in the archive */
+
                 var entry = {
                     patientId: p.id,
                     orderId: o.id,
@@ -88,59 +140,286 @@
             return new Date(b.completedAt || b.time) - new Date(a.completedAt || a.time);
         });
 
-        directives = store.read('clinic_nurse_directives');
-        if (!directives.length) {
-            directives = seedDirectives();
-            store.write('clinic_nurse_directives', directives);
-        }
+        tracking = store.read(TRACKING_KEY);
 
+        loadBeds();
         render();
     }
 
-    function seedDirectives() {
-        var hoursAgo = function (h) { return new Date(Date.now() - h * 3600000).toISOString(); };
-        return [
-            {
-                id: 1,
-                title: 'Hand hygiene audit this shift',
-                body: 'Complete the hand hygiene compliance checklist before the first bedside round. Antiseptic dispensers have been refilled at every bay.',
-                from: 'Nursing supervisor',
-                time: hoursAgo(2),
-                acknowledged: false
-            },
-            {
-                id: 2,
-                title: 'Crash cart verification',
-                body: 'Verify defibrillator pads, adrenaline and IV cannulation kits on your floor. Report shortages to pharmacy before handover.',
-                from: 'Nursing supervisor',
-                time: hoursAgo(5),
-                acknowledged: false
-            }
+    /* ==================================================================
+        Beds
+        The ward board is the single place bed status lives. Doctors can
+        reserve a bed straight from consultation; this screen keeps the
+        board truthful as patients move.
+        ================================================================== */
+    function loadBeds() {
+        beds = store.read(BEDS_KEY);
+        if (beds.length) return;
+
+        /* First run on an empty hospital: a starter board, not a blank wall. */
+        var seed = [];
+        var wards = [
+            { name: 'Ward A — General', count: 6 },
+            { name: 'Ward B — Observation', count: 6 }
         ];
+        wards.forEach(function (w) {
+            for (var i = 1; i <= w.count; i++) {
+                seed.push({
+                    id: 'bed_' + w.name.slice(0, 1).toLowerCase() + '_' + i,
+                    ward: w.name,
+                    label: 'Bed ' + String(i).padStart(2, '0'),
+                    status: 'Free',
+                    patientId: null,
+                    patientName: null,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: currentStaffName()
+                });
+            }
+        });
+        beds = seed;
+        store.write(BEDS_KEY, beds);
+    }
+
+    function saveBeds() {
+        store.write(BEDS_KEY, beds);
+    }
+
+    function bedSummary() {
+        var counts = { Free: 0, Occupied: 0, Cleaning: 0, Reserved: 0 };
+        beds.forEach(function (b) {
+            if (counts[b.status] !== undefined) counts[b.status]++;
+        });
+        return counts;
+    }
+
+    function renderBedBoard() {
+        var host = byId('bedBoard');
+        if (!host) return;
+
+        setText('tabBedsCount', beds.length);
+        var counts = bedSummary();
+        var intro = byId('bedIntro');
+        if (intro) {
+            intro.textContent = beds.length + ' beds — ' + counts.Free + ' free, ' +
+                counts.Occupied + ' occupied, ' + counts.Cleaning + ' cleaning, ' +
+                counts.Reserved + ' reserved.';
+        }
+
+        if (!beds.length) {
+            host.innerHTML = ui.emptyState({
+                icon: 'bed',
+                title: 'No beds on the board',
+                text: 'Use "Add bed" to register the wards; doctors can then reserve beds from consultation.'
+            });
+            return;
+        }
+
+        var wards = {};
+        beds.forEach(function (b) {
+            var w = b.ward || 'General';
+            wards[w] = wards[w] || [];
+            wards[w].push(b);
+        });
+
+        var STATUS_BADGE = {
+            Free: 'status-finished',
+            Occupied: 'status-critical',
+            Cleaning: 'status-awaiting',
+            Reserved: 'status-pending'
+        };
+
+        host.innerHTML = Object.keys(wards).sort().map(function (ward) {
+            var rows = wards[ward].slice().sort(function (a, b) {
+                return String(a.label).localeCompare(String(b.label));
+            });
+            return '<section class="card" style="margin-bottom:16px">' +
+                '<div class="card-header">' +
+                    '<div class="card-header-text">' +
+                        '<h3>' + esc(ward) + '</h3>' +
+                        '<span class="card-sub">' + rows.length + ' bed' + (rows.length > 1 ? 's' : '') + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-grid">' + rows.map(function (b) {
+                    var occupied = b.status === 'Occupied' || b.status === 'Reserved';
+                    return '<article class="nurse-card bed-card is-' + b.status.toLowerCase() + '">' +
+                        '<header class="nc-head">' +
+                            '<span class="avatar-sq urgency-routine">' + icon('bed', 14) + '</span>' +
+                            '<div class="nc-identity">' +
+                                '<span class="nc-name">' + esc(b.label) + '</span>' +
+                                '<span class="nc-sub">' + esc(store.relativeTime(b.updatedAt)) +
+                                    (b.updatedBy ? ' · ' + esc(b.updatedBy) : '') + '</span>' +
+                            '</div>' +
+                            '<span class="badge ' + (STATUS_BADGE[b.status] || 'status-pending') + '">' +
+                                esc(b.status) + '</span>' +
+                        '</header>' +
+                        (occupied && b.patientName
+                            ? '<div class="nc-task"><span class="nc-task-label">Patient</span>' +
+                              '<strong>' + esc(b.patientName) + '</strong></div>'
+                            : '') +
+                        '<footer class="nc-foot nc-foot-wrap">' +
+                            ['Free', 'Occupied', 'Cleaning'].map(function (s) {
+                                return '<button type="button" class="filter-chip' +
+                                    (b.status === s ? ' active' : '') +
+                                    '" data-bed-status="' + esc(b.id) + '" data-status="' + s + '">' + s + '</button>';
+                            }).join('') +
+                            '<button type="button" class="filter-chip" data-bed-assign="' + esc(b.id) + '">Assign…</button>' +
+                        '</footer>' +
+                    '</article>';
+                }).join('') + '</div>' +
+            '</section>';
+        }).join('');
+
+        ui.qsa('[data-bed-status]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setBedStatus(btn.getAttribute('data-bed-status'), btn.getAttribute('data-status'));
+            });
+        });
+        ui.qsa('[data-bed-assign]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                assignBedDialog(btn.getAttribute('data-bed-assign'));
+            });
+        });
+    }
+
+    function setBedStatus(bedId, status) {
+        var bed = null;
+        beds.forEach(function (b) { if (String(b.id) === String(bedId)) bed = b; });
+        if (!bed || bed.status === status) return;
+
+        ui.confirmAction({
+            title: 'Mark bed ' + status.toLowerCase(),
+            subtitle: bed.ward + ' · ' + bed.label,
+            message: status === 'Free' && bed.patientName
+                ? 'This releases the bed currently held for ' + bed.patientName + '.'
+                : 'The board updates for the whole hospital, including the doctors reserving beds.',
+            confirmLabel: 'Mark ' + status.toLowerCase()
+        }, function () {
+            if (status === 'Free') {
+                bed.patientId = null;
+                bed.patientName = null;
+            }
+            bed.status = status;
+            bed.updatedAt = new Date().toISOString();
+            bed.updatedBy = currentStaffName();
+            saveBeds();
+            renderBedBoard();
+        });
+    }
+
+    function assignBedDialog(bedId) {
+        var bed = null;
+        beds.forEach(function (b) { if (String(b.id) === String(bedId)) bed = b; });
+        if (!bed) return;
+
+        var candidates = patients.filter(function (p) { return p.status !== store.STATUS.FINISHED; });
+        if (!candidates.length) {
+            window.MediTrackNotify.flash('No patients', 'Register a patient before assigning a bed.', 'info');
+            return;
+        }
+        var menu = byId('bedAssignMenu');
+        if (menu) {
+            menu.innerHTML = candidates.map(function (p) {
+                return '<li class="cs-option" data-value="' + esc(p.id) + '" data-label="' + esc(p.name) + '">' +
+                    esc(p.name) + ' · ' + esc(p.trackingId || '') + '</li>';
+            }).join('');
+        }
+        var head = byId('bedAssignHead');
+        if (head) head.textContent = bed.label + ' · ' + bed.ward;
+        ui.setSelectValue('bedAssignSelect', candidates[0].id, candidates[0].name);
+        ui.openModal('assignBedModal');
+        var apply = byId('bedAssignApply');
+        if (apply) apply.onclick = function () {
+            var pid = ui.getSelectValue('bedAssignSelect');
+            var p = candidates.filter(function (x) { return x.id === pid; })[0];
+            if (!p) return;
+            bed.status = 'Occupied';
+            bed.patientId = p.id;
+            bed.patientName = p.name;
+            bed.updatedAt = new Date().toISOString();
+            bed.updatedBy = currentStaffName();
+            ui.closeModal('assignBedModal');
+            saveBeds();
+            renderBedBoard();
+            window.MediTrackNotify.flash('Bed assigned', bed.label + ' (' + bed.ward + ') → ' + p.name + '.');
+        };
+    }
+
+    function openAddBed() {
+        byId('bedWardInput').value = '';
+        byId('bedLabelInput').value = '';
+        ui.clearFieldError('bedWardInput');
+        ui.clearFieldError('bedLabelInput');
+        ui.openModal('addBedModal');
+    }
+
+    function addBed() {
+        if (!ui.requireFields([
+            { id: 'bedWardInput', message: 'Name the ward this bed belongs to.' },
+            { id: 'bedLabelInput', message: 'Give the bed a label, e.g. "Bed 07".' }
+        ])) return;
+
+        var ward = byId('bedWardInput').value.trim();
+        var label = byId('bedLabelInput').value.trim();
+        var clash = beds.some(function (b) {
+            return String(b.ward).toLowerCase() === ward.toLowerCase() &&
+                String(b.label).toLowerCase() === label.toLowerCase();
+        });
+        if (clash) {
+            ui.fieldError('bedLabelInput', 'That label already exists in this ward.');
+            return;
+        }
+
+        beds.push({
+            id: 'bed_' + Date.now(),
+            ward: ward,
+            label: label,
+            status: 'Free',
+            patientId: null,
+            patientName: null,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentStaffName()
+        });
+        saveBeds();
+        ui.closeModal('addBedModal');
+        renderBedBoard();
+        window.MediTrackNotify.flash('Bed added', label + ' in ' + ward + ' is now on the board.');
+    }
+
+    function saveTracking() {
+        store.write(TRACKING_KEY, tracking);
     }
 
     /* ==================================================================
-       Render
-       ================================================================== */
+        Render
+        ================================================================== */
     function render() {
         setText('nurseActiveCount', openTasks.length);
         setText('nurseCompletedCount', doneTasks.length);
+        setText('nurseTrackingCount', tracking.filter(function (t) { return t.status === 'active'; }).length);
         setText('tabOrdersCount', openTasks.length);
         setText('tabCompletedCount', doneTasks.length);
 
-        var unread = directives.filter(function (d) { return !d.acknowledged; }).length;
-        var dirCount = byId('tabDirectivesCount');
-        if (dirCount) {
-            dirCount.textContent = unread;
-            dirCount.classList.toggle('count-alert', unread > 0);
-        }
+        var activeTracking = tracking.filter(function (t) { return t.status === 'active'; });
+        setText('tabTrackingCount', activeTracking.length);
 
         renderTasks(openTasks, 'nurseOrdersGrid', false);
         renderTasks(doneTasks, 'completedOrdersGrid', true);
-        renderDirectives();
+        renderTracking(activeTracking);
+        renderBedBoard();
+    }
+
+    /* Bed work is highlighted so a bed order never waits behind routine
+       obs: doctors dispatch it expecting a bed held for the patient. */
+    function taskType(t) {
+        var text = String(t.task || '').toLowerCase();
+        if (text.indexOf('bed') !== -1) return 'bed';
+        if (text.indexOf('vital') !== -1 || text.indexOf('blood pressure') !== -1 ||
+            text.indexOf('pulse') !== -1 || text.indexOf('temp') !== -1) return 'vitals';
+        return 'other';
     }
 
     function matches(t) {
+        if (typeFilter && taskType(t) !== typeFilter) return false;
         if (!searchTerm) return true;
         var q = searchTerm.toLowerCase();
         return [t.patientName, t.task, t.doctor, t.trackingId].some(function (f) {
@@ -157,9 +436,9 @@
         if (!rows.length) {
             host.innerHTML = ui.emptyState({
                 icon: done ? 'check-circle' : 'clipboard',
-                title: done ? 'No completed tasks yet' : 'No outstanding nursing orders',
+                title: done ? 'No completed tasks in the last 24 hours' : 'No outstanding nursing orders',
                 text: done
-                    ? 'Completed tasks are kept here with the outcome recorded by the nurse.'
+                    ? 'Completed tasks are kept here for 24 hours, then moved to the archive (Past Visits).'
                     : 'Orders appear here as soon as a clinician dispatches them from the consultation desk.'
             });
             return;
@@ -186,6 +465,11 @@
                 '<div class="nc-task">' +
                     '<span class="nc-task-label">Task</span>' +
                     '<strong>' + esc(t.task) + '</strong>' +
+                    (taskType(t) === 'bed'
+                        ? '<span class="badge status-treatment" style="margin-left:8px">' + icon('bed', 11) + ' Bed</span>'
+                        : (taskType(t) === 'vitals'
+                            ? '<span class="badge status-awaiting" style="margin-left:8px">' + icon('pulse', 11) + ' Vitals</span>'
+                            : '')) +
                 '</div>' +
 
                 (t.note
@@ -231,55 +515,308 @@
         }
     }
 
-    function renderDirectives() {
-        var host = byId('directivesList');
+    /* ==================================================================
+        Patient tracking
+        ================================================================== */
+    function renderTracking(activeList) {
+        var host = byId('trackingGrid');
         if (!host) return;
 
-        if (!directives.length) {
+        var rows = activeList.filter(function (t) {
+            if (!searchTerm) return true;
+            var q = searchTerm.toLowerCase();
+            return [t.patientName, t.reason, t.trackingId].some(function (f) {
+                return String(f || '').toLowerCase().indexOf(q) !== -1;
+            });
+        });
+
+        if (!rows.length) {
             host.innerHTML = ui.emptyState({
-                icon: 'list',
-                title: 'No standing directives',
-                text: 'Ward-level instructions from the nursing supervisor appear here.'
+                icon: 'pulse',
+                title: tracking.length ? 'No tracked patients match the search' : 'No patients are being tracked',
+                text: 'Use "Track a patient" when someone needs to come in for check-ups across several days.'
             });
             return;
         }
 
-        host.innerHTML = directives.map(function (d) {
-            return '<article class="directive' + (d.acknowledged ? ' is-ack' : '') + '">' +
-                '<header class="dir-head">' +
-                    '<h4>' + esc(d.title) + '</h4>' +
-                    '<span class="dir-time">' + esc(store.formatDateTime(d.time)) + '</span>' +
+        host.innerHTML = rows.map(function (t) {
+            var days = Math.max(1, Number(t.planDays) || 7);
+            var start = new Date(t.startDate);
+            var loggedDays = {};
+            (t.entries || []).forEach(function (e) { loggedDays[e.date] = e; });
+
+            var pills = '';
+            for (var day = 0; day < days; day++) {
+                var d = new Date(start.getTime() + day * 86400000);
+                var key = todayKey(d);
+                var entry = loggedDays[key];
+                var cls = entry ? 'is-done'
+                    : (key === todayKey() ? 'is-today' : '');
+                pills += '<span class="track-day ' + cls + '" title="' + esc(store.formatDate(d.toISOString())) + '">' +
+                    (day + 1) + '</span>';
+            }
+
+            var lastEntry = (t.entries || []).length
+                ? t.entries[t.entries.length - 1] : null;
+
+            return '<article class="nurse-card track-card" data-track="' + esc(t.id) + '">' +
+                '<header class="nc-head">' +
+                    '<span class="avatar-sq urgency-routine">' + esc(store.initials(t.patientName)) + '</span>' +
+                    '<div class="nc-identity">' +
+                        '<span class="nc-name">' + esc(t.patientName) + '</span>' +
+                        '<span class="nc-sub"><span class="mono">' + esc(t.trackingId) + '</span></span>' +
+                    '</div>' +
+                    '<span class="badge status-awaiting">Day ' +
+                        Math.min(days, (t.entries || []).length ? Math.min(days, daysSoFar(t)) : 1) +
+                        ' of ' + days + '</span>' +
                 '</header>' +
-                '<p class="dir-body">' + esc(d.body) + '</p>' +
-                '<footer class="dir-foot">' +
-                    '<span class="dir-from">' + esc(d.from) + '</span>' +
-                    (d.acknowledged
-                        ? '<span class="badge status-finished">' + icon('check', 12) + '<span>Acknowledged</span></span>'
-                        : '<button type="button" class="btn-secondary btn-sm" data-ack="' + esc(d.id) + '">' +
-                            icon('check', 14) + '<span>Acknowledge</span>' +
-                          '</button>') +
+
+                (t.reason
+                    ? '<div class="nc-task"><span class="nc-task-label">Plan</span><strong>' + esc(t.reason) + '</strong></div>'
+                    : '') +
+
+                '<div class="track-days">' + pills + '</div>' +
+
+                (lastEntry
+                    ? '<div class="nc-note">' + icon('file-text', 13) +
+                      '<span><strong>Last visit:</strong> ' + esc(store.formatDateTime(lastEntry.time)) +
+                      ' — ' + esc(lastEntry.note) + '</span></div>'
+                    : '<div class="nc-note">' + icon('clock', 13) +
+                      '<span>No visits logged yet — started ' + esc(store.formatDate(t.startDate)) + '</span></div>') +
+
+                '<footer class="nc-foot">' +
+                    '<span class="nc-meta">' + icon('nurse', 13) +
+                        '<span>' + (t.entries || []).length + ' visit' +
+                            ((t.entries || []).length === 1 ? '' : 's') + ' logged</span>' +
+                    '</span>' +
+                    '<span class="nc-actions">' +
+                        '<button type="button" class="btn-secondary btn-sm" data-logvisit="' + esc(t.id) + '">' +
+                            icon('plus', 14) + '<span>Log visit</span>' +
+                        '</button>' +
+                        '<button type="button" class="btn-secondary btn-sm" data-endtrack="' + esc(t.id) + '">' +
+                            icon('check-circle', 14) + '<span>End</span>' +
+                        '</button>' +
+                    '</span>' +
                 '</footer>' +
             '</article>';
         }).join('');
 
-        ui.qsa('[data-ack]', host).forEach(function (btn) {
+        ui.qsa('[data-logvisit]', host).forEach(function (btn) {
             btn.addEventListener('click', function () {
-                var id = btn.getAttribute('data-ack');
-                directives.forEach(function (d) {
-                    if (String(d.id) === String(id)) {
-                        d.acknowledged = true;
-                        d.acknowledgedAt = new Date().toISOString();
-                    }
-                });
-                store.write('clinic_nurse_directives', directives);
-                render();
+                openLogVisit(btn.getAttribute('data-logvisit'));
+            });
+        });
+        ui.qsa('[data-endtrack]', host).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                endTracking(btn.getAttribute('data-endtrack'));
             });
         });
     }
 
+    function daysSoFar(t) {
+        var span = Math.floor((Date.now() - new Date(t.startDate).getTime()) / 86400000) + 1;
+        return Math.max(1, span);
+    }
+
+    function openStartTracking() {
+        var menu = byId('trackPatientMenu');
+        if (!menu) return;
+
+        var options = patients.map(function (p) {
+            return '<li class="cs-option" data-value="' + esc(p.id) + '" data-label="' +
+                esc(p.name) + '">' + esc(p.name) +
+                ' <span class="mono">' + esc(p.trackingId) + '</span>' +
+                (p.phone ? ' · ' + esc(p.phone) : '') + '</li>';
+        }).join('');
+
+        if (!options.length) {
+            window.MediTrackNotify.push(
+                'No patients yet',
+                'Register a patient first, then start a tracking plan.',
+                'warning', 'Nurse station', 'medium'
+            );
+            return;
+        }
+
+        menu.innerHTML = options;
+        trackPatientId = patients[0].id;
+        ui.initSelect('trackPatientWrapper', function (v) { trackPatientId = v; });
+        ui.initSelect('bedAssignSelect');
+        ui.setSelectValue('trackPatientWrapper', trackPatientId, store.findPatient(patients, trackPatientId).name);
+
+        byId('trackPlanDays').value = 7;
+        byId('trackReason').value = '';
+        ui.clearFieldError('trackPlanDays');
+        ui.openModal('startTrackingModal');
+    }
+
+    function startTracking() {
+        var daysEl = byId('trackPlanDays');
+        if (!daysEl || !trackPatientId) return;
+
+        var p = store.findPatient(patients, trackPatientId);
+        var days = Number(daysEl.value);
+
+        if (!ui.requireFields([
+            { id: 'trackPlanDays', message: 'Enter how many days this patient should be followed.' }
+        ])) return;
+
+        if (!p || !days || days < 1) return;
+
+        /* One active plan per patient keeps the board honest. */
+        var existing = tracking.filter(function (t) {
+            return t.status === 'active' && String(t.patientId) === String(p.id);
+        });
+        existing.forEach(function (t) {
+            t.status = 'archived';
+            t.endedAt = new Date().toISOString();
+        });
+
+        tracking.push({
+            id: 'trk_' + Date.now(),
+            patientId: p.id,
+            patientName: p.name,
+            trackingId: p.trackingId,
+            phone: p.phone || '',
+            planDays: Math.min(30, days),
+            reason: byId('trackReason').value.trim(),
+            startDate: todayKey(new Date()),
+            entries: [],
+            status: 'active',
+            createdBy: currentStaffName(),
+            createdAt: new Date().toISOString()
+        });
+
+        saveTracking();
+        ui.closeModal('startTrackingModal');
+        load();
+
+        window.MediTrackNotify.flash('Tracking started',
+            p.name + ' will be followed for ' + Math.min(30, days) + ' days.');
+    }
+
+    function openLogVisit(trackId) {
+        var t = tracking.filter(function (x) { return String(x.id) === String(trackId); })[0];
+        if (!t) return;
+
+        activeTrackingId = t.id;
+        setText('logVisitSub', t.patientName + ' · ' + t.trackingId);
+        byId('visitNote').value = '';
+        VISIT_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.value = '';
+        });
+        refreshVisitReadout();
+        ui.clearFieldError('visitNote');
+        ui.openModal('logVisitModal');
+    }
+
+    function readVisitObs() {
+        var v = {};
+        VISIT_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            v[pair[1]] = store.toNumber(el ? el.value : '');
+        });
+        return v;
+    }
+
+    function refreshVisitReadout() {
+        var host = byId('visitReadout');
+        if (!host) return;
+
+        var assessment = clinical.assess(readVisitObs());
+        if (!assessment.recordedCount) { host.innerHTML = ''; return; }
+
+        var tone = assessment.overall === 'critical' ? 'notice-danger'
+            : (assessment.overall === 'normal' ? 'notice-success' : 'notice-warning');
+
+        host.innerHTML =
+            '<div class="notice ' + tone + '">' +
+                '<span class="ico" data-icon="' +
+                    (assessment.overall === 'normal' ? 'check-circle' : 'warning') + '" data-icon-size="15"></span>' +
+                '<div><strong>' + esc(assessment.overallLabel) + ' observations</strong>' +
+                esc(assessment.summary) + '</div>' +
+            '</div>';
+
+        if (window.MediIcons) window.MediIcons.hydrate(host);
+    }
+
+    function logVisit() {
+        if (!activeTrackingId) return;
+
+        if (!ui.requireFields([
+            { id: 'visitNote', message: 'Record what was done or observed at this visit.' }
+        ])) return;
+
+        var t = tracking.filter(function (x) { return String(x.id) === String(activeTrackingId); })[0];
+        if (!t) return;
+
+        var obs = readVisitObs();
+        var parts = [];
+        if (obs.systolic !== null && obs.diastolic !== null) parts.push('BP ' + obs.systolic + '/' + obs.diastolic);
+        if (obs.pulse !== null) parts.push('Pulse ' + obs.pulse);
+        if (obs.temperature !== null) parts.push('Temp ' + obs.temperature + '\u00B0C');
+
+        t.entries = t.entries || [];
+        t.entries.push({
+            date: todayKey(),
+            time: new Date().toISOString(),
+            note: byId('visitNote').value.trim(),
+            vitals: parts.join(' · '),
+            by: currentStaffName()
+        });
+
+        /* Write fresh vitals back to the live patient record as well. */
+        var all = store.readPatients();
+        var p = store.findPatient(all, t.patientId);
+        if (p) {
+            var changedVitals = false;
+            Object.keys(obs).forEach(function (k) {
+                if (obs[k] !== null) { p.vitals[k] = obs[k]; changedVitals = true; }
+            });
+            if (changedVitals) {
+                p.bp = store.bloodPressureText(p.vitals);
+                p.hr = p.vitals.pulse;
+                var assessment = clinical.assess(p.vitals);
+                var stamp = 'nurse:' + assessment.overall + ':' + assessment.flagged.length;
+                if (assessment.flagged.length && p.vitalsAlerted !== stamp) {
+                    p.vitalsAlerted = stamp;
+                    clinical.notifyVitals(p.name, assessment, p.id + ':' + stamp);
+                }
+                store.writePatients(all);
+            }
+        }
+
+        saveTracking();
+        ui.closeModal('logVisitModal');
+        activeTrackingId = null;
+        load();
+
+        window.MediTrackNotify.flash('Visit logged', t.patientName + ' — day check recorded.');
+    }
+
+    function endTracking(trackId) {
+        var t = tracking.filter(function (x) { return String(x.id) === String(trackId); })[0];
+        if (!t) return;
+
+        ui.confirmAction({
+            title: 'End tracking?',
+            subtitle: t.patientName + ' · ' + t.trackingId,
+            message: 'The plan moves to the archive with its full visit history. The record stays in Past Visits.',
+            confirmLabel: 'End tracking'
+        }, function () {
+            t.status = 'archived';
+            t.endedAt = new Date().toISOString();
+            saveTracking();
+            load();
+            window.MediTrackNotify.flash('Tracking ended',
+                t.patientName + ' archived after ' + (t.entries || []).length + ' logged visit(s).');
+        });
+    }
+
     /* ==================================================================
-       Complete a task
-       ================================================================== */
+        Complete a task
+        ================================================================== */
     function openCompleteModal(patientId, orderId) {
         var p = store.findPatient(patients, patientId);
         if (!p) return;
@@ -388,6 +925,22 @@
             p.status = store.STATUS.PENDING;
         }
 
+        /* A completed bed setup means the patient is in the bed. */
+        if (order.bedId) {
+            var bedList = store.read(BEDS_KEY);
+            bedList.forEach(function (b) {
+                if (String(b.id) === String(order.bedId) &&
+                    (b.status === 'Reserved' || b.status === 'Free')) {
+                    b.status = 'Occupied';
+                    b.patientId = p.id;
+                    b.patientName = p.name;
+                    b.updatedAt = new Date().toISOString();
+                    b.updatedBy = order.completedBy;
+                }
+            });
+            store.write(BEDS_KEY, bedList);
+        }
+
         store.writePatients(all);
         ui.closeModal('completeTaskModal');
         activeTask = null;
@@ -398,8 +951,8 @@
     }
 
     /* ==================================================================
-       Init
-       ================================================================== */
+        Init
+        ================================================================== */
     function init() {
         load();
 
@@ -410,15 +963,38 @@
             onChange: function (id) { currentTab = id; }
         });
 
-        ui.bindLiveValidation(['taskOutcome', 'taskNurseName']);
+        var startBtn = byId('startTrackingBtn');
+        if (startBtn) startBtn.addEventListener('click', openStartTracking);
+
+        var confirmStart = byId('confirmStartTrackingBtn');
+        if (confirmStart) confirmStart.addEventListener('click', startTracking);
+
+        var confirmVisit = byId('confirmLogVisitBtn');
+        if (confirmVisit) confirmVisit.addEventListener('click', logVisit);
+
+        ui.bindLiveValidation(['taskOutcome', 'taskNurseName', 'visitNote']);
 
         OBS_FIELDS.forEach(function (pair) {
             var el = byId(pair[0]);
             if (el) el.addEventListener('input', refreshObsReadout);
         });
+        VISIT_FIELDS.forEach(function (pair) {
+            var el = byId(pair[0]);
+            if (el) el.addEventListener('input', refreshVisitReadout);
+        });
 
         var confirm = byId('confirmCompleteTaskBtn');
         if (confirm) confirm.addEventListener('click', completeTask);
+
+        var addBedBtn = byId('addBedBtn');
+        if (addBedBtn) addBedBtn.addEventListener('click', openAddBed);
+        var confirmAddBed = byId('confirmAddBedBtn');
+        if (confirmAddBed) confirmAddBed.addEventListener('click', addBed);
+
+        ui.initChips('orderTypeFilters', 'data-type-filter', function (value) {
+            typeFilter = value || '';
+            render();
+        });
 
         var search = byId('nurseSearch');
         var clear = byId('nurseSearchClear');

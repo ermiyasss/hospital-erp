@@ -102,49 +102,54 @@
 .nc-meta .ico { color: var(--gray-muted); }
 
 /* --------------------------------------------------------------------------
-   Standing directives
+   Patient tracking (follow-up plans)
    -------------------------------------------------------------------------- */
-.directives-list { display: flex; flex-direction: column; gap: var(--space-3); }
-
-.directive {
-    padding: var(--space-4);
-    background: var(--white);
-    border: 1px solid var(--gray-border);
-    border-left: 3px solid var(--info);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-xs);
+.tracking-toolbar {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-.directive.is-ack { border-left-color: var(--success); background: var(--surface-alt); }
-
-.dir-head {
-    display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
     flex-wrap: wrap;
 }
-.dir-head h4 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
-.dir-time { font-size: var(--fs-xs); color: var(--text-faint); white-space: nowrap; }
+.tracking-intro {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-faint);
+    max-width: 70ch;
+}
 
-.dir-body { font-size: var(--fs-sm); color: var(--text-body); line-height: 1.6; max-width: 92ch; }
+.track-card { border-left-color: var(--accent-triage); }
 
-.dir-foot {
+.track-days {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--gray-border);
+    gap: 4px;
     flex-wrap: wrap;
 }
-.dir-from {
-    font-size: var(--fs-xs);
+.track-day {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--gray-border);
+    background: var(--surface-alt);
+    font-size: 10.5px;
     font-weight: var(--fw-semibold);
     color: var(--text-faint);
 }
+.track-day.is-today {
+    border-color: var(--accent-triage);
+    color: var(--accent-triage);
+    box-shadow: 0 0 0 2px var(--accent-triage-bg);
+}
+.track-day.is-done {
+    border-color: var(--success);
+    background: var(--success);
+    color: #FFFFFF;
+}
+
+.nc-actions { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 /* --------------------------------------------------------------------------
    Completion form
@@ -190,5 +195,12 @@
 @media (max-width: 860px) {
     .nc-foot { flex-direction: column; align-items: flex-start; }
     .nc-foot .btn-primary { width: 100%; }
-    .dir-foot { flex-direction: column; align-items: flex-start; }
+    .tracking-toolbar { flex-direction: column; align-items: stretch; }
 }
+
+/* Bed board -------------------------------------------------------------- */
+.bed-card.is-free .nc-head .badge { background: transparent; }
+.bed-card.is-occupied { border-left: 3px solid var(--danger, #A31B22); }
+.bed-card.is-reserved { border-left: 3px solid var(--warning, #b45309); }
+.bed-card.is-cleaning { border-left: 3px solid var(--info, #0369a1); }
+.nc-foot-wrap { flex-wrap: wrap; gap: 6px; }
