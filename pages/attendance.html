@@ -81,7 +81,7 @@
                 <span class="stat-icon tone-success"><span class="ico" data-icon="users" data-icon-size="18"></span></span>
             </span>
             <span class="stat-number" id="statPresent">0</span>
-            <span class="stat-label">Present today</span>
+            <span class="stat-label" id="labelPresent">Present today</span>
             <span class="stat-foot" id="footPresent">Checked in so far</span>
         </div>
         <div class="stat-card stat-static">
@@ -89,7 +89,7 @@
                 <span class="stat-icon tone-warning"><span class="ico" data-icon="warning" data-icon-size="18"></span></span>
             </span>
             <span class="stat-number" id="statWarnings">0</span>
-            <span class="stat-label">Warnings today</span>
+            <span class="stat-label" id="labelWarnings">Warnings today</span>
             <span class="stat-foot">Outside the attendance window</span>
         </div>
         <div class="stat-card stat-static">
@@ -97,24 +97,24 @@
                 <span class="stat-icon tone-info"><span class="ico" data-icon="calendar" data-icon-size="18"></span></span>
             </span>
             <span class="stat-number" id="statWeekCheckins">0</span>
-            <span class="stat-label">Check-ins this week</span>
-            <span class="stat-foot">Last 7 days combined</span>
+            <span class="stat-label" id="labelWeek">Check-ins this week</span>
+            <span class="stat-foot" id="footWeek">Last 7 days combined</span>
         </div>
         <div class="stat-card stat-static">
             <span class="stat-top">
                 <span class="stat-icon tone-neutral"><span class="ico" data-icon="chart" data-icon-size="18"></span></span>
             </span>
             <span class="stat-number" id="statAvgDay">0</span>
-            <span class="stat-label">Average per day</span>
-            <span class="stat-foot">Across the last 7 days</span>
+            <span class="stat-label" id="labelAvg">Average per day</span>
+            <span class="stat-foot" id="footAvg">Across the last 7 days</span>
         </div>
     </section>
 
     <div class="dash-grid">
-        <section class="card">
+        <section class="card" id="whoCameCard">
             <div class="card-header">
                 <div class="card-header-text">
-                    <h3>Who came</h3>
+                    <h3 id="whoCameTitle">Who came</h3>
                     <span class="card-sub" id="whoCameSub">Attendance records for the selected period</span>
                 </div>
                 <div class="custom-select" id="attPeriodWrapper">
@@ -134,7 +134,8 @@
         </section>
 
         <div class="dash-side">
-            <section class="card">
+            <!-- Whole-hospital breakdown: administrator only -->
+            <section class="card is-hidden" id="roleBreakdownCard">
                 <div class="card-header">
                     <div class="card-header-text">
                         <h3>By role</h3>
@@ -148,7 +149,7 @@
                 <div class="card-header">
                     <div class="card-header-text">
                         <h3>Last 7 days</h3>
-                        <span class="card-sub">Check-ins per day</span>
+                        <span class="card-sub" id="weekChartSub">Check-ins per day</span>
                     </div>
                 </div>
                 <div class="att-week" id="weekChart"></div>

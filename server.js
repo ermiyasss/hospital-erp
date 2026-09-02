@@ -75,6 +75,87 @@ db.exec(`
     try { db.exec('ALTER TABLE users ADD COLUMN ' + col); } catch (e) { /* already present */ }
 });
 
+/* ==================================================================
+   Inventory file storage
+
+   Inventory uploads are written to disk as ordinary files in their own
+   folder, and only their metadata travels in the synchronised JSON. The
+   previous approach inlined every file into that JSON as a base64 data URL,
+   which is why the practical ceiling was a few megabytes: the whole
+   collection is parsed and re-serialised on every save, and the API body
+   limit is a few MB. Real files on disk let an account hold gigabytes.
+   ================================================================== */
+const INVENTORY_DIR = path.join(DATA_DIR, 'inventory');
+
+/* Defaults are 6 GB per account and 1.5 GB per file. Both can be tuned per
+   installation with ERP_INVENTORY_QUOTA / ERP_INVENTORY_MAX_FILE (bytes);
+   a nonsense value falls back to the default rather than disabling the cap. */
+const DEFAULT_INVENTORY_QUOTA = 6 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_INVENTORY_FILE = 1.5 * 1024 * 1024 * 1024;
+
+function bytesFromEnv(name, fallback) {
+    const n = Number(process.env[name]);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+const INVENTORY_QUOTA_BYTES = bytesFromEnv('ERP_INVENTORY_QUOTA', DEFAULT_INVENTORY_QUOTA);
+const MAX_INVENTORY_FILE_BYTES = bytesFromEnv('ERP_INVENTORY_MAX_FILE', DEFAULT_MAX_INVENTORY_FILE);
+
+if (!fs.existsSync(INVENTORY_DIR)) fs.mkdirSync(INVENTORY_DIR, { recursive: true });
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS inventory_files (
+        id          TEXT PRIMARY KEY,
+        owner       TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        mime        TEXT DEFAULT '',
+        size        INTEGER NOT NULL DEFAULT 0,
+        stored_name TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_files_owner ON inventory_files(owner);
+`);
+
+function formatBytes(n) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = Number(n) || 0;
+    let i = 0;
+    while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+    return (i === 0 ? String(Math.round(value)) : value.toFixed(value >= 100 ? 0 : 1)) + ' ' + units[i];
+}
+
+/* Bytes this account has already used, according to the files on disk. */
+function inventoryUsedBytes(username) {
+    const row = db.prepare(
+        `SELECT COALESCE(SUM(size), 0) AS n FROM inventory_files WHERE owner = ?`
+    ).get(username);
+    return Number(row && row.n) || 0;
+}
+
+/* Delete one account's uploaded files, freeing their share of the quota. */
+function purgeInventoryFiles(username) {
+    const owner = String(username).toLowerCase();
+    const rows = db.prepare(`SELECT stored_name FROM inventory_files WHERE owner = ?`).all(owner);
+    db.prepare(`DELETE FROM inventory_files WHERE owner = ?`).run(owner);
+    rows.forEach(function (r) {
+        try {
+            const p = path.join(INVENTORY_DIR, r.stored_name);
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+        } catch (e) { /* orphaned file; unreachable without its row */ }
+    });
+}
+
+/* Wipe every uploaded inventory file (administrator data reset). */
+function purgeAllInventoryFiles() {
+    db.prepare(`DELETE FROM inventory_files`).run();
+    try {
+        fs.readdirSync(INVENTORY_DIR).forEach(function (f) {
+            try { fs.unlinkSync(path.join(INVENTORY_DIR, f)); } catch (e) {}
+        });
+    } catch (e) { /* nothing to clear */ }
+}
+
 function getVersion() {
     const row = db.prepare(`SELECT value FROM meta WHERE key='version'`).get();
     return row ? Number(row.value) : 0;
@@ -168,6 +249,84 @@ const SCALARS = {
     'clinic_queue_policy': { roles: ['admin', 'doctor', 'nurse', 'billing'],
                              values: ['priority_first', 'arrival_order'] }
 };
+
+/* ==================================================================
+   Read access for /api/state
+
+   COLLECTIONS above answers "who may replace this data". This map answers
+   the other half: "who may even receive it". Until now /api/state handed
+   every signed-in workstation the entire database, so a doctor's browser
+   held the full staff attendance history, every invoice, every salary-band
+   field in the staff directory and all laboratory traffic — the client just
+   chose not to draw some of it. That is not access control.
+
+   Hard rule: read must include write. A role allowed to replace a
+   collection but not to read it back would load an empty list, edit it,
+   and persist that empty list over everybody's data. The assertion at the
+   bottom of this block fails loudly at start-up if that is ever broken.
+   ================================================================== */
+const READ_ROLES = {
+    'clinic_patients_data':       ALL_ROLES,
+    'clinic_lab_requests':        ['admin', 'doctor', 'nurse', 'lab'],
+    'clinic_lab_archive':         ['admin', 'doctor', 'nurse', 'lab'],
+    'clinic_prescriptions_data':  CLINICAL_WRITE,
+    'clinic_nurse_tasks':         CLINICAL_WRITE,
+    'clinic_nurse_tracking':      CLINICAL_WRITE,
+    'clinic_beds':                ['admin', 'doctor', 'nurse'],
+    'clinic_messages':            ALL_ROLES,
+    'clinic_appointments':        ['admin', 'doctor'],
+    'clinic_profiles':            ALL_ROLES,
+    'clinic_storage_items':       ['admin', 'nurse'],
+    'clinic_invoices':            ['admin', 'doctor', 'billing'],
+    'clinic_price_list':          ['admin', 'billing'],
+    'clinic_notifications_log':   ALL_ROLES,
+    'clinic_admin_requests':      ALL_ROLES,
+    /* Anyone may post an announcement they can read back; the authorship
+       rules live in handlePutData. */
+    'clinic_announcements':       ALL_ROLES,
+    'clinic_attendance':          ALL_ROLES,
+    'clinic_inventory':           ALL_ROLES,
+    'clinic_groups':              ALL_ROLES,
+    'clinic_chat_hidden':         ALL_ROLES
+};
+
+/* Guard the invariant above rather than trusting future edits. */
+Object.keys(COLLECTIONS).forEach(function (key) {
+    const read = READ_ROLES[key];
+    if (!read) {
+        throw new Error('READ_ROLES is missing an entry for "' + key + '".');
+    }
+    COLLECTIONS[key].roles.forEach(function (role) {
+        if (read.indexOf(role) === -1) {
+            throw new Error('Collection "' + key + '" lets "' + role +
+                '" write but not read — that would let it overwrite the data with an empty list.');
+        }
+    });
+});
+
+/* Build the slice of the database this account is allowed to receive. */
+function visibleCollections(data, user) {
+    const out = {};
+    Object.keys(data).forEach(function (key) {
+        const allowed = READ_ROLES[key];
+        if (allowed && allowed.indexOf(user.role) === -1) return;
+
+        let value = data[key];
+
+        /* Attendance is per-person data. The administrator needs the roster to
+           run the floor; everybody else gets their own card and nothing else,
+           so no one can read a colleague's arrival times or warnings. */
+        if (key === 'clinic_attendance' && user.role !== 'admin' && Array.isArray(value)) {
+            const me = String(user.username || '').toLowerCase();
+            value = value.filter(function (r) {
+                return String((r && r.username) || '').toLowerCase() === me;
+            });
+        }
+
+        out[key] = value;
+    });
+    return out;
+}
 const ATTENDANCE_POLICY_KEY = 'clinic_attendance_policy';
 const DEFAULT_ATTENDANCE_POLICY = {
     checkinStart: '08:00',
@@ -415,13 +574,20 @@ function syncUsersFromStaff(list) {
     });
 }
 
-function staffSnapshot() {
+/* Fields every colleague genuinely needs in order to work together: pick a
+   doctor for a patient, address a message, see who is on which shift.
+   Everything else — contact details, HR dates, suspension state, device
+   locks — is personnel data and stays with the administrator. */
+const STAFF_PUBLIC_FIELDS = ['id', 'name', 'username', 'role', 'department', 'shift', 'active'];
+
+function staffSnapshot(user) {
     /* Directory view for the frontend — never includes password material. */
     const rows = db.prepare(`SELECT username, email, name, phone, department, shift,
         role, joined, active, age, created_by, must_reset_password, no_password,
         suspended_until, hwid_enforced, locked_hwid FROM users ORDER BY id`).all();
     const reverse = { admin: 'Admin', doctor: 'Doctor', nurse: 'Nurse', lab: 'Lab', billing: 'Billing' };
-    return rows.map(function (u, i) {
+
+    const full = rows.map(function (u, i) {
         return {
             id: i + 1,
             name: u.name,
@@ -441,6 +607,15 @@ function staffSnapshot() {
             hwidEnforced: !!u.hwid_enforced,
             lockedHwid: u.locked_hwid || ''
         };
+    });
+
+    /* Only the administrator gets the full personnel record. */
+    if (user && user.role === 'admin') return full;
+
+    return full.map(function (row) {
+        const safe = {};
+        STAFF_PUBLIC_FIELDS.forEach(function (f) { safe[f] = row[f]; });
+        return safe;
     });
 }
 
@@ -1095,8 +1270,17 @@ function handleState(res, user) {
     const data = kvGetAll();
     /* The staff directory is rebuilt live from the users table so deleted or
        renamed accounts can never drift from what can actually log in. */
-    data['clinic_staff_members'] = staffSnapshot();
-    sendJson(res, 200, { version: getVersion(), collections: data });
+    data['clinic_staff_members'] = staffSnapshot(user);
+    /* `managed` lists every key this server stores. The client uses it to tell
+       "withheld from me" apart from "not mine to store": a withheld key must
+       never be written back, or the role would overwrite real data with the
+       empty list it received. */
+    sendJson(res, 200, {
+        version: getVersion(),
+        collections: visibleCollections(data, user),
+        managed: Object.keys(COLLECTIONS)
+            .concat(['clinic_staff_members', ATTENDANCE_POLICY_KEY, 'clinic_queue_policy'])
+    });
 }
 
 function handlePutData(req, res, user, key, body) {
@@ -1194,6 +1378,7 @@ function handleReset(res, user) {
         db.prepare(`DELETE FROM kv WHERE key=?`).run(key);
     });
     db.prepare(`DELETE FROM sessions`).run();         /* force everyone to sign in again */
+    purgeAllInventoryFiles();                         /* uploaded inventory files go too */
     const version = bumpVersion();
     sendJson(res, 200, { ok: true, version: version });
 }
@@ -1302,8 +1487,10 @@ function handleCreateStaff(res, user, body) {
        re-hiring someone or typing a shared desk number on purpose. They
        confirm by sending allowDuplicatePhone. */
     const dupKey = phoneKey(phone);
+    /* `phone` must be in the column list: without it every row's phone reads
+       as undefined and the clash below can never match. */
     const clash = dupKey
-        ? db.prepare(`SELECT name, role, username FROM users WHERE active = 1`).all()
+        ? db.prepare(`SELECT name, role, username, phone FROM users WHERE active = 1`).all()
             .filter(function (u) { return phoneKey(u.phone) === dupKey; })[0]
         : null;
     if (clash && !body.allowDuplicatePhone) {
@@ -1331,12 +1518,17 @@ function handleCreateStaff(res, user, body) {
         hp = hashPassword(String(body.password));
     }
 
+    /* One bound value per '?' placeholder, in column order. `created_by`
+       records which administrator opened the account; leaving it out made
+       SQLite reject the whole insert ("too few parameter values"), which
+       surfaced to the administrator as an unexplained 500. */
     db.prepare(`INSERT INTO users
         (username, email, name, phone, department, shift, role, joined, active, age,
          created_by, must_reset_password, no_password, hwid_enforced, pw_hash, pw_salt, created_at)
         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,0,?,?,?)`)
         .run(username, email, name, phone, cleanText(body.department, 120),
-             shift, roleKey, joined, age, noPassword ? 1 : 0, noPassword ? 1 : 0,
+             shift, roleKey, joined, age, user.username,
+             noPassword ? 1 : 0, noPassword ? 1 : 0,
              hp.hash, hp.salt, new Date().toISOString());
 
     bumpVersion();
@@ -1535,14 +1727,249 @@ function handleRemoveStaff(res, user, body) {
 
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(target.id);
     db.prepare(`DELETE FROM users WHERE id = ?`).run(target.id);
+    /* Free the files they had uploaded so the space returns to the pool. */
+    purgeInventoryFiles(username);
     bumpVersion();
     sendJson(res, 200, { ok: true, version: getVersion() });
+}
+
+/* ==================================================================
+   Inventory endpoints
+
+   Uploads are streamed straight to disk rather than buffered: a 1.5 GB file
+   must never sit in memory, and readBody()'s 5 MB JSON cap does not apply
+   here. The per-file cap and the account quota are both enforced while the
+   bytes arrive, so a client that lies about Content-Length cannot write
+   more than it is allowed.
+   ================================================================== */
+
+/* After a client has already blown the limit we keep reading (and throwing
+   away) its bytes so the HTTP exchange can finish cleanly, but only up to a
+   point — an endless stream should not be able to pin the connection open. */
+const UPLOAD_DRAIN_CEILING = 64 * 1024 * 1024;
+
+function streamUploadToFile(req, destPath, maxBytes) {
+    return new Promise(function (resolve, reject) {
+        let size = 0;
+        let over = false;
+        let drained = 0;
+        let settled = false;
+
+        const out = fs.createWriteStream(destPath);
+        let outEnded = false;
+
+        /* Always close the write stream before the partial file is removed:
+           Windows refuses to delete a file that still has an open handle, so
+           an unclosed stream would leave orphans behind on every failure. */
+        const closeOut = function (then) {
+            if (outEnded) { then(); return; }
+            outEnded = true;
+            try { out.end(function () { then(); }); }
+            catch (e) { then(); }
+        };
+        const removeFile = function () {
+            try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (e) {}
+        };
+
+        const finish = function (fn, arg) {
+            if (settled) return;
+            settled = true;
+            req.removeAllListeners('data');
+            req.removeAllListeners('end');
+            req.removeAllListeners('aborted');
+            if (fn === reject) closeOut(function () { removeFile(); reject(arg); });
+            else closeOut(function () { resolve(arg); });
+        };
+
+        req.on('data', function (chunk) {
+            if (settled) return;
+            if (over) {
+                /* Discard: we have already decided to refuse this upload. */
+                drained += chunk.length;
+                if (drained > UPLOAD_DRAIN_CEILING) {
+                    finish(reject, new ApiError(413, 'FILE_TOO_LARGE:' +
+                        'This file is larger than the ' + formatBytes(maxBytes) + ' per-file limit.'));
+                }
+                return;
+            }
+            size += chunk.length;
+            if (size > maxBytes) {
+                over = true;
+                closeOut(function () {});
+                return;
+            }
+            if (!out.write(chunk)) {
+                req.pause();
+                out.once('drain', function () { if (!settled) req.resume(); });
+            }
+        });
+
+        req.on('end', function () {
+            if (settled) return;
+            if (over) {
+                finish(reject, new ApiError(413, 'FILE_TOO_LARGE:' +
+                    'This file is larger than the ' + formatBytes(maxBytes) + ' per-file limit.'));
+                return;
+            }
+            finish(resolve, size);
+        });
+
+        req.on('aborted', function () {
+            finish(reject, new ApiError(400, 'Upload cancelled.'));
+        });
+        req.on('error', function () {
+            finish(reject, new ApiError(400, 'Upload interrupted.'));
+        });
+        out.on('error', function () {
+            finish(reject, new ApiError(500, 'Could not write the file to disk.'));
+        });
+    });
+}
+
+async function handleInventoryUpload(req, res, user, url) {
+    const name = cleanText(url.searchParams.get('name'), 200).trim() || 'Untitled file';
+    const description = cleanText(url.searchParams.get('description'), 2000).trim();
+    const mime = cleanText(url.searchParams.get('mime'), 150).trim();
+
+    /* Content-Length lets us refuse an impossible upload before a single byte
+       is written. It is a claim, not a guarantee — the stream enforces the
+       same limits while the data arrives. */
+    const declared = Number(req.headers['content-length']);
+    if (!Number.isFinite(declared) || declared <= 0) {
+        throw new ApiError(411, 'The upload did not report its size.');
+    }
+    if (declared > MAX_INVENTORY_FILE_BYTES) {
+        throw new ApiError(413, 'FILE_TOO_LARGE:' + name + ' is ' + formatBytes(declared) +
+            '. The largest single file is ' + formatBytes(MAX_INVENTORY_FILE_BYTES) + '.');
+    }
+
+    const used = inventoryUsedBytes(user.username);
+    const remaining = INVENTORY_QUOTA_BYTES - used;
+    if (declared > remaining) {
+        throw new ApiError(413, 'QUOTA_EXCEEDED:' + name + ' needs ' + formatBytes(declared) +
+            ' but only ' + formatBytes(Math.max(0, remaining)) + ' is left of your ' +
+            formatBytes(INVENTORY_QUOTA_BYTES) + '. Delete something to make room.');
+    }
+
+    /* The stored name is server-generated so a crafted filename can never
+       escape the inventory folder. */
+    const id = 'f_' + Date.now() + '_' + crypto.randomBytes(6).toString('hex');
+    const storedName = id + '.bin';
+    const destPath = path.join(INVENTORY_DIR, storedName);
+
+    let size;
+    try {
+        size = await streamUploadToFile(req, destPath, MAX_INVENTORY_FILE_BYTES);
+    } catch (err) {
+        /* streamUploadToFile already closes the handle and removes the
+           partial file; this is a belt-and-braces sweep in case it could not. */
+        try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (e) {}
+        throw err;
+    }
+
+    /* Re-check the quota against the bytes that actually landed, in case the
+       declared length was understated. */
+    if (size > remaining) {
+        try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (e) {}
+        throw new ApiError(413, 'QUOTA_EXCEEDED:' + name + ' is ' + formatBytes(size) +
+            ' but only ' + formatBytes(Math.max(0, remaining)) + ' was left.');
+    }
+
+    db.prepare(`INSERT INTO inventory_files
+        (id, owner, name, description, mime, size, stored_name, created_at)
+        VALUES (?,?,?,?,?,?,?,?)`)
+        .run(id, user.username, name, description, mime, size, storedName,
+             new Date().toISOString());
+
+    sendJson(res, 200, {
+        ok: true,
+        file: {
+            id: id,
+            name: name,
+            description: description,
+            mime: mime,
+            size: size,
+            url: '/api/inventory/file/' + id,
+            time: new Date().toISOString()
+        },
+        usage: {
+            usedBytes: inventoryUsedBytes(user.username),
+            quotaBytes: INVENTORY_QUOTA_BYTES,
+            maxFileBytes: MAX_INVENTORY_FILE_BYTES
+        }
+    });
+}
+
+function handleInventoryUsage(res, user) {
+    sendJson(res, 200, {
+        usedBytes: inventoryUsedBytes(user.username),
+        quotaBytes: INVENTORY_QUOTA_BYTES,
+        maxFileBytes: MAX_INVENTORY_FILE_BYTES,
+        fileCount: db.prepare(
+            `SELECT COUNT(*) AS n FROM inventory_files WHERE owner = ?`
+        ).get(user.username).n
+    });
+}
+
+/* Files are private to their owner; administrators can reach any of them. */
+function inventoryFileFor(user, id) {
+    const row = db.prepare(`SELECT * FROM inventory_files WHERE id = ?`).get(id);
+    if (!row) throw new ApiError(404, 'That file is no longer in inventory.');
+    const mine = String(row.owner).toLowerCase() === String(user.username).toLowerCase();
+    if (!mine && user.role !== 'admin') {
+        throw new ApiError(403, 'That file belongs to someone else.');
+    }
+    return row;
+}
+
+function handleInventoryDownload(req, res, user, id) {
+    const row = inventoryFileFor(user, id);
+    const filePath = path.join(INVENTORY_DIR, row.stored_name);
+    if (!fs.existsSync(filePath)) throw new ApiError(404, 'The file is missing from disk.');
+
+    const stat = fs.statSync(filePath);
+    /* `attachment` forces a download; `inline` lets images open in the page's
+       own viewer and print dialog. */
+    const inline = /^image\//.test(row.mime || '') && !/download=1/.test(req.url);
+    const safeName = String(row.name || 'file').replace(/[\r\n"\\]/g, '_');
+
+    res.writeHead(200, {
+        'Content-Type': row.mime || 'application/octet-stream',
+        'Content-Length': stat.size,
+        'Content-Disposition': (inline ? 'inline' : 'attachment') +
+            '; filename="' + safeName + '"',
+        'Cache-Control': 'private, no-store'
+    });
+
+    if (req.method === 'HEAD') { res.end(); return; }
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+    stream.on('error', function () { try { res.end(); } catch (e) {} });
+}
+
+function handleInventoryDelete(res, user, id) {
+    if (!id) throw new ApiError(400, 'Choose a file to delete.');
+    const row = inventoryFileFor(user, id);
+    db.prepare(`DELETE FROM inventory_files WHERE id = ?`).run(id);
+    try {
+        const p = path.join(INVENTORY_DIR, row.stored_name);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (e) { /* The record is gone either way; the disk will be cleaned up. */ }
+
+    sendJson(res, 200, {
+        ok: true,
+        usage: {
+            usedBytes: inventoryUsedBytes(user.username),
+            quotaBytes: INVENTORY_QUOTA_BYTES,
+            maxFileBytes: MAX_INVENTORY_FILE_BYTES
+        }
+    });
 }
 
 /* ------------------------------------------------------------------
    Router
    ------------------------------------------------------------------ */
-async function handleApi(req, res, pathname) {
+async function handleApi(req, res, pathname, url) {
     try {
         const method = req.method;
 
@@ -1633,6 +2060,24 @@ async function handleApi(req, res, pathname) {
             return handleProfileUpdate(res, user, await readBody(req));
         }
 
+        /* --- Inventory files (streamed, outside the JSON body limit) ----- */
+        if (method === 'POST' && pathname === '/api/inventory/upload') {
+            return await handleInventoryUpload(req, res, user, url);
+        }
+        if (method === 'GET' && pathname === '/api/inventory/usage') {
+            return handleInventoryUsage(res, user);
+        }
+        if (method === 'POST' && pathname === '/api/inventory/delete') {
+            const delBody = (await readBody(req)) || {};
+            return handleInventoryDelete(res, user,
+                cleanText(delBody.id, 80).trim());
+        }
+        const inventoryFileMatch = /^\/api\/inventory\/file\/(.+)$/.exec(pathname);
+        if ((method === 'GET' || method === 'HEAD') && inventoryFileMatch) {
+            return handleInventoryDownload(req, res, user,
+                decodeURIComponent(inventoryFileMatch[1]));
+        }
+
         const dataMatch = /^\/api\/data\/(.+)$/.exec(pathname);
         if (method === 'PUT' && dataMatch) {
             const key = decodeURIComponent(dataMatch[1]);
@@ -1643,7 +2088,13 @@ async function handleApi(req, res, pathname) {
     } catch (err) {
         if (err instanceof ApiError) return sendJson(res, err.status, { error: err.message });
         console.error('[api] unexpected error:', err);
-        return sendJson(res, 500, { error: 'Internal server error.' });
+        /* Surface the real reason. A bare "Internal server error" hides
+           coding mistakes such as a SQL bind-count mismatch behind a message
+           the user cannot act on or report. */
+        return sendJson(res, 500, {
+            error: 'Internal server error.',
+            detail: String((err && err.message) || err)
+        });
     }
 }
 
@@ -1699,15 +2150,17 @@ function serveStatic(req, res, pathname) {
    Server
    ================================================================== */
 const server = http.createServer(function (req, res) {
+    let url;
     let pathname;
     try {
-        pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+        url = new URL(req.url, 'http://localhost');
+        pathname = decodeURIComponent(url.pathname);
     } catch (e) {
         res.writeHead(400); return res.end('Bad request');
     }
 
     if (pathname.startsWith('/api/')) {
-        handleApi(req, res, pathname);
+        handleApi(req, res, pathname, url);
     } else if (req.method === 'GET' || req.method === 'HEAD') {
         serveStatic(req, res, pathname);
     } else {

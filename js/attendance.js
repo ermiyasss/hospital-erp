@@ -105,6 +105,19 @@
         store.write(KEY, records);
     }
 
+    /* Attendance is personal data, and this page is open to every role. Only
+       the administrator sees the whole hospital; everybody else sees their own
+       record and nothing more — no roster, no other people's warnings, no
+       hospital-wide totals. The server narrows the collection it sends, and
+       this filter guarantees the same boundary even if it is ever widened. */
+    function scopedRecords() {
+        if (isAdmin()) return records;
+        var uname = myUsername();
+        return records.filter(function (r) {
+            return String(r.username || '').toLowerCase() === uname;
+        });
+    }
+
     function withinPeriod(r) {
         if (period === 'all') return true;
         var days = period === 'today' ? 0 : Number(period);
@@ -271,7 +284,10 @@
         var text = byId('myWarningText');
         if (notice && text) {
             if (rec && rec.warnings && rec.warnings.length) {
-                notice.classList.remove('is-hidden');
+                /* Set both tone classes explicitly: the previous branch leaves
+                   notice-info behind, which would paint today's warnings blue. */
+                notice.classList.remove('is-hidden', 'notice-info');
+                notice.classList.add('notice-warning');
                 text.innerHTML = '<strong>' + rec.warnings.length + ' attendance warning' +
                     (rec.warnings.length > 1 ? 's' : '') + ' today.</strong> ' +
                     esc(rec.warnings.map(function (w) { return w.detail; }).join(' · ')) +
@@ -300,13 +316,17 @@
     }
 
     function renderStats() {
-        var today = records.filter(function (r) { return r.date === todayKey(); });
+        var mine = !isAdmin();
+        var scoped = scopedRecords();
+        var today = scoped.filter(function (r) { return r.date === todayKey(); });
         var openNow = today.filter(function (r) { return !r.out; });
 
         setText('statPresent', today.length);
-        setText('footPresent', openNow.length
-            ? openNow.length + ' still on site'
-            : (today.length ? 'Everyone has checked out' : 'Nobody has checked in yet'));
+        setText('footPresent', mine
+            ? (openNow.length ? 'You are on site' : (today.length ? 'Your day is closed' : 'You have not checked in yet'))
+            : (openNow.length
+                ? openNow.length + ' still on site'
+                : (today.length ? 'Everyone has checked out' : 'Nobody has checked in yet')));
 
         var warningCount = 0;
         today.forEach(function (r) {
@@ -315,12 +335,23 @@
         setText('statWarnings', warningCount);
 
         var weekCutoff = Date.now() - 7 * 86400000;
-        var week = records.filter(function (r) {
+        var week = scoped.filter(function (r) {
             var when = new Date(r.date + 'T00:00:00').getTime();
             return !isNaN(when) && when >= weekCutoff;
         });
         setText('statWeekCheckins', week.length);
         setText('statAvgDay', Math.round(week.length / 7));
+
+        /* The same four tiles mean something different to a manager and to a
+           clinician looking at their own card, so relabel them. */
+        setText('labelPresent', mine ? 'My check-ins today' : 'Present today');
+        setText('labelWarnings', mine ? 'My warnings today' : 'Warnings today');
+        setText('labelWeek', mine ? 'My check-ins this week' : 'Check-ins this week');
+        setText('footWeek', mine ? 'Last 7 days, you only' : 'Last 7 days combined');
+        setText('labelAvg', mine ? 'Days per week' : 'Average per day');
+        setText('footAvg', mine ? 'Your own check-ins' : 'Across the last 7 days');
+        setText('whoCameTitle', mine ? 'My attendance' : 'Who came');
+        setText('weekChartSub', mine ? 'Your check-ins per day' : 'Check-ins per day');
     }
 
     function durationText(r) {
@@ -341,7 +372,7 @@
         var host = byId('attendanceList');
         if (!host) return;
 
-        var rows = records.filter(withinPeriod)
+        var rows = scopedRecords().filter(withinPeriod)
             .sort(function (a, b) {
                 var ta = a.in || a.date;
                 var tb = b.in || b.date;
@@ -355,8 +386,10 @@
         if (!rows.length) {
             host.innerHTML = ui.emptyState({
                 icon: 'calendar',
-                title: 'No attendance recorded',
-                text: 'Use "Check in" above when you arrive — the server keeps the record until you check out.'
+                title: isAdmin() ? 'No attendance recorded' : 'You have no attendance yet',
+                text: isAdmin()
+                    ? 'Use "Check in" above when you arrive — the server keeps the record until you check out.'
+                    : 'Use "Check in" above when you arrive — the server keeps the record until you check out.'
             });
             return;
         }
@@ -396,11 +429,17 @@
         var host = byId('roleBreakdown');
         if (!host) return;
 
+        /* A per-department headcount is a management view. Hide the whole card
+           rather than rendering it empty for the other four roles. */
+        var card = byId('roleBreakdownCard');
+        if (card) card.classList.toggle('is-hidden', !isAdmin());
+        if (!isAdmin()) { host.innerHTML = ''; return; }
+
         var roles = ['doctor', 'nurse', 'admin', 'billing', 'lab'];
         var counts = {};
         roles.forEach(function (r) { counts[r] = 0; });
 
-        var rows = records.filter(withinPeriod);
+        var rows = scopedRecords().filter(withinPeriod);
         rows.forEach(function (r) {
             if (counts[r.role] !== undefined) counts[r.role]++;
         });
@@ -430,7 +469,7 @@
             var d = new Date(Date.now() - i * 86400000);
             days.push({ key: todayKey(d), label: d.toLocaleDateString('en-US', { weekday: 'short' }), n: 0 });
         }
-        records.forEach(function (r) {
+        scopedRecords().forEach(function (r) {
             days.forEach(function (d) {
                 if (d.key === r.date) d.n++;
             });
@@ -645,14 +684,12 @@
     }
 
     function exportExcel() {
-        var rows = records.filter(withinPeriod);
+        /* Never let a non-administrator download the whole roster. */
+        var rows = scopedRecords().filter(withinPeriod);
 
         if (!rows.length) {
-            window.MediTrackNotify.push(
-                'Nothing to export',
-                'No attendance records in the selected period.',
-                'warning', 'System', 'medium'
-            );
+            window.MediTrackNotify.flash('Nothing to export',
+                'No attendance records in the selected period.', 'warning');
             return;
         }
 

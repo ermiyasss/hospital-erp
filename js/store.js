@@ -179,6 +179,8 @@
     var serverVersion = -1;
     var serverCache = {};        /* storage key -> array */
     var serverScalarCache = {};  /* storage key -> string */
+    var serverManaged = {};      /* keys the server stores at all */
+    var serverGranted = {};      /* keys the server sent to THIS role */
     var serverReachable = true;
     var pollTimer = null;
 
@@ -248,6 +250,15 @@
     function applyStatePayload(payload) {
         var changed = [];
         serverVersion = payload.version;
+
+        /* Which keys the server stores at all, and which it handed to this
+           role. The two together let serverWrite() block a write that would
+           otherwise replace a withheld collection with an empty list. */
+        serverManaged = {};
+        (payload.managed || []).forEach(function (k) { serverManaged[k] = true; });
+        serverGranted = {};
+        Object.keys(payload.collections || {}).forEach(function (k) { serverGranted[k] = true; });
+
         Object.keys(payload.collections || {}).forEach(function (key) {
             var incoming = payload.collections[key];
             if (key === 'clinic_queue_policy') {
@@ -384,6 +395,16 @@
     }
 
     function serverWrite(key, value) {
+        /* The server withholds collections a role is not cleared for, and
+           serverRead() then reports them as empty. Persisting that empty list
+           back would erase the real data for everyone, so a write to a
+           server-managed key this role was never granted is refused outright
+           and the authoritative copy is pulled back over it. */
+        if (serverManaged[key] && !serverGranted[key]) {
+            connectionBanner('Your role cannot change "' + key + '". The server copy has been restored.', true);
+            refreshFromServer(true);
+            return false;
+        }
         serverCache[key] = JSON.parse(JSON.stringify(value));
         persistToServer(key, value);
         return true;

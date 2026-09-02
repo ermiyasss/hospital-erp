@@ -481,9 +481,11 @@
 
     function pullChargesFromRecord() {
         if (draft.patientId === null) {
-            window.MediTrackNotify.push('Choose a patient first',
+            /* Desk-side validation: shown here, never written to the shared
+               alert log that every other rank reads. */
+            window.MediTrackNotify.flash('Choose a patient first',
                 'Pick who this bill is for, then their outstanding charges can be pulled in.',
-                'warning', 'Billing', 'normal');
+                'warning');
             return;
         }
 
@@ -492,9 +494,9 @@
 
         var items = store.buildChargesFromRecord(patient);
         if (!items.length) {
-            window.MediTrackNotify.push('Nothing to add',
+            window.MediTrackNotify.flash('Nothing to add',
                 patient.name + "'s record has no open orders to charge for.",
-                'info', 'Billing', 'normal');
+                'info');
             return;
         }
 
@@ -533,15 +535,15 @@
     function saveInvoiceDraft() {
         if (!draft) return;
         if (draft.patientId === null) {
-            window.MediTrackNotify.push('Patient required',
+            window.MediTrackNotify.flash('Patient required',
                 'Choose who this bill is for before saving.',
-                'warning', 'Billing', 'normal');
+                'warning');
             return;
         }
         if (!draft.items.length) {
-            window.MediTrackNotify.push('Nothing to bill',
+            window.MediTrackNotify.flash('Nothing to bill',
                 'Add at least one charge to the bill.',
-                'warning', 'Billing', 'normal');
+                'warning');
             return;
         }
 

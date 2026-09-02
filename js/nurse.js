@@ -630,10 +630,11 @@
         }).join('');
 
         if (!options.length) {
-            window.MediTrackNotify.push(
+            /* Local pre-condition, not a hospital-wide alert. */
+            window.MediTrackNotify.flash(
                 'No patients yet',
                 'Register a patient first, then start a tracking plan.',
-                'warning', 'Nurse station', 'medium'
+                'warning'
             );
             return;
         }

@@ -39,13 +39,56 @@
 
     function clearSelectEscape(wrapper) {
         var m = qs('.cs-menu', wrapper);
-        if (m) { m.style.position = ''; m.style.top = ''; m.style.bottom = ''; m.style.left = ''; m.style.width = ''; m.style.right = ''; }
-        /* Release any modal ancestors we marked while this select was open. */
+        if (m) {
+            m.classList.remove('cs-portaled');
+            m.style.position = ''; m.style.top = ''; m.style.bottom = '';
+            m.style.left = ''; m.style.width = ''; m.style.right = '';
+            m.style.maxHeight = '';
+            returnMenuFromPortal(m);
+        }
+        /* Release any modal ancestors an older build may have marked. */
         var node = wrapper.parentElement;
         while (node) {
             node.classList.remove('cs-escape');
             if (node.classList.contains('modal-overlay')) break;
             node = node.parentElement;
+        }
+    }
+
+    /* ------------------------------------------------------------------
+       Menu portal
+
+       A dropdown inside a dialog has to escape two things at once: the
+       scrolling .modal-body and the rounded, overflow-hidden .modal-box.
+       `position: fixed` cannot help, because .modal-box carries a transform
+       (the open animation) and a transform makes the box a containing block
+       for fixed descendants — the menu would still be clipped.
+
+       So an open menu is physically moved to <body> and given fixed
+       coordinates, then moved back to its original slot when it closes.
+       Moving the node (rather than cloning it) keeps every listener that
+       pages bound to it intact.
+       ------------------------------------------------------------------ */
+    function sendMenuToPortal(menu) {
+        if (!menu || menu.parentNode === document.body) return;
+        menu.__csHome = menu.parentNode;
+        menu.__csNext = menu.nextSibling;
+        document.body.appendChild(menu);
+        menu.classList.add('cs-portaled');
+    }
+
+    function returnMenuFromPortal(menu) {
+        if (!menu || !menu.__csHome) return;
+        var home = menu.__csHome;
+        var next = menu.__csNext;
+        menu.__csHome = null;
+        menu.__csNext = null;
+        menu.classList.remove('cs-portaled');
+        try {
+            if (next && next.parentNode === home) home.insertBefore(menu, next);
+            else home.appendChild(menu);
+        } catch (e) {
+            home.appendChild(menu);
         }
     }
 
@@ -58,31 +101,60 @@
         });
     }
 
-    /* An open dropdown must not be clipped by a scrolling modal body or the
-       rounded modal box. While a select is open we let those ancestors paint
-       overflow, and we flip the menu upward when there is no room below. */
+    /* Measure an open menu and pin it under (or over) its toggle in viewport
+       coordinates. Called on open and again whenever the page scrolls, so the
+       menu stays glued to the control instead of floating away from it. */
     function positionSelectMenu(wrapper) {
         var toggle = qs('.cs-toggle', wrapper);
         var menu = qs('.cs-menu', wrapper);
         if (!toggle || !menu) return;
 
-        menu.style.position = '';
-        wrapper.classList.remove('open-up');
-        var node = wrapper.parentElement;
-        while (node) {
-            if (node.classList.contains('modal-body') || node.classList.contains('modal-box')) {
-                node.classList.add('cs-escape');
-            }
-            if (node.classList.contains('modal-overlay')) break;
-            node = node.parentElement;
-        }
+        sendMenuToPortal(menu);
 
+        /* Let the menu lay itself out at full width before measuring, so a
+           menu that has never been opened still reports a sane height. */
         var rect = toggle.getBoundingClientRect();
-        var est = Math.min(252, (menu.scrollHeight || 220) + 6);
-        var below = window.innerHeight - rect.bottom - 8;
-        if (below < est && rect.top > below) {
-            wrapper.classList.add('open-up');
-        }
+        var width = Math.max(rect.width, menu.offsetWidth || 0, 158);
+
+        menu.style.width = width + 'px';
+
+        var gap = 3;
+        var margin = 8;
+        var full = menu.scrollHeight + 6;
+        var below = window.innerHeight - rect.bottom - gap - margin;
+        var above = rect.top - gap - margin;
+
+        /* Prefer whichever side has room for the whole list; if neither does,
+           take the roomier side and cap the height to what is available. */
+        var openUp = false;
+        var available;
+        if (full <= below) { openUp = false; available = below; }
+        else if (full <= above) { openUp = true; available = above; }
+        else { openUp = above > below; available = Math.max(120, openUp ? above : below); }
+
+        var height = Math.min(full, Math.min(252, available));
+
+        wrapper.classList.toggle('open-up', openUp);
+        menu.style.maxHeight = height + 'px';
+        menu.style.bottom = '';
+        /* Always pin by top: an explicit bottom would fight the height and
+           stretch the menu across the gap. */
+        menu.style.top = Math.round(openUp ? (rect.top - gap - height) : (rect.bottom + gap)) + 'px';
+
+        var left = rect.left;
+        var overflowRight = (left + width) - (window.innerWidth - margin);
+        if (overflowRight > 0) left = Math.max(margin, left - overflowRight);
+        menu.style.left = Math.round(left) + 'px';
+
+        return menu;
+    }
+
+    /* Re-pin every open menu — used on scroll and resize. */
+    function repositionOpenSelects() {
+        qsa('.custom-select.active').forEach(function (el) {
+            var menu = qs('.cs-menu', el);
+            if (menu && menu.classList.contains('cs-portaled')) positionSelectMenu(el);
+        });
     }
 
     function bindGlobalSelectDismiss() {
@@ -92,9 +164,19 @@
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') closeAllSelects();
         });
-        /* A scroll or resize would misplace an open menu, so close it. */
-        window.addEventListener('scroll', function () { closeAllSelects(); }, true);
-        window.addEventListener('resize', function () { closeAllSelects(); });
+        /* The menu lives in a portal now, so it no longer travels with its
+           toggle. Re-pin it while the page or a modal body scrolls, and drop
+           it entirely once the toggle has scrolled out of sight. */
+        window.addEventListener('scroll', function () {
+            qsa('.custom-select.active').forEach(function (el) {
+                var toggle = qs('.cs-toggle', el);
+                if (!toggle) return;
+                var r = toggle.getBoundingClientRect();
+                if (r.bottom < 0 || r.top > window.innerHeight) closeAllSelects(el);
+                else repositionOpenSelects();
+            });
+        }, true);
+        window.addEventListener('resize', repositionOpenSelects);
     }
 
     function initSelect(target, onChange) {

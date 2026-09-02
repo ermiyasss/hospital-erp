@@ -293,11 +293,15 @@
         return true;
     }
 
-    /* The log is shared storage, so an alert written while another role was
-       signed in can still be sitting there. Filter on read as well as write. */
+    /* The log lives on the server and is shared by every workstation, so it
+       always holds alerts raised for other ranks. Filter on read, passing the
+       whole item so an event's explicit audience list is honoured rather than
+       being flattened down to its category. */
     function visibleNotifications() {
+        if (!window.MediTrackNotify) return [];
+        if (window.MediTrackNotify.visible) return window.MediTrackNotify.visible();
         return window.MediTrackNotify.getAll().filter(function (n) {
-            return session.wantsAlert(n.category);
+            return session.wantsAlert(n);
         });
     }
 

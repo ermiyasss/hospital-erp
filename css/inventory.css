@@ -3,10 +3,101 @@
    ========================================================================== */
 .inv-filter-row { display: flex; gap: 8px; margin-bottom: var(--space-4); flex-wrap: wrap; }
 
+/* ---- Per-account storage allowance ---------------------------------- */
+.inv-usage {
+    background: var(--surface);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-xs);
+}
+.inv-usage-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-3); flex-wrap: wrap; margin-bottom: 8px;
+}
+.inv-usage-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text-body);
+}
+.inv-usage-figures { display: inline-flex; align-items: baseline; gap: 8px; }
+.inv-usage-figures strong { font-size: var(--fs-sm); color: var(--text-strong); }
+.inv-usage-figures > span { font-size: var(--fs-xs); color: var(--gray-muted); }
+.inv-usage-bar {
+    height: 8px; border-radius: 999px;
+    background: var(--surface-sunken); overflow: hidden;
+}
+.inv-usage-bar > span {
+    display: block; height: 100%; width: 0;
+    border-radius: 999px; background: var(--primary);
+    transition: width var(--t-med) ease, background var(--t-fast) ease;
+}
+.inv-usage-bar > span.is-high { background: var(--warning); }
+.inv-usage-bar > span.is-full { background: var(--danger); }
+
+/* ---- Upload dialog --------------------------------------------------- */
+.inv-upload-list { display: flex; flex-direction: column; gap: 10px; max-height: 54vh; overflow-y: auto; }
+.inv-upload-row {
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    background: var(--surface-alt);
+}
+.inv-upload-row.is-removed { opacity: .45; }
+.inv-upload-row-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px; min-width: 0;
+}
+.inv-upload-row-head > .ico { display: inline-flex; color: var(--primary); flex: none; }
+.inv-upload-orig {
+    font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text-strong);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
+}
+.inv-upload-fsize { font-size: var(--fs-xs); color: var(--gray-muted); flex: none; }
+.inv-upload-fields { display: flex; flex-direction: column; gap: 8px; }
+.inv-upload-fields .form-group { margin: 0; }
+.inv-upload-fields textarea { resize: vertical; min-height: 46px; }
+
+.inv-upload-progress { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.inv-upload-progress.is-hidden { display: none; }
+.inv-progress-track {
+    flex: 1; height: 6px; border-radius: 999px;
+    background: var(--surface-sunken); overflow: hidden;
+}
+.inv-progress-track > span {
+    display: block; height: 100%; width: 0;
+    background: var(--primary); border-radius: 999px;
+    transition: width 120ms linear;
+}
+.inv-progress-track.is-done > span { background: var(--success); }
+.inv-progress-track.is-error > span { background: var(--danger); }
+.inv-progress-text { font-size: var(--fs-xs); color: var(--gray-muted); flex: none; min-width: 96px; text-align: right; }
+
+.inv-upload-warn {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin-top: 10px; padding: 9px 11px;
+    border-radius: var(--radius-sm);
+    background: rgba(245, 158, 11, .12);
+    border: 1px solid rgba(245, 158, 11, .4);
+    color: var(--text-body); font-size: var(--fs-sm);
+}
+.inv-upload-warn.is-hidden { display: none; }
+.inv-upload-warn > .ico { display: inline-flex; flex: none; margin-top: 1px; color: var(--warning); }
+
+.inv-upload-total { font-size: var(--fs-xs); color: var(--gray-muted); }
+.inv-foot-spacer { flex: 1; }
+
 .inv-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: var(--space-4);
+    border-radius: var(--radius-lg);
+    transition: box-shadow var(--t-fast) ease, background var(--t-fast) ease;
+}
+/* Files can be dropped straight onto the grid. */
+.inv-grid.is-dropping {
+    box-shadow: 0 0 0 2px var(--primary) inset;
+    background: rgba(37, 99, 235, .05);
 }
 .inv-card {
     background: var(--surface);

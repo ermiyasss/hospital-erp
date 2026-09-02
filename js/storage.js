@@ -337,10 +337,10 @@
         });
 
         if (!rows.length) {
-            window.MediTrackNotify.push(
+            window.MediTrackNotify.flash(
                 'Nothing to export',
                 'No archived records match the current filters.',
-                'warning', 'System', 'high'
+                'warning'
             );
             return;
         }

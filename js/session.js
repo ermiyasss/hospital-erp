@@ -138,15 +138,21 @@
     var ALERT_AUDIENCE = {
         Vitals:      ['admin', 'doctor', 'nurse'],
         Lab:         ['admin', 'doctor', 'nurse', 'lab'],
-        Pharmacy:    ['admin', 'doctor', 'nurse'],
-        Inventory:   ['admin', 'doctor', 'nurse'],
+        /* Dispensing and stock counts are pharmacy/ward work — a doctor at a
+           consultation desk does not act on them. */
+        Pharmacy:    ['admin', 'nurse'],
+        Inventory:   ['admin', 'nurse'],
         Queue:       ['admin', 'doctor', 'nurse', 'billing', 'lab'],
         Patient:     ['admin', 'doctor', 'nurse', 'billing', 'lab'],
         Doctor:      ['admin', 'doctor'],
-        Billing:     ['admin', 'doctor', 'billing'],
+        Billing:     ['admin', 'billing'],
         Staff:       ['admin'],
         Attendance:  ['admin'],
         Appointment: ['admin', 'doctor'],
+        Nurse:       ['admin', 'nurse'],
+        /* Facility-wide notices. Deliberately the only "everyone" bucket, so a
+           mistyped category elsewhere in the app cannot quietly leak an alert
+           to all five roles. */
         System:      ['admin', 'doctor', 'nurse', 'billing', 'lab']
     };
 

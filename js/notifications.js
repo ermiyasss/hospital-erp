@@ -74,8 +74,8 @@
         'lab.result.ready':     { type: 'success', priority: 'high',     category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
         'lab.request.urgent':   { type: 'warning', priority: 'high',     category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
         'lab.request.created':  { type: 'info',    priority: 'normal',   category: 'Lab',      audience: ['admin', 'doctor', 'nurse', 'lab'] },
-        'pharmacy.dispensed':   { type: 'success', priority: 'normal',   category: 'Pharmacy', audience: ['admin', 'doctor', 'nurse'] },
-        'pharmacy.stock.low':   { type: 'warning', priority: 'high',     category: 'Inventory',audience: ['admin', 'doctor', 'nurse'] },
+        'pharmacy.dispensed':   { type: 'success', priority: 'normal',   category: 'Pharmacy', audience: ['admin', 'nurse'] },
+        'pharmacy.stock.low':   { type: 'warning', priority: 'high',     category: 'Inventory',audience: ['admin', 'nurse'] },
         'queue.emergency':      { type: 'error',   priority: 'critical', category: 'Queue',    audience: ['admin', 'doctor', 'nurse', 'billing', 'lab'] },
         'queue.called':         { type: 'info',    priority: 'high',     category: 'Queue',    audience: ['admin', 'nurse', 'billing'] },
         'patient.registered':   { type: 'info',    priority: 'normal',   category: 'Patient',  audience: ['admin', 'billing', 'nurse', 'lab'] },
@@ -129,14 +129,17 @@
         }
     }
 
-    /* Returns 'allow', 'log-only' or 'drop' for a prepared item. */
-    function routeFor(item, cfg) {
-        /* Role comes first. An alert a role has no use for is not logged for
-           them at all, otherwise the panel fills with other people's work. */
-        if (window.MediSession && !window.MediSession.wantsAlert(item)) {
-            return 'drop';
-        }
+    /* Returns 'allow', 'log-only' or 'drop' for a prepared item.
 
+       Note what is deliberately NOT here: a role check. The alert log lives on
+       the server and is shared by every workstation, so filtering by role at
+       write time meant an event was only recorded if the person who happened
+       to be signed in when it fired wanted it — a billing event raised on the
+       nurse's terminal vanished, while a doctor later saw a log written by
+       whoever else was using the machine. Roles are now applied once, on read
+       (see visibleNotifications below), which is the only place the question
+       "should this person see it?" can be answered correctly. */
+    function routeFor(item, cfg) {
         if (item.priority === 'critical') return 'allow';
 
         if (item.priority === 'low') {
@@ -278,13 +281,24 @@
         return false;
     }
 
+    /* Every priority this module understands. Call sites have historically
+       invented their own ('medium', 'urgent'), and an unknown value matched
+       neither TOAST_PRIORITIES nor LOG_PRIORITIES — the alert was silently
+       dropped, showing nothing and saving nothing. Anything unrecognised is
+       now folded back onto a real priority derived from the type. */
+    var KNOWN_PRIORITIES = { critical: true, high: true, normal: true, low: true };
+
     function dispatch(opts) {
+        var type = opts.type || 'info';
+        var priority = opts.priority;
+        if (!KNOWN_PRIORITIES[priority]) priority = TYPE_TO_PRIORITY[type] || 'normal';
+
         var item = {
             id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
             title: opts.title || 'Notification',
             message: opts.message || '',
-            type: opts.type || 'info',
-            priority: opts.priority || 'normal',
+            type: type,
+            priority: priority,
             category: opts.category || 'System',
             event: opts.event || null,
             key: opts.key || null,
@@ -385,6 +399,22 @@
         }).length;
     };
 
+    /* The log is shared by every workstation, so it routinely holds alerts
+       raised for other ranks. Roles are applied here, on read. The whole item
+       is handed to wantsAlert (not just its category) so an explicit audience
+       list carried by the event wins over the category fallback map. */
+    MediTrackNotify.visible = function () {
+        var all = getStoredNotifications();
+        if (!window.MediSession) return all;
+        return all.filter(function (n) { return window.MediSession.wantsAlert(n); });
+    };
+
+    /* Ids of the alerts this role can see. Used to scope the bulk actions so
+       "mark all read" never reaches into another rank's queue. */
+    function visibleIds() {
+        return MediTrackNotify.visible().map(function (n) { return n.id; });
+    }
+
     MediTrackNotify.markAsRead = function (id) {
         var notifs = getStoredNotifications();
         var changed = false;
@@ -397,16 +427,24 @@
         relayToParent('notifications_read');
     };
 
+    /* Scoped to what this role can see: the log is shared, so marking or
+       clearing everything would silently process other people's alerts too. */
     MediTrackNotify.markAllAsRead = function () {
+        var keep = {};
+        visibleIds().forEach(function (id) { keep[id] = true; });
         var notifs = getStoredNotifications();
-        notifs.forEach(function (n) { n.read = true; });
+        notifs.forEach(function (n) { if (keep[n.id]) n.read = true; });
         saveStoredNotifications(notifs);
         window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
         relayToParent('notifications_read');
     };
 
     MediTrackNotify.clearAll = function () {
-        saveStoredNotifications([]);
+        var keep = {};
+        visibleIds().forEach(function (id) { keep[id] = true; });
+        saveStoredNotifications(getStoredNotifications().filter(function (n) {
+            return !keep[n.id];
+        }));
         window.dispatchEvent(new CustomEvent('meditrack:notifications-updated'));
         relayToParent('notifications_cleared');
     };

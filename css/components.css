@@ -679,10 +679,23 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 .cs-option.selected:hover { background: var(--primary-hover); }
 
-/* While a dropdown is open we let the modal body/box paint their overflow so
-   the menu is never clipped, and flip it above the toggle when low on screen. */
-.modal-body.cs-escape,
-.modal-box.cs-escape { overflow: visible; }
+/* While a dropdown is open the menu is moved out to <body> and positioned
+   with fixed coordinates, so it can never be clipped by a scrolling modal
+   body or the rounded modal box — and, unlike the old `overflow: visible`
+   escape hatch, it cannot drag the rest of the form outside the dialog. */
+.cs-menu.cs-portaled {
+    position: fixed;
+    /* top/left/right/width are all supplied inline by js/ui.js — right must
+       stay auto or it would fight the explicit width and stretch the menu. */
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
+    z-index: 1400;
+    max-height: 252px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
 .custom-select.open-up .cs-menu { top: auto; bottom: calc(100% + 3px); }
 
 /* --------------------------------------------------------------------------
@@ -910,7 +923,9 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .modal-box {
     width: 100%;
     max-width: 620px;
-    max-height: calc(100vh - var(--space-8));
+    /* The overlay pads by --space-5 top and bottom, so subtract twice that or
+       the foot of a tall modal is pushed past the viewport edge. */
+    max-height: calc(100vh - (var(--space-5) * 2));
     display: flex;
     flex-direction: column;
     background: var(--white);
@@ -975,7 +990,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .modal-body {
     padding: var(--space-4);
     overflow-y: auto;
-    flex: 1;
+    flex: 1 1 auto;
+    /* Flex items default to min-height:auto, which stops the body shrinking
+       below its content height. Without this the body grows past the box,
+       `overflow:hidden` on .modal-box then clips everything from the triage
+       section downwards, and the whole form ends up outside the dialog. */
+    min-height: 0;
+    overscroll-behavior: contain;
 }
 .modal-foot {
     display: flex;

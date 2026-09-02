@@ -39,6 +39,15 @@
         <button type="button" class="filter-chip" data-inv-filter="message">From messages</button>
     </div>
 
+    <!-- Per-account storage allowance -->
+    <div class="inv-usage" id="invUsage">
+        <div class="inv-usage-head">
+            <span class="inv-usage-label"><span class="ico" data-icon="storage" data-icon-size="14"></span><span>Your inventory storage</span></span>
+            <span class="inv-usage-figures"><strong id="invUsageText">—</strong><span id="invUsageSub"></span></span>
+        </div>
+        <div class="inv-usage-bar"><span id="invUsageFill" style="width:0%"></span></div>
+    </div>
+
     <div class="inv-grid" id="invGrid"></div>
     <div class="empty-state is-hidden" id="invEmpty">
         <span class="empty-state-icon"><span class="ico" data-icon="archive" data-icon-size="24"></span></span>
@@ -54,50 +63,54 @@
     </div>
 </div>
 
-<!-- Rename -->
-<div class="modal-overlay" id="invRenameModal" aria-hidden="true">
-    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="invRenameTitle">
+<!-- Edit name + description (one editor, opened from the single pencil) -->
+<div class="modal-overlay" id="invEditModal" aria-hidden="true">
+    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="invEditTitle">
         <div class="modal-head">
             <span class="modal-head-icon tone-info"><span class="ico" data-icon="edit" data-icon-size="17"></span></span>
             <div class="modal-head-text">
-                <h3 id="invRenameTitle">Rename file</h3>
-                <span>The file itself is untouched — only the label you see here.</span>
+                <h3 id="invEditTitle">Edit details</h3>
+                <span>Change the name and the description together. The file itself is untouched.</span>
             </div>
             <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label for="invRenameInput">Name</label>
-                <input type="text" id="invRenameInput" placeholder="Give it a clearer name" />
+                <label for="invEditName">Name</label>
+                <input type="text" id="invEditName" placeholder="Give it a clearer name" />
+            </div>
+            <div class="form-group">
+                <label for="invEditDesc">Description</label>
+                <textarea id="invEditDesc" rows="3" placeholder="What is this file for?"></textarea>
             </div>
         </div>
         <div class="modal-foot">
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
-            <button type="button" class="btn-primary" id="invRenameSave"><span class="ico" data-icon="check" data-icon-size="15"></span><span>Save name</span></button>
+            <button type="button" class="btn-primary" id="invEditSave"><span class="ico" data-icon="check" data-icon-size="15"></span><span>Save changes</span></button>
         </div>
     </div>
 </div>
 
-<!-- Note editor -->
-<div class="modal-overlay" id="invNoteModal" aria-hidden="true">
-    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="invNoteTitle">
+<!-- Upload: name and describe every file before it is added -->
+<div class="modal-overlay" id="invUploadModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="invUploadTitle">
         <div class="modal-head">
-            <span class="modal-head-icon tone-info"><span class="ico" data-icon="edit" data-icon-size="17"></span></span>
+            <span class="modal-head-icon tone-info"><span class="ico" data-icon="upload" data-icon-size="17"></span></span>
             <div class="modal-head-text">
-                <h3 id="invNoteTitle">Add a note</h3>
-                <span>Visible only to you, on this item.</span>
+                <h3 id="invUploadTitle">Add files to inventory</h3>
+                <span id="invUploadSub">Check the name and add a description for each file, then confirm.</span>
             </div>
             <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
         </div>
         <div class="modal-body">
-            <div class="form-group">
-                <label for="invNoteInput">Note</label>
-                <textarea id="invNoteInput" rows="3" placeholder="What is this file for?"></textarea>
-            </div>
+            <div id="invUploadList" class="inv-upload-list"></div>
+            <div class="inv-upload-warn is-hidden" id="invUploadWarn"></div>
         </div>
         <div class="modal-foot">
-            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
-            <button type="button" class="btn-primary" id="invNoteSave"><span class="ico" data-icon="check" data-icon-size="15"></span><span>Save note</span></button>
+            <span class="inv-upload-total" id="invUploadTotal"></span>
+            <span class="inv-foot-spacer"></span>
+            <button type="button" class="btn-secondary" id="invUploadCancel" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="invUploadConfirm"><span class="ico" data-icon="check" data-icon-size="15"></span><span id="invUploadConfirmLabel">Add to inventory</span></button>
         </div>
     </div>
 </div>

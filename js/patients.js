@@ -405,9 +405,10 @@
 
         var sex = ui.getSelectValue('inputSexWrapper');
         if (!sex) {
-            window.MediTrackNotify.push('Sex is required',
-                'Choose Female or Male before saving.',
-                'warning', 'Patients', 'normal');
+            /* A half-filled form is this workstation's problem, not a hospital
+               alert — transient toast, never written to the shared bell. */
+            window.MediTrackNotify.flash('Sex is required',
+                'Choose Female or Male before saving.', 'warning');
             return;
         }
 
