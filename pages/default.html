@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/glass.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1 id="dashTitle">Dashboard</h1>
+            <p id="dashSubtitle">Live position across the hospital.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="calendar" data-icon-size="15"></span>
+                <span id="dashDate">—</span>
+            </div>
+            <button type="button" class="btn-secondary btn-sm is-hidden" id="exportAnalyticsBtn">
+                <span class="ico" data-icon="download" data-icon-size="14"></span>
+                <span>Download Excel</span>
+            </button>
+            <div class="meta-pill meta-pill-live">
+                <span class="live-dot" aria-hidden="true"></span>
+                <span>Live</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Everything below is composed per role by js/dashboard.js so each
+         rank lands on a dashboard built around its own work. -->
+    <div id="dashRoot"></div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/dashboard.js"></script>
+</body>
+</html>

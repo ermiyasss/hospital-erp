@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/profile.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>My Profile</h1>
+            <p>Your photo, details and sign-in password. Changes apply to every workstation after you save.</p>
+        </div>
+    </header>
+
+    <!-- Hero --------------------------------------------------------------- -->
+    <section class="profile-hero">
+        <div class="profile-photo-wrap">
+            <div class="profile-photo" id="profilePhoto">—</div>
+            <button type="button" class="profile-photo-edit" id="photoEditBtn" title="Change photo" aria-label="Change photo">
+                <span class="ico" data-icon="edit" data-icon-size="14"></span>
+            </button>
+            <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp" class="is-hidden">
+        </div>
+        <div class="profile-hero-main">
+            <div class="profile-hero-name" id="heroName">—</div>
+            <div class="profile-hero-meta">
+                <span class="badge status-pending" id="heroRoleBadge">—</span>
+                <span class="badge status-awaiting mono" id="heroUsername">@—</span>
+                <span class="badge status-finished" id="heroJoined">—</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="profile-cols">
+        <!-- Details ---------------------------------------------------------- -->
+        <section class="card">
+            <div class="card-header">
+                <div class="card-header-text">
+                    <h3>Details</h3>
+                    <span class="card-sub">Shown to colleagues in messages and the staff directory</span>
+                </div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:0">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="profileName">Full name <span class="req">*</span></label>
+                        <input type="text" id="profileName" placeholder="Title and full name">
+                    </div>
+                    <div class="form-group">
+                        <label for="profileAge">Age</label>
+                        <input type="number" id="profileAge" min="16" max="120" placeholder="Years">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Sex</label>
+                        <div class="custom-select" id="profileSexWrapper">
+                            <button type="button" class="cs-toggle" data-value="">
+                                <span class="cs-text">Not specified</span>
+                                <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                            </button>
+                            <ul class="cs-menu">
+                                <li class="cs-option selected" data-value="" data-label="Not specified">Not specified</li>
+                                <li class="cs-option" data-value="Female" data-label="Female">Female</li>
+                                <li class="cs-option" data-value="Male" data-label="Male">Male</li>
+                                <li class="cs-option" data-value="Other" data-label="Other">Other</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="profilePhone">Phone</label>
+                        <input type="tel" id="profilePhone" placeholder="09XX XXX XXX">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="profileAddress">Address</label>
+                    <input type="text" id="profileAddress" placeholder="City, sub-city, landmark" maxlength="300">
+                </div>
+                <div class="modal-foot" style="border:0;padding:14px 0 0">
+                    <span></span>
+                    <button type="button" class="btn-primary" id="saveProfileBtn">
+                        <span class="ico" data-icon="save" data-icon-size="15"></span>
+                        <span>Save details</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <div>
+            <!-- Password ------------------------------------------------------- -->
+            <section class="card" style="margin-bottom:18px">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>Password</h3>
+                        <span class="card-sub">At least 6 characters. Other computers are signed out.</span>
+                    </div>
+                </div>
+                <div class="card-body" style="display:flex;flex-direction:column;gap:0">
+                    <div class="form-group">
+                        <label for="profileCurrentPw">Current password <span class="req">*</span></label>
+                        <input type="password" id="profileCurrentPw" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="profileNewPw">New password <span class="req">*</span></label>
+                        <input type="password" id="profileNewPw" autocomplete="new-password" placeholder="At least 6 characters">
+                    </div>
+                    <div class="form-group">
+                        <label for="profileConfirmPw">Confirm new password <span class="req">*</span></label>
+                        <input type="password" id="profileConfirmPw" autocomplete="new-password">
+                    </div>
+                    <div class="modal-foot" style="border:0;padding:14px 0 0">
+                        <span></span>
+                        <button type="button" class="btn-primary" id="savePasswordBtn">
+                            <span class="ico" data-icon="lock" data-icon-size="15"></span>
+                            <span>Change password</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Account facts -------------------------------------------------- -->
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>Account</h3>
+                        <span class="card-sub">Managed by administrators</span>
+                    </div>
+                </div>
+                <div class="list-group" id="accountFacts"></div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/profile.js"></script>
+</body>
+</html>

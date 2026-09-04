@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointments · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/appointments.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Appointments</h1>
+            <p>Requests patients submit from the hospital website. Doctors accept or decline the appointments addressed to them; the list is read-only here.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="globe" data-icon-size="15"></span>
+                <span>Requests from the hospital website</span>
+            </div>
+        </div>
+    </header>
+
+    <section class="stats-grid" aria-label="Appointment figures">
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-warning"><span class="ico" data-icon="hourglass" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="apptStatPending">0</span>
+            <span class="stat-label">Awaiting decision</span>
+            <span class="stat-foot">Pending requests</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-info"><span class="ico" data-icon="calendar" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="apptStatToday">0</span>
+            <span class="stat-label">Scheduled today</span>
+            <span class="stat-foot">Accepted for today</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-success"><span class="ico" data-icon="check-circle" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="apptStatAccepted">0</span>
+            <span class="stat-label">Accepted</span>
+            <span class="stat-foot">Upcoming and past</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-neutral"><span class="ico" data-icon="close" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="apptStatDeclined">0</span>
+            <span class="stat-label">Declined</span>
+            <span class="stat-foot">With a recorded reason</span>
+        </div>
+    </section>
+
+    <div class="msg-toolbar">
+        <div class="msg-chip-row" id="apptFilterChips">
+            <button type="button" class="filter-chip active" data-appt-filter="all">All</button>
+            <button type="button" class="filter-chip" data-appt-filter="Pending">Pending</button>
+            <button type="button" class="filter-chip" data-appt-filter="Accepted">Accepted</button>
+            <button type="button" class="filter-chip" data-appt-filter="Declined">Declined</button>
+            <button type="button" class="filter-chip" data-appt-filter="today">Today</button>
+            <button type="button" class="filter-chip" data-appt-filter="online">Online</button>
+        </div>
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="apptSearch" placeholder="Search patient, doctor or phone" aria-label="Search appointments">
+            <button type="button" class="search-clear" id="apptSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="appt-grid" id="apptGrid"></div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/appointments.js"></script>
+</body>
+</html>

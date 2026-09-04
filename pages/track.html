@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultation · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/track.css">
+</head>
+<body>
+<div class="track-page">
+
+    <!-- ======================================================================
+         VIEW 1 — INTAKE
+         The doctor does not choose a patient. The queue decides who is next;
+         this view only shows that one patient, plus the results workbench.
+         ====================================================================== -->
+    <section class="track-view" id="trackIntakeView">
+
+        <header class="page-head">
+            <div class="page-head-text">
+                <h1>Consultation Desk</h1>
+                <p>Patients are called in the order set by reception triage. Manual selection is disabled to preserve queue integrity.</p>
+            </div>
+            <div class="page-head-meta">
+                <div class="meta-pill">
+                    <span class="ico" data-icon="queue" data-icon-size="15"></span>
+                    <span>Waiting <strong id="pillWaiting">0</strong></span>
+                </div>
+                <div class="meta-pill">
+                    <span class="ico" data-icon="hourglass" data-icon-size="15"></span>
+                    <span>Awaiting results <strong id="pillAwaiting">0</strong></span>
+                </div>
+                <div class="meta-pill meta-pill-alert" id="pillReadyWrap" hidden>
+                    <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                    <span>Ready to review <strong id="pillReady">0</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ---------------------------------------------------------------
+             Next patient — single card, taken straight from the queue
+             --------------------------------------------------------------- -->
+        <div class="next-up-block">
+            <div class="block-head">
+                <div class="block-head-text">
+                    <h2>Next In Queue</h2>
+                    <span>Determined by triage priority, then arrival time</span>
+                </div>
+                <div class="queue-order-note">
+                    <span class="ico" data-icon="lock" data-icon-size="13"></span>
+                    <span>Queue-controlled order</span>
+                </div>
+            </div>
+
+            <div id="nextPatientHost"></div>
+        </div>
+
+        <!-- ---------------------------------------------------------------
+             Results workbench — awaiting vs completed
+             --------------------------------------------------------------- -->
+        <div class="results-workbench">
+            <div class="block-head">
+                <div class="block-head-text">
+                    <h2>Results Workbench</h2>
+                    <span>Patients parked while diagnostics are processed</span>
+                </div>
+            </div>
+
+            <div class="wb-tabs" role="tablist" aria-label="Results status">
+                <button type="button" class="wb-tab active" role="tab" aria-selected="true" data-wb="wbAwaiting">
+                    <span class="ico" data-icon="hourglass" data-icon-size="15"></span>
+                    <span class="wb-tab-label">Awaiting Results</span>
+                    <span class="wb-tab-count" id="wbCountAwaiting">0</span>
+                </button>
+                <button type="button" class="wb-tab" role="tab" aria-selected="false" data-wb="wbCompleted">
+                    <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                    <span class="wb-tab-label">Completed Results</span>
+                    <span class="wb-tab-count" id="wbCountCompleted">0</span>
+                </button>
+            </div>
+
+            <div class="wb-panel active" id="wbAwaiting" role="tabpanel">
+                <div class="wb-subhead">
+                    <span class="wb-chip" data-await-filter="all">All</span>
+                    <span class="wb-chip" data-await-filter="lab">Laboratory</span>
+                    <span class="wb-chip" data-await-filter="pharmacy">Pharmacy</span>
+                    <span class="wb-chip" data-await-filter="nurse">Nursing</span>
+                </div>
+                <div class="wb-list" id="awaitingList"></div>
+            </div>
+
+            <div class="wb-panel" id="wbCompleted" role="tabpanel">
+                <div class="wb-subhead">
+                    <span class="wb-note">
+                        <span class="ico" data-icon="info" data-icon-size="13"></span>
+                        Unreviewed results are listed first.
+                    </span>
+                </div>
+                <div class="wb-list" id="completedList"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 2 — CONSULTATION WORKSPACE
+         ====================================================================== -->
+    <section class="track-view" id="trackWorkspaceView" hidden>
+
+        <div class="ws-bar">
+            <div class="ws-bar-left">
+                <button type="button" class="btn-ghost" id="btnBackToIntake">
+                    <span class="ico" data-icon="arrow-left" data-icon-size="15"></span>
+                    <span>Consultation desk</span>
+                </button>
+                <div class="ws-patient-tag">
+                    <span class="ws-tag-avatar" id="wsTagAvatar">--</span>
+                    <span class="ws-tag-body">
+                        <strong id="topbarPatientName">—</strong>
+                        <span id="topbarPatientTid">—</span>
+                    </span>
+                </div>
+            </div>
+            <div class="ws-bar-right">
+                <span class="ws-queue-pos" id="queueOrderBadge">—</span>
+            </div>
+        </div>
+
+        <div class="track-workspace">
+
+            <!-- LEFT: patient record ------------------------------------- -->
+            <aside class="patient-profile-panel">
+
+                <div class="card profile-card">
+                    <div class="profile-header-row">
+                        <div class="profile-avatar" id="patientAvatar">--</div>
+                        <div class="profile-main-meta">
+                            <div class="profile-name-row">
+                                <h3 id="patientName">—</h3>
+                                <span class="tracking-id-pill" id="patientTrackingId">—</span>
+                            </div>
+                            <div class="profile-badges-row">
+                                <span class="badge" id="patientUrgencyBadge">Routine</span>
+                                <span class="badge status-treatment" id="patientStatusBadge">In consultation</span>
+                            </div>
+                        </div>
+                    </div>
+                    <dl class="profile-details-grid">
+                        <div class="detail-item"><dt>Assigned doctor</dt><dd id="patientDoctor">—</dd></div>
+                        <div class="detail-item"><dt>Age</dt><dd id="patientAge">—</dd></div>
+                        <div class="detail-item"><dt>Sex</dt><dd id="patientSex">—</dd></div>
+                        <div class="detail-item"><dt>Phone</dt><dd id="patientPhone">—</dd></div>
+                        <div class="detail-item"><dt>Registered</dt><dd id="patientRegistered">—</dd></div>
+                        <div class="detail-item"><dt>BMI</dt><dd id="patientBMI">—</dd></div>
+                        <div class="detail-item"><dt>Waiting</dt><dd id="patientWaited">—</dd></div>
+                    </dl>
+                </div>
+
+                <!-- Automatic vitals interpretation ---------------------- -->
+                <div class="card vitals-card">
+                    <div class="card-title-bar">
+                        <span class="ico" data-icon="pulse" data-icon-size="15"></span>
+                        <h4>Vitals &amp; Automatic Interpretation</h4>
+                        <span class="vitals-overall" id="vitalsOverallBadge">—</span>
+                    </div>
+
+                    <div class="vitals-callout" id="vitalsCallout" hidden>
+                        <span class="ico" data-icon="warning" data-icon-size="15"></span>
+                        <div>
+                            <strong id="vitalsCalloutTitle">—</strong>
+                            <span id="vitalsCalloutText">—</span>
+                        </div>
+                    </div>
+
+                    <div class="vitals-grid" id="vitalsGrid"></div>
+
+                    <ul class="vitals-notes" id="vitalsNotes"></ul>
+                </div>
+
+                <div class="card complaint-card">
+                    <div class="card-title-bar">
+                        <span class="ico" data-icon="file-text" data-icon-size="15"></span>
+                        <h4>Chief Complaint</h4>
+                    </div>
+                    <p class="complaint-body" id="patientDescription">—</p>
+                </div>
+
+                <div class="card timeline-card">
+                    <div class="card-title-bar">
+                        <span class="ico" data-icon="clock" data-icon-size="15"></span>
+                        <h4>Care Timeline</h4>
+                    </div>
+                    <ol class="timeline-track" id="patientTimeline"></ol>
+                </div>
+            </aside>
+
+            <!-- RIGHT: clinician actions --------------------------------- -->
+            <div class="doctor-workspace-panel">
+                <div class="card workspace-card">
+                    <div class="workspace-tabs" role="tablist">
+                        <button type="button" class="tab-nav-btn active" role="tab" data-tab="tabNotes">
+                            <span class="tab-ico tab-ico-notes"><span class="ico" data-icon="edit" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Clinical Notes</span>
+                                <span class="tab-desc">Diagnosis &amp; findings</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
+                        </button>
+                        <button type="button" class="tab-nav-btn" role="tab" data-tab="tabLabOrders">
+                            <span class="tab-ico tab-ico-lab"><span class="ico" data-icon="lab" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Laboratory</span>
+                                <span class="tab-desc">Request diagnostics</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
+                        </button>
+                        <button type="button" class="tab-nav-btn" role="tab" data-tab="tabNurseOrders">
+                            <span class="tab-ico tab-ico-nurse"><span class="ico" data-icon="nurse" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Nursing</span>
+                                <span class="tab-desc">Bedside tasks</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
+                        </button>
+                        <button type="button" class="tab-nav-btn" role="tab" data-tab="tabPharmacyOrders">
+                            <span class="tab-ico tab-ico-rx"><span class="ico" data-icon="pill" data-icon-size="19"></span></span>
+                            <span class="tab-body">
+                                <span class="tab-label">Prescriptions</span>
+                                <span class="tab-desc">Dispense medication</span>
+                            </span>
+                            <span class="tab-count" hidden>0</span>
+                        </button>
+                    </div>
+
+                    <!-- TAB: notes ---------------------------------------- -->
+                    <div class="tab-panel-content active" id="tabNotes" role="tabpanel">
+                        <div class="section-intro">
+                            <h4>Examination &amp; Diagnosis</h4>
+                            <p>Findings recorded here are attached to the current visit record.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputDiagnosis">Provisional diagnosis</label>
+                            <input type="text" id="inputDiagnosis" placeholder="e.g. Community-acquired pneumonia">
+                        </div>
+                        <div class="form-group">
+                            <label for="inputClinicalNotes">Clinical notes</label>
+                            <textarea id="inputClinicalNotes" rows="5" placeholder="Examination findings, response to treatment, clinical impression…"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="inputMedicationGiven">Medication given today</label>
+                            <textarea id="inputMedicationGiven" rows="2" placeholder="Record medication administered or supplied during this visit"></textarea>
+                            <span class="field-hint">Saved to this patient’s history for the next visit. Prescriptions sent to pharmacy remain in Prescriptions.</span>
+                        </div>
+                        <div class="form-actions-row">
+                            <button type="button" class="btn-primary" id="saveNoteBtn">
+                                <span class="ico" data-icon="save" data-icon-size="15"></span>
+                                <span>Save note</span>
+                            </button>
+                        </div>
+
+                        <div class="history-section" id="storageHistorySection" hidden>
+                            <div class="history-section-header">
+                                <span class="ico" data-icon="layers" data-icon-size="14"></span>
+                                <h5>Previous visits <span class="hs-hint">matched on phone number</span></h5>
+                            </div>
+                            <div class="history-list" id="storageHistoryList"></div>
+                        </div>
+
+                        <div class="history-section">
+                            <h5>This visit</h5>
+                            <div class="history-list" id="clinicalNotesHistory"></div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: laboratory ---------------------------------- -->
+                    <div class="tab-panel-content" id="tabLabOrders" role="tabpanel">
+                        <div class="action-block">
+                            <div class="action-block-header">
+                                <span class="action-icon-badge lab-badge"><span class="ico" data-icon="lab" data-icon-size="16"></span></span>
+                                <div>
+                                    <h4>Request diagnostic tests</h4>
+                                    <p class="action-sub">The patient moves to “Awaiting results” so the next queue entry can be called.</p>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="inputLabTestName">Test(s) required *</label>
+                                    <input type="text" id="inputLabTestName" placeholder="e.g. Complete blood count, Troponin I">
+                                </div>
+                                <div class="form-group form-group-narrow">
+                                    <label>Priority</label>
+                                    <div class="custom-select" id="labPriorityWrapper">
+                                        <button type="button" class="cs-toggle" data-value="Routine">
+                                            <span class="cs-text">Routine</span>
+                                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                        </button>
+                                        <ul class="cs-menu">
+                                            <li class="cs-option selected" data-value="Routine">Routine</li>
+                                            <li class="cs-option" data-value="Urgent">Urgent</li>
+                                            <li class="cs-option" data-value="STAT">STAT</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputLabNote">Instructions to laboratory *</label>
+                                <textarea id="inputLabNote" rows="2" placeholder="e.g. Patient fasting since 22:00. Expedite cardiac markers."></textarea>
+                            </div>
+                            <div class="form-actions-row">
+                                <button type="button" class="btn-primary" id="sendLabOrderBtn">
+                                    <span class="ico" data-icon="send" data-icon-size="15"></span>
+                                    <span>Send to laboratory</span>
+                                </button>
+                            </div>
+                            <div class="history-sub-section">
+                                <h6>Orders &amp; results for this patient</h6>
+                                <div class="history-list" id="labOrdersHistory"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: nursing ------------------------------------- -->
+                    <div class="tab-panel-content" id="tabNurseOrders" role="tabpanel">
+                        <div class="action-block">
+                            <div class="action-block-header">
+                                <span class="action-icon-badge nurse-badge"><span class="ico" data-icon="nurse" data-icon-size="16"></span></span>
+                                <div>
+                                    <h4>Nursing orders</h4>
+                                    <p class="action-sub">Bedside tasks dispatched to the nurse station.</p>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputNurseTask">Task *</label>
+                                <input type="text" id="inputNurseTask" placeholder="e.g. Monitor blood pressure every 15 minutes">
+                            </div>
+                            <div class="form-group">
+                                <label>Quick orders</label>
+                                <div class="nurse-quick-orders" id="nurseQuickOrders">
+                                    <button type="button" class="filter-chip" data-quick-task="Setup bed" data-quick-bed="1">
+                                        <span class="ico" data-icon="bed" data-icon-size="12"></span> Setup bed
+                                    </button>
+                                    <button type="button" class="filter-chip" data-quick-task="Record vital signs">Vital signs</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Start IV line">IV line</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Wound dressing">Wound dressing</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Insert urinary catheter">Catheter</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Give nebulisation">Nebulisation</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Draw blood sample">Blood draw</button>
+                                    <button type="button" class="filter-chip" data-quick-task="Reposition patient">Reposition</button>
+                                </div>
+                                <span class="field-hint" id="nurseBedsHint"></span>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputNurseNote">Remarks *</label>
+                                <textarea id="inputNurseNote" rows="2" placeholder="e.g. Notify doctor if systolic drops below 100 mmHg."></textarea>
+                            </div>
+                            <div class="form-actions-row">
+                                <button type="button" class="btn-primary" id="sendNurseOrderBtn">
+                                    <span class="ico" data-icon="send" data-icon-size="15"></span>
+                                    <span>Send to nurse station</span>
+                                </button>
+                            </div>
+                            <div class="history-sub-section">
+                                <h6>Nursing orders for this patient</h6>
+                                <div class="history-list" id="nurseOrdersHistory"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: prescriptions ------------------------------- -->
+                    <div class="tab-panel-content" id="tabPharmacyOrders" role="tabpanel">
+                        <div class="action-block">
+                            <div class="action-block-header">
+                                <span class="action-icon-badge rx-badge"><span class="ico" data-icon="pill" data-icon-size="16"></span></span>
+                                <div>
+                                    <h4>Prescription</h4>
+                                    <p class="action-sub">Dispatched to the in-house dispensary for verification.</p>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group form-group-grow">
+                                    <label for="inputRxMedName">Medication *</label>
+                                    <input type="text" id="inputRxMedName" placeholder="e.g. Amoxicillin 500 mg capsule">
+                                </div>
+                                <div class="form-group">
+                                    <label for="inputRxDosage">Dose *</label>
+                                    <input type="text" id="inputRxDosage" placeholder="e.g. 500 mg">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Frequency</label>
+                                    <div class="custom-select" id="rxFreqWrapper">
+                                        <button type="button" class="cs-toggle" data-value="BID">
+                                            <span class="cs-text">BID — twice daily</span>
+                                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                        </button>
+                                        <ul class="cs-menu">
+                                            <li class="cs-option selected" data-value="BID">BID — twice daily</li>
+                                            <li class="cs-option" data-value="TID">TID — three times daily</li>
+                                            <li class="cs-option" data-value="QID">QID — four times daily</li>
+                                            <li class="cs-option" data-value="QD">QD — once daily</li>
+                                            <li class="cs-option" data-value="PRN">PRN — as needed</li>
+                                            <li class="cs-option" data-value="STAT">STAT — immediately</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Route</label>
+                                    <div class="custom-select" id="rxRouteWrapper">
+                                        <button type="button" class="cs-toggle" data-value="Oral">
+                                            <span class="cs-text">Oral (PO)</span>
+                                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                        </button>
+                                        <ul class="cs-menu">
+                                            <li class="cs-option selected" data-value="Oral">Oral (PO)</li>
+                                            <li class="cs-option" data-value="IV">Intravenous (IV)</li>
+                                            <li class="cs-option" data-value="IM">Intramuscular (IM)</li>
+                                            <li class="cs-option" data-value="Topical">Topical</li>
+                                            <li class="cs-option" data-value="Inhalation">Inhalation</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="inputRxDuration">Duration</label>
+                                    <input type="text" id="inputRxDuration" placeholder="e.g. 5 days">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputRxInstructions">Instructions</label>
+                                <textarea id="inputRxInstructions" rows="2" placeholder="e.g. Take after food with a full glass of water."></textarea>
+                            </div>
+                            <div class="form-actions-row">
+                                <button type="button" class="btn-primary" id="sendPrescriptionBtn">
+                                    <span class="ico" data-icon="send" data-icon-size="15"></span>
+                                    <span>Send to pharmacy</span>
+                                </button>
+                            </div>
+                            <div class="history-sub-section">
+                                <h6>Prescriptions for this patient</h6>
+                                <div class="history-list" id="prescriptionOrdersHistory"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="clinical-status-bar">
+                    <div class="status-stepper" id="statusStepper">
+                        <div class="ss-step" data-ss="consulting">
+                            <span class="ss-dot"><span class="ico" data-icon="stethoscope" data-icon-size="12"></span></span>
+                            <span class="ss-label">In consultation</span>
+                        </div>
+                        <span class="ss-line"></span>
+                        <div class="ss-step" data-ss="awaiting">
+                            <span class="ss-dot"><span class="ico" data-icon="hourglass" data-icon-size="12"></span></span>
+                            <span class="ss-label">Awaiting results</span>
+                        </div>
+                        <span class="ss-line"></span>
+                        <div class="ss-step" data-ss="finished">
+                            <span class="ss-dot"><span class="ico" data-icon="check" data-icon-size="12"></span></span>
+                            <span class="ss-label">Complete</span>
+                        </div>
+                    </div>
+
+                    <div class="status-lock-note" id="statusLockNote" hidden>
+                        <span class="ico" data-icon="lock" data-icon-size="13"></span>
+                        <span id="statusLockText">Laboratory results are still outstanding — Complete unlocks once they are released.</span>
+                    </div>
+
+                    <div class="status-bar-actions">
+                        <button type="button" class="btn-status-action btn-stat-finish" id="btnSetFinished">
+                            <span class="ico" data-icon="check" data-icon-size="15"></span>
+                            <span>Complete &amp; archive</span>
+                        </button>
+                        <button type="button" class="btn-primary" id="btnNextPatient">
+                            <span>Call next patient</span>
+                            <span class="ico" data-icon="chevron-right" data-icon-size="15"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================================================================
+         Bed setup (nursing quick order)
+         ================================================================== -->
+    <div class="modal-overlay" id="bedSetupModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="bedSetupTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="bed" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="bedSetupTitle">Order bed setup</h3>
+                    <span>Reserve a free bed and dispatch the nurse</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Free bed <span class="req">*</span></label>
+                    <div class="custom-select" id="bedPickWrapper">
+                        <button type="button" class="cs-toggle" data-value="">
+                            <span class="cs-text">Choose a free bed</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu" id="bedPickMenu"></ul>
+                    </div>
+                    <span class="field-hint" id="bedPickHint"></span>
+                </div>
+                <div class="form-group">
+                    <label for="bedSetupNote">Instructions for the nurse</label>
+                    <textarea id="bedSetupNote" rows="2" placeholder="e.g. Cardiac monitoring, oxygen accessible."></textarea>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmBedSetupBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Reserve &amp; dispatch</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/track.js"></script>
+</body>
+</html>

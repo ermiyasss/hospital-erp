@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/settings.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Settings</h1>
+            <p>Appearance, clinical defaults and alert routing. Data backup and staff accounts belong to the administrator.</p>
+        </div>
+        <div class="page-head-meta">
+            <button type="button" class="btn-secondary" id="btnResetSettings">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+                <span>Restore defaults</span>
+            </button>
+            <button type="button" class="btn-primary" id="btnSaveAllSettings">
+                <span class="ico" data-icon="save" data-icon-size="15"></span>
+                <span>Save settings</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="settings-layout">
+        <!-- Section nav ------------------------------------------------- -->
+        <nav class="settings-nav" aria-label="Settings sections">
+            <button type="button" class="set-nav-item active" data-settab="panelAppearance">
+                <span class="ico" data-icon="sun" data-icon-size="16"></span>
+                <span class="set-nav-text">
+                    <strong>Appearance</strong>
+                    <span>Theme, colours, density, sound</span>
+                </span>
+            </button>
+            <button type="button" class="set-nav-item" data-settab="panelClinical">
+                <span class="ico" data-icon="stethoscope" data-icon-size="16"></span>
+                <span class="set-nav-text">
+                    <strong>Clinical defaults</strong>
+                    <span>Queue policy</span>
+                </span>
+            </button>
+            <button type="button" class="set-nav-item" data-settab="panelAlerts">
+                <span class="ico" data-icon="bell" data-icon-size="16"></span>
+                <span class="set-nav-text">
+                    <strong>Alerts</strong>
+                    <span>What interrupts, what only logs</span>
+                </span>
+            </button>
+            <button type="button" class="set-nav-item" data-settab="panelData">
+                <span class="ico" data-icon="layers" data-icon-size="16"></span>
+                <span class="set-nav-text">
+                    <strong>Data backup</strong>
+                    <span>Backup, restore, reset</span>
+                </span>
+            </button>
+        </nav>
+
+        <div class="settings-content">
+
+            <!-- APPEARANCE --------------------------------------------- -->
+            <section class="settings-panel active" id="panelAppearance">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Theme mode</h3>
+                            <span class="card-sub">Applies to the whole application, including every department page</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="theme-mode-options" id="themeModeOptions">
+                            <button type="button" class="theme-mode-option" data-theme-choice="light">
+                                <span class="tmo-preview tmo-light"><span class="ico" data-icon="sun" data-icon-size="18"></span></span>
+                                <span class="po-body">
+                                    <strong>Light</strong>
+                                    <span>Best in bright rooms and for printing.</span>
+                                </span>
+                            </button>
+                            <button type="button" class="theme-mode-option" data-theme-choice="dark">
+                                <span class="tmo-preview tmo-dark"><span class="ico" data-icon="moon" data-icon-size="18"></span></span>
+                                <span class="po-body">
+                                    <strong>Dark</strong>
+                                    <span>Easier at night and on ward monitors.</span>
+                                </span>
+                            </button>
+                            <button type="button" class="theme-mode-option" data-theme-choice="system">
+                                <span class="tmo-preview tmo-system"><span class="ico" data-icon="clock" data-icon-size="18"></span></span>
+                                <span class="po-body">
+                                    <strong>Match my computer</strong>
+                                    <span>Follows the operating system setting.</span>
+                                </span>
+                            </button>
+                        </div>
+                        <p class="field-hint">Dark mode restyles every screen, including the pages that open inside the dashboard frame.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Accent colour</h3>
+                            <span class="card-sub">Buttons, links and highlights. Status colours are never re-themed.</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="accent-swatches" id="accentSwatches"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Interface density &amp; motion</h3>
+                            <span class="card-sub">Applies to this workstation only</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="toggle-list">
+                            <label class="toggle-row" for="setCompactDensity">
+                                <span class="tr-text">
+                                    <strong>Compact spacing</strong>
+                                    <span>Tighter padding so more rows fit on small monitors.</span>
+                                </span>
+                                <input type="checkbox" id="setCompactDensity" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="setReduceMotion">
+                                <span class="tr-text">
+                                    <strong>Reduce motion</strong>
+                                    <span>Disable transitions and animated states.</span>
+                                </span>
+                                <input type="checkbox" id="setReduceMotion" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Alert sound</h3>
+                            <span class="card-sub">The chime played by urgent notifications</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="toggle-list">
+                            <label class="toggle-row" for="setSoundEnabled">
+                                <span class="tr-text">
+                                    <strong>Play alert sounds</strong>
+                                    <span>Critical alerts always play regardless of this setting.</span>
+                                </span>
+                                <input type="checkbox" id="setSoundEnabled" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Volume</label>
+                                <div class="custom-select" id="setSoundVolumeWrapper">
+                                    <button type="button" class="cs-toggle" data-value="medium">
+                                        <span class="cs-text">Medium</span>
+                                        <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                    </button>
+                                    <ul class="cs-menu">
+                                        <li class="cs-option" data-value="low" data-label="Low">Low</li>
+                                        <li class="cs-option selected" data-value="medium" data-label="Medium">Medium</li>
+                                        <li class="cs-option" data-value="high" data-label="High">High</li>
+                                    </ul>
+                                </div>
+                                <span class="field-hint">Sounds are synthesised, so nothing is downloaded.</span>
+                            </div>
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-secondary" id="btnTestSound">
+                                    <span class="ico" data-icon="bell" data-icon-size="15"></span>
+                                    <span>Preview sound</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CLINICAL ----------------------------------------------- -->
+            <section class="settings-panel" id="panelClinical">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Calling policy</h3>
+                            <span class="card-sub">Governs the order patients are called at the consultation desk</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="policy-options" id="policyOptions">
+                            <button type="button" class="policy-option active" data-policy="priority_first">
+                                <span class="po-mark" aria-hidden="true"></span>
+                                <span class="po-body">
+                                    <strong>Triage priority</strong>
+                                    <span>Emergency, then Urgent, then Routine. Within a priority, earliest arrival first. Clinical default.</span>
+                                </span>
+                            </button>
+                            <button type="button" class="policy-option" data-policy="arrival_order">
+                                <span class="po-mark" aria-hidden="true"></span>
+                                <span class="po-body">
+                                    <strong>Arrival order</strong>
+                                    <span>Strict registration order. Clinical priority is ignored, so emergency arrivals wait their turn.</span>
+                                </span>
+                            </button>
+                        </div>
+                        <div class="notice notice-warning" id="policyWarning" hidden>
+                            <span class="ico" data-icon="warning" data-icon-size="15"></span>
+                            <div>
+                                <strong>Arrival order defers urgent patients</strong>
+                                Only appropriate where triage happens elsewhere. Emergency cases will not be advanced automatically.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notice">
+                    <span class="ico" data-icon="info" data-icon-size="15"></span>
+                    <div>
+                        <strong>Bills gate the waiting list</strong>
+                        A newly registered patient joins the waiting list only once their bill has been settled at the billing desk.
+                    </div>
+                </div>
+            </section>
+
+            <!-- ALERTS ------------------------------------------------- -->
+            <section class="settings-panel" id="panelAlerts">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Alert routing</h3>
+                            <span class="card-sub">Critical alerts cannot be muted</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="notice notice-info">
+                            <span class="ico" data-icon="shield-check" data-icon-size="15"></span>
+                            <div>
+                                <strong>Critical alerts always interrupt</strong>
+                                Panic laboratory values and critical observations bypass every setting on this page. That is deliberate.
+                            </div>
+                        </div>
+
+                        <div class="toggle-list" id="alertToggleList">
+                            <label class="toggle-row" for="alertLabResults">
+                                <span class="tr-text">
+                                    <strong>Laboratory results released</strong>
+                                    <span>Interrupt when a result is ready for review.</span>
+                                </span>
+                                <input type="checkbox" id="alertLabResults" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="alertAbnormalVitals">
+                                <span class="tr-text">
+                                    <strong>Abnormal observations</strong>
+                                    <span>Interrupt when recorded vitals fall outside reference range.</span>
+                                </span>
+                                <input type="checkbox" id="alertAbnormalVitals" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="alertStatRequests">
+                                <span class="tr-text">
+                                    <strong>STAT and urgent requests</strong>
+                                    <span>Interrupt the receiving department on urgent orders.</span>
+                                </span>
+                                <input type="checkbox" id="alertStatRequests" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="alertLowStock">
+                                <span class="tr-text">
+                                    <strong>Inventory below reorder level</strong>
+                                    <span>Interrupt when a tracked item runs low.</span>
+                                </span>
+                                <input type="checkbox" id="alertLowStock" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="alertRoutineLog">
+                                <span class="tr-text">
+                                    <strong>Log routine activity</strong>
+                                    <span>Keep registrations, calls and completions in the bell panel. They never interrupt.</span>
+                                </span>
+                                <input type="checkbox" id="alertRoutineLog" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                            <label class="toggle-row" for="alertConfirmations">
+                                <span class="tr-text">
+                                    <strong>Brief save confirmations</strong>
+                                    <span>Short toast after a save or dispatch. Never stored.</span>
+                                </span>
+                                <input type="checkbox" id="alertConfirmations" class="switch">
+                                <span class="switch-visual" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Toast duration</label>
+                                <div class="custom-select" id="setToastDurationWrapper">
+                                    <button type="button" class="cs-toggle" data-value="6000">
+                                        <span class="cs-text">6 seconds</span>
+                                        <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                                    </button>
+                                    <ul class="cs-menu">
+                                        <li class="cs-option" data-value="4000" data-label="4 seconds">4 seconds</li>
+                                        <li class="cs-option selected" data-value="6000" data-label="6 seconds">6 seconds</li>
+                                        <li class="cs-option" data-value="10000" data-label="10 seconds">10 seconds</li>
+                                    </ul>
+                                </div>
+                                <span class="field-hint">Critical alerts stay until dismissed regardless.</span>
+                            </div>
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-secondary" id="btnTestAlert">
+                                    <span class="ico" data-icon="bell" data-icon-size="15"></span>
+                                    <span>Preview an alert</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DATA --------------------------------------------------- -->
+            <section class="settings-panel" id="panelData">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Data backup</h3>
+                            <span class="card-sub">Export a copy of the records whenever you need it</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="notice notice-info">
+                            <span class="ico" data-icon="shield-check" data-icon-size="15"></span>
+                            <div>
+                                <strong>Every workstation sees the same data</strong>
+                                Restoring a backup replaces the current records for everyone on the system.
+                            </div>
+                        </div>
+
+                        <dl class="storage-usage" id="storageUsage"></dl>
+
+                        <div class="data-actions">
+                            <button type="button" class="btn-secondary" id="btnExportData">
+                                <span class="ico" data-icon="download" data-icon-size="15"></span>
+                                <span>Download backup (JSON)</span>
+                            </button>
+                            <button type="button" class="btn-secondary" id="btnImportData">
+                                <span class="ico" data-icon="save" data-icon-size="15"></span>
+                                <span>Restore from backup</span>
+                            </button>
+                            <input type="file" id="importFileInput" accept="application/json,.json" hidden>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="card-header-text">
+                            <h3>Destructive actions</h3>
+                            <span class="card-sub">These cannot be undone</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="danger-row">
+                            <div class="dr-text">
+                                <strong>Clear all data</strong>
+                                <span>Removes every record — patients, orders, results, bills, inventory and notifications. Staff accounts are kept so everyone can sign in again.</span>
+                            </div>
+                            <button type="button" class="btn-danger" id="btnEraseData">Clear all data</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            </section>
+
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/settings.js"></script>
+<script src="../js/staff.js"></script>
+</body>
+</html>

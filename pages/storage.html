@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Records Archive · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/storage.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Records Archive</h1>
+            <p>Completed visits, retained with their full clinical record: observations, notes, diagnostics and dispensing.</p>
+        </div>
+        <div class="page-head-meta">
+            <button type="button" class="btn-secondary" id="exportCsvBtn">
+                <span class="ico" data-icon="download" data-icon-size="15"></span>
+                <span>Export CSV</span>
+            </button>
+            <button type="button" class="btn-secondary" id="printSummaryBtn">
+                <span class="ico" data-icon="print" data-icon-size="15"></span>
+                <span>Print summary</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Summary --------------------------------------------------------- -->
+    <section class="archive-stats" aria-label="Archive summary">
+        <div class="as-box">
+            <span class="as-label">Visits archived</span>
+            <strong class="as-value" id="totalArchivedCount">0</strong>
+            <span class="as-foot">Discharged and closed</span>
+        </div>
+        <div class="as-box">
+            <span class="as-label">Emergency</span>
+            <strong class="as-value tone-danger" id="emergencyArchivedCount">0</strong>
+            <span class="as-foot">Highest triage priority</span>
+        </div>
+        <div class="as-box">
+            <span class="as-label">Urgent</span>
+            <strong class="as-value tone-warning" id="urgentArchivedCount">0</strong>
+            <span class="as-foot">Seen ahead of routine</span>
+        </div>
+        <div class="as-box">
+            <span class="as-label">Routine</span>
+            <strong class="as-value" id="routineArchivedCount">0</strong>
+            <span class="as-foot">Standard queue</span>
+        </div>
+        <div class="as-box">
+            <span class="as-label">Median time in department</span>
+            <strong class="as-value" id="medianStayValue">—</strong>
+            <span class="as-foot">Registration to discharge</span>
+        </div>
+    </section>
+
+    <!-- Toolbar --------------------------------------------------------- -->
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="storageSearch" placeholder="Search name, tracking ID, phone or diagnosis" aria-label="Search the archive">
+            <button type="button" class="search-clear" id="storageSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterUrgencyWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All priorities</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All priorities</li>
+                    <li class="cs-option" data-value="Emergency">Emergency</li>
+                    <li class="cs-option" data-value="Urgent">Urgent</li>
+                    <li class="cs-option" data-value="Routine">Routine</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="filterPeriodWrapper">
+                <button type="button" class="cs-toggle" data-value="all">
+                    <span class="cs-text">All time</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="all" data-label="All time">All time</li>
+                    <li class="cs-option" data-value="today" data-label="Today">Today</li>
+                    <li class="cs-option" data-value="7" data-label="Last 7 days">Last 7 days</li>
+                    <li class="cs-option" data-value="30" data-label="Last 30 days">Last 30 days</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="sortWrapper">
+                <button type="button" class="cs-toggle" data-value="date_desc">
+                    <span class="cs-text">Newest first</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="date_desc" data-label="Newest first">Newest first</li>
+                    <li class="cs-option" data-value="date_asc" data-label="Oldest first">Oldest first</li>
+                    <li class="cs-option" data-value="name_asc" data-label="Name A–Z">Name A–Z</li>
+                    <li class="cs-option" data-value="stay_desc" data-label="Longest stay">Longest stay</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="card" id="archiveTableCard">
+        <div class="card-header">
+            <div class="card-header-text">
+                <h3>Archived visits</h3>
+                <span class="card-sub" id="archiveResultCount">0 records</span>
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table class="data-table" id="archiveTable">
+                <thead>
+                    <tr>
+                        <th>Patient</th>
+                        <th>Tracking ID</th>
+                        <th>Priority</th>
+                        <th>Diagnosis</th>
+                        <th>Discharged</th>
+                        <th class="num">Stay</th>
+                        <th aria-label="Actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="archiveTableBody"></tbody>
+            </table>
+        </div>
+        <div id="archiveEmptyHost"></div>
+    </div>
+
+    <!-- ==================================================================
+         Full record
+         ================================================================== -->
+    <div class="modal-overlay" id="archiveDetailModal" aria-hidden="true">
+        <div class="modal-box modal-lg" role="dialog" aria-modal="true" aria-labelledby="archiveModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="layers" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="archiveModalTitle">Archived record</h3>
+                    <span id="archiveModalSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body" id="archiveModalBody"></div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                <button type="button" class="btn-primary" id="printRecordBtn">
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print record</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/storage.js"></script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/attendance.css"></head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Attendance</h1>
+            <p>Check in when you arrive and out when you leave. The server records every check against the attendance window set by the administrator.</p>
+        </div>
+        <div class="page-head-meta">
+            <button type="button" class="btn-secondary btn-sm" id="exportAttendanceBtn">
+                <span class="ico" data-icon="download" data-icon-size="14"></span>
+                <span>Download Excel</span>
+            </button>
+            <button type="button" class="btn-secondary btn-sm is-hidden" id="policyBtn">
+                <span class="ico" data-icon="settings" data-icon-size="14"></span>
+                <span>Attendance window</span>
+            </button>
+            <button type="button" class="btn-secondary btn-sm is-hidden" id="manualEntryBtn">
+                <span class="ico" data-icon="plus" data-icon-size="14"></span>
+                <span>Add manually</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Check in / out ---------------------------------------------------- -->
+    <section class="card att-clock-card" id="attClockCard">
+        <div class="att-clock">
+            <div class="att-clock-info">
+                <span class="avatar" id="attAvatar">—</span>
+                <div>
+                    <strong id="attUserName">—</strong>
+                    <span id="attUserRole">—</span>
+                </div>
+            </div>
+            <div class="att-clock-state" id="attClockState">Not checked in yet</div>
+            <div class="att-clock-actions">
+                <button type="button" class="btn-primary" id="checkInBtn">
+                    <span class="ico" data-icon="play" data-icon-size="14"></span>
+                    <span>Check in</span>
+                </button>
+                <button type="button" class="btn-secondary is-hidden" id="checkOutBtn">
+                    <span class="ico" data-icon="check" data-icon-size="14"></span>
+                    <span>Check out</span>
+                </button>
+            </div>
+        </div>
+        <div class="att-policy-line" id="attPolicyLine"></div>
+        <div class="notice notice-warning is-hidden" id="myWarningNotice" style="margin-top:12px">
+            <span class="ico" data-icon="warning" data-icon-size="15"></span>
+            <div id="myWarningText"></div>
+        </div>
+    </section>
+
+    <!-- Admin analytics --------------------------------------------------- -->
+    <section class="card att-admin-card is-hidden" id="attAdminCard">
+        <div class="card-header">
+            <div class="card-header-text">
+                <h3>Today at a glance</h3>
+                <span class="card-sub">Administrators see who is in, who has left, who was late and who never arrived.</span>
+            </div>
+        </div>
+        <div class="att-admin-grid" id="attAdminGrid"></div>
+    </section>
+
+    <!-- Analytics --------------------------------------------------------- -->
+    <section class="stats-grid att-stats">
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-success"><span class="ico" data-icon="users" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="statPresent">0</span>
+            <span class="stat-label" id="labelPresent">Present today</span>
+            <span class="stat-foot" id="footPresent">Checked in so far</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-warning"><span class="ico" data-icon="warning" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="statWarnings">0</span>
+            <span class="stat-label" id="labelWarnings">Warnings today</span>
+            <span class="stat-foot">Outside the attendance window</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-info"><span class="ico" data-icon="calendar" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="statWeekCheckins">0</span>
+            <span class="stat-label" id="labelWeek">Check-ins this week</span>
+            <span class="stat-foot" id="footWeek">Last 7 days combined</span>
+        </div>
+        <div class="stat-card stat-static">
+            <span class="stat-top">
+                <span class="stat-icon tone-neutral"><span class="ico" data-icon="chart" data-icon-size="18"></span></span>
+            </span>
+            <span class="stat-number" id="statAvgDay">0</span>
+            <span class="stat-label" id="labelAvg">Average per day</span>
+            <span class="stat-foot" id="footAvg">Across the last 7 days</span>
+        </div>
+    </section>
+
+    <div class="dash-grid">
+        <section class="card" id="whoCameCard">
+            <div class="card-header">
+                <div class="card-header-text">
+                    <h3 id="whoCameTitle">Who came</h3>
+                    <span class="card-sub" id="whoCameSub">Attendance records for the selected period</span>
+                </div>
+                <div class="custom-select" id="attPeriodWrapper">
+                    <button type="button" class="cs-toggle" data-value="today">
+                        <span class="cs-text">Today</span>
+                        <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                    </button>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="today">Today</li>
+                        <li class="cs-option" data-value="7">Last 7 days</li>
+                        <li class="cs-option" data-value="30">Last 30 days</li>
+                        <li class="cs-option" data-value="all">All time</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="list-group" id="attendanceList"></div>
+        </section>
+
+        <div class="dash-side">
+            <!-- Whole-hospital breakdown: administrator only -->
+            <section class="card is-hidden" id="roleBreakdownCard">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>By role</h3>
+                        <span class="card-sub">Check-ins in the selected period</span>
+                    </div>
+                </div>
+                <div class="dept-load" id="roleBreakdown"></div>
+            </section>
+
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-header-text">
+                        <h3>Last 7 days</h3>
+                        <span class="card-sub" id="weekChartSub">Check-ins per day</span>
+                    </div>
+                </div>
+                <div class="att-week" id="weekChart"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Attendance window (admin only)
+         ================================================================== -->
+    <div class="modal-overlay" id="policyModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="policyTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="clock" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="policyTitle">Attendance window</h3>
+                    <span>Check-ins or check-outs outside these times raise a warning</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="policyCheckinStart">Check-in from <span class="req">*</span></label>
+                        <input type="time" id="policyCheckinStart">
+                    </div>
+                    <div class="form-group">
+                        <label for="policyCheckinEnd">Check-in until <span class="req">*</span></label>
+                        <input type="time" id="policyCheckinEnd">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="policyCheckoutStart">Check-out from <span class="req">*</span></label>
+                        <input type="time" id="policyCheckoutStart">
+                    </div>
+                    <div class="form-group">
+                        <label for="policyCheckoutEnd">Check-out until <span class="req">*</span></label>
+                        <input type="time" id="policyCheckoutEnd">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="policyGrace">Grace minutes</label>
+                    <input type="number" id="policyGrace" min="0" max="180" value="15">
+                    <span class="field-hint">Minutes of tolerance around each window before a warning is recorded.</span>
+                </div>
+                <div class="notice notice-info">
+                    <span class="ico" data-icon="info" data-icon-size="15"></span>
+                    <div>
+                        <strong>Serious by design</strong>
+                        Records are written and kept by the server: a checked-in day cannot be removed
+                        or re-checked until it is closed with a check-out. Two warnings in one day alert
+                        every administrator immediately.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="savePolicyBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Save window</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Manual entry (admin only)
+         ================================================================== -->
+    <div class="modal-overlay" id="manualModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="manualTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="calendar" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="manualTitle">Add attendance manually</h3>
+                    <span>For colleagues who could not check in on a workstation</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Staff member <span class="req">*</span></label>
+                    <div class="custom-select" id="manualStaffWrapper">
+                        <button type="button" class="cs-toggle" data-value="">
+                            <span class="cs-text">Choose a staff member</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu" id="manualStaffMenu"></ul>
+                    </div>
+                </div>
+                <div class="notice notice-warning">
+                    <span class="ico" data-icon="warning" data-icon-size="15"></span>
+                    <div>
+                        The usual window rules apply. If the person already has a record today,
+                        the server will refuse a second one.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmManualBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Check in</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/attendance.js"></script>
+</body>
+</html>

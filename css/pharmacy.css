@@ -1,0 +1,234 @@
+/* ==========================================================================
+   MediTrack Hospital ERP - Pharmacy
+
+   Screen-specific only. Shared primitives come from css/components.css.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Prescription cards
+   -------------------------------------------------------------------------- */
+.rx-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-left: 3px solid var(--accent-rx);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+}
+.rx-card.is-stat { border-left-color: var(--danger); }
+.rx-card.is-done { border-left-color: var(--success); }
+
+.rc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.rc-identity { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rc-name { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-strong); }
+.rc-sub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+
+.rc-med {
+    padding: 11px 12px;
+    border-radius: var(--radius-md);
+    background: var(--accent-rx-bg);
+    border: 1px solid var(--gray-border);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.rx-card.is-done .rc-med { background: var(--surface-alt); }
+
+.rc-med-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.rc-med-name { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-strong); }
+.rc-dose {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-bold);
+    color: var(--accent-rx);
+    white-space: nowrap;
+}
+.rc-regimen { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+.rc-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: var(--fs-xs);
+    color: var(--text-body);
+    line-height: 1.55;
+}
+.rc-note .ico { flex-shrink: 0; margin-top: 1px; color: var(--gray-muted); }
+
+.rc-dispensed {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-radius: var(--radius-md);
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--success);
+}
+.rc-dispensed .ico { flex-shrink: 0; }
+
+.rc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--gray-border);
+    flex-wrap: wrap;
+}
+.rc-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+.rc-time .ico { color: var(--gray-muted); }
+.rc-actions { display: flex; align-items: center; gap: 6px; }
+
+/* --------------------------------------------------------------------------
+   Dispense dialog
+   -------------------------------------------------------------------------- */
+.dispense-summary {
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--accent-rx-bg);
+    border: 1px solid var(--gray-border);
+    margin-bottom: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.ds-med { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text-strong); }
+
+#dispenseModal .notice { margin-bottom: var(--space-4); }
+
+/* --------------------------------------------------------------------------
+   Prescription slip
+   -------------------------------------------------------------------------- */
+.rx-paper {
+    padding: var(--space-5);
+    background: var(--surface);
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius-md);
+    color: var(--text-body);
+}
+
+.rx-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 2px solid var(--text-strong);
+}
+.rx-org { display: block; font-size: var(--fs-lg); font-weight: var(--fw-bold); color: var(--text-strong); }
+.rx-dept {
+    display: block;
+    font-size: 10px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.rx-sigil {
+    font-size: 26px;
+    font-weight: var(--fw-bold);
+    font-family: var(--font-mono);
+    color: var(--accent-rx);
+    line-height: 1;
+}
+
+.rx-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-3);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--gray-border);
+}
+.rx-meta > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rx-meta dt,
+.rx-regimen dt {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.rx-meta dd { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-strong); }
+
+.rx-med { padding: var(--space-4) 0; border-bottom: 1px solid var(--gray-border); }
+.rx-med h4 {
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-bold);
+    color: var(--text-strong);
+    margin-bottom: var(--space-3);
+}
+.rx-regimen {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-3);
+}
+.rx-regimen > div { display: flex; flex-direction: column; gap: 1px; }
+.rx-regimen dd { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-strong); }
+
+.rx-block { padding-top: var(--space-4); }
+.rx-block h4 {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 5px;
+}
+.rx-block p { font-size: var(--fs-base); color: var(--text-body); line-height: 1.6; }
+
+.rx-foot {
+    margin-top: var(--space-6);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+.rx-sign { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.rx-sign .sign-line { display: block; height: 1px; background: var(--text-strong); margin-bottom: 4px; }
+.rx-sign > span:last-child {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.rx-ref { font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+    .rc-head { flex-direction: column; }
+    .rc-foot { flex-direction: column; align-items: flex-start; }
+    .rc-actions { width: 100%; }
+    .rc-actions > * { flex: 1; }
+    .rx-paper { padding: var(--space-4); }
+    .rx-foot { flex-direction: column; align-items: flex-start; }
+}

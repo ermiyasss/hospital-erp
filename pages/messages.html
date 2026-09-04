@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/messages.css">
+</head>
+<body>
+<div class="page">
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Messages</h1>
+            <p>Talk to a colleague one-to-one, post in a role chat that already holds everyone with that role, or start your own group. Right-click any image or file to save it to your inventory.</p>
+        </div>
+    </header>
+
+    <div class="msg-app" id="msgApp">
+        <!-- Conversation list -->
+        <aside class="msg-side">
+            <div class="msg-side-head">
+                <h2>Chats</h2>
+                <button type="button" class="btn-icon" id="msgNewChatBtn" title="New group chat" aria-label="New group chat">
+                    <span class="ico" data-icon="plus" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="msg-search">
+                <div class="search-field">
+                    <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+                    <input type="text" id="msgSearch" placeholder="Search conversations" aria-label="Search">
+                </div>
+            </div>
+            <div class="msg-conv-list" id="msgConvList"></div>
+        </aside>
+
+        <!-- Chat pane -->
+        <section class="msg-chat">
+            <div class="msg-chat-head" id="msgChatHead"></div>
+            <div class="msg-thread" id="msgThread">
+                <div class="empty-state">
+                    <span class="empty-state-icon"><span class="ico" data-icon="message" data-icon-size="24"></span></span>
+                    <p>Select a conversation to start</p>
+                    <span>Pick a colleague on the left, or open Announcements to reach everyone.</span>
+                </div>
+            </div>
+            <div class="msg-compose" id="msgCompose">
+                <div class="msg-pending" id="msgPending"></div>
+                <div class="msg-compose-row">
+                    <button type="button" class="msg-attach-btn" id="msgAttachBtn" title="Attach image or file" aria-label="Attach">
+                        <span class="ico" data-icon="paperclip" data-icon-size="16"></span>
+                    </button>
+                    <input type="file" id="msgFileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" multiple hidden />
+                    <div class="msg-input-wrap">
+                        <textarea class="msg-input" id="msgInput" rows="1" placeholder="Write a message…" data-autofocus></textarea>
+                    </div>
+                    <button type="button" class="msg-send" id="msgSendBtn" title="Send" aria-label="Send" disabled>
+                        <span class="ico" data-icon="send" data-icon-size="16"></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- New group chat picker.
+     Role chats are created and maintained automatically from the staff
+     directory, and one-to-one chats are opened straight from the
+     "Individual chats" section, so only group creation is offered here. -->
+<div class="modal-overlay" id="recipientModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="recipientTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-info"><span class="ico" data-icon="message" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="recipientTitle">New group chat</h3>
+                <span>Role chats already exist for every role. Use this to create a group of your own.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                <span class="ico" data-icon="close" data-icon-size="16"></span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" id="newToGroupName">
+                <label for="newGroupName">Group name</label>
+                <input type="text" id="newGroupName" placeholder="e.g. Ward A shift" />
+            </div>
+            <div class="form-group" id="newToGroupDesc">
+                <label for="newGroupDesc">Description <span class="field-hint-inline">(optional)</span></label>
+                <textarea id="newGroupDesc" rows="2" placeholder="What is this group for?"></textarea>
+            </div>
+            <div class="form-group" id="newToGroupMembers">
+                <label>Members</label>
+                <div class="member-list" id="newGroupMemberList"></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="newStartBtn">Create group</button>
+        </div>
+    </div>
+</div>
+
+<!-- Lightbox for images -->
+<div class="modal-overlay" id="imgLightbox" aria-hidden="true">
+    <div class="modal-box" role="dialog" style="background:transparent;box-shadow:none;max-width:90vw;">
+        <img id="imgLightboxSrc" alt="" style="max-width:90vw;max-height:84vh;border-radius:8px;" />
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/messages.js"></script>
+</body>
+</html>

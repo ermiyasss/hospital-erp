@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Announcements · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Announcements</h1>
+            <p>Messages from doctors and administration. Mark each one as read so the sender knows it reached you.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="bell" data-icon-size="15"></span>
+                <span>Unread <strong id="annUnreadCount">0</strong></span>
+            </div>
+            <button type="button" class="btn-primary btn-sm is-hidden" id="newAnnouncementBtn">
+                <span class="ico" data-icon="plus" data-icon-size="14"></span>
+                <span>New announcement</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="toolbar">
+        <div class="custom-select" id="annFilterWrapper">
+            <button type="button" class="cs-toggle" data-value="inbox">
+                <span class="cs-text">For me</span>
+                <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+            </button>
+            <ul class="cs-menu">
+                <li class="cs-option selected" data-value="inbox">For me</li>
+                <li class="cs-option" data-value="unread">Unread</li>
+                <li class="cs-option" data-value="all">All announcements</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="ann-list" id="announcementsList"></div>
+
+    <!-- ==================================================================
+         Compose announcement (doctor / admin only)
+         ================================================================== -->
+    <div class="modal-overlay" id="composeModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="composeTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="bell" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="composeTitle">New announcement</h3>
+                    <span>Choose who should see it — everyone or a single role</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="annTitle">Title <span class="req">*</span></label>
+                    <input type="text" id="annTitle" placeholder="e.g. New triage protocol starts Monday" data-autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="annBody">Message <span class="req">*</span></label>
+                    <textarea id="annBody" rows="5" placeholder="What staff need to know, and what they should do about it."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Audience</label>
+                    <div class="chip-row" id="annTargetChips">
+                        <button type="button" class="chip active" data-target="all">Everyone</button>
+                        <button type="button" class="chip" data-target="admin">Administrators</button>
+                        <button type="button" class="chip" data-target="doctor">Doctors</button>
+                        <button type="button" class="chip" data-target="nurse">Nurses</button>
+                        <button type="button" class="chip" data-target="billing">Billing</button>
+                        <button type="button" class="chip" data-target="lab">Lab assistants</button>
+                    </div>
+                    <span class="field-hint">Only the selected audience sees this announcement in their inbox.</span>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="publishAnnouncementBtn">
+                    <span class="ico" data-icon="send" data-icon-size="15"></span>
+                    <span>Publish</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/announcements.js"></script>
+</body>
+</html>

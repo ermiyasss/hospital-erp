@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediTrack · Hospital ERP</title>
+    <link rel="stylesheet" href="css/variables.css"/>
+    <!-- components.css first: the shell needs its modal, button and select
+         primitives for confirm dialogs, and common.css overrides the few
+         layout rules that differ. -->
+    <link rel="stylesheet" href="css/components.css"/>
+    <link rel="stylesheet" href="css/glass.css"/>
+    <link rel="stylesheet" href="css/common.css"/>
+    <link rel="stylesheet" href="css/notifications.css"/>
+    <!-- In <head> and before any paint, so dark mode does not flash white. -->
+    <script src="js/theme.js"></script>
+</head>
+<body class="dashboard-body">
+
+    <aside class="sidebar glass-nav" id="sidebar">
+        <div class="sidebar-brand">
+            <span class="brand-mark"><span class="ico" data-icon="hospital" data-icon-size="18"></span></span>
+            <span class="brand-text">
+                <strong id="brandFacility">MediTrack</strong>
+                <span id="brandDepartment">Hospital ERP</span>
+            </span>
+        </div>
+
+        <!-- Items are hidden by js/common.js when the signed-in role does not
+             cover them. The full list lives here so the markup stays readable. -->
+        <nav class="sidebar-nav" aria-label="Main menu">
+            <ul>
+                <li class="nav-section" data-section="Overview">Overview</li>
+                <li class="nav-item" data-page="dashboard" data-target="pages/default.html">
+                    <a href="#"><span class="ico" data-icon="dashboard"></span><span class="nav-label">Dashboard</span></a>
+                </li>
+                <li class="nav-item" data-page="messages" data-target="pages/messages.html">
+                    <a href="#">
+                        <span class="ico" data-icon="message"></span>
+                        <span class="nav-label">Messages</span>
+                        <span class="nav-badge hidden" data-badge="messages">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="appointments" data-target="pages/appointments.html">
+                    <a href="#">
+                        <span class="ico" data-icon="calendar-check"></span>
+                        <span class="nav-label">Appointments</span>
+                        <span class="nav-badge hidden" data-badge="appointments">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="announcements" data-target="pages/announcements.html">
+                    <a href="#">
+                        <span class="ico" data-icon="bell"></span>
+                        <span class="nav-label">Announcements</span>
+                        <span class="nav-badge hidden" data-badge="announcements">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="attendance" data-target="pages/attendance.html">
+                    <a href="#"><span class="ico" data-icon="calendar"></span><span class="nav-label">Attendance</span></a>
+                </li>
+                <li class="nav-item" data-page="inventory" data-target="pages/inventory.html">
+                    <a href="#">
+                        <span class="ico" data-icon="archive"></span>
+                        <span class="nav-label">Inventory</span>
+                    </a>
+                </li>
+
+                <li class="nav-section" data-section="Patient flow">Patients</li>
+                <li class="nav-item" data-page="registry" data-target="pages/patients.html">
+                    <a href="#"><span class="ico" data-icon="patients"></span><span class="nav-label">Patient records</span></a>
+                </li>
+                <li class="nav-item" data-page="queue" data-target="pages/queue.html">
+                    <a href="#">
+                        <span class="ico" data-icon="queue"></span>
+                        <span class="nav-label">Waiting list</span>
+                        <span class="nav-badge hidden" data-badge="queue">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="consultation" data-target="pages/track.html">
+                    <a href="#">
+                        <span class="ico" data-icon="stethoscope"></span>
+                        <span class="nav-label">Consultation</span>
+                        <span class="nav-badge hidden" data-badge="review">0</span>
+                    </a>
+                </li>
+
+                <li class="nav-section" data-section="Clinical services">Departments</li>
+                <li class="nav-item" data-page="laboratory" data-target="pages/laboratory.html">
+                    <a href="#">
+                        <span class="ico" data-icon="lab"></span>
+                        <span class="nav-label">Laboratory</span>
+                        <span class="nav-badge hidden" data-badge="lab">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="nurse" data-target="pages/nurse.html">
+                    <a href="#">
+                        <span class="ico" data-icon="nurse"></span>
+                        <span class="nav-label">Nurse station</span>
+                        <span class="nav-badge hidden" data-badge="nurse">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="pharmacy" data-target="pages/pharmacy.html">
+                    <a href="#">
+                        <span class="ico" data-icon="pill"></span>
+                        <span class="nav-label">Pharmacy</span>
+                        <span class="nav-badge hidden" data-badge="pharmacy">0</span>
+                    </a>
+                </li>
+
+                <li class="nav-section" data-section="Front office">Front office</li>
+                <li class="nav-item" data-page="billing" data-target="pages/billing.html">
+                    <a href="#">
+                        <span class="ico" data-icon="receipt"></span>
+                        <span class="nav-label">Billing</span>
+                        <span class="nav-badge hidden" data-badge="billing">0</span>
+                    </a>
+                </li>
+
+                <li class="nav-section" data-section="Administration">Admin</li>
+                <li class="nav-item" data-page="archive" data-target="pages/storage.html">
+                    <a href="#"><span class="ico" data-icon="layers"></span><span class="nav-label">Past visits</span></a>
+                </li>
+                <li class="nav-item" data-page="manageStaff" data-target="pages/manage-staff.html">
+                    <a href="#"><span class="ico" data-icon="users"></span><span class="nav-label">Manage Staff</span></a>
+                </li>
+                <li class="nav-item" data-page="profile" data-target="pages/profile.html">
+                    <a href="#"><span class="ico" data-icon="user-circle"></span><span class="nav-label">Profiles</span></a>
+                </li>
+                <li class="nav-item" data-page="settings" data-target="pages/settings.html">
+                    <a href="#"><span class="ico" data-icon="settings"></span><span class="nav-label">Settings</span></a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-foot">
+            <div class="sidebar-art" aria-hidden="true">
+                <span class="sidebar-art-orbit sidebar-art-orbit-one"></span>
+                <span class="sidebar-art-orbit sidebar-art-orbit-two"></span>
+                <span class="sidebar-art-core"><span class="ico" data-icon="pulse" data-icon-size="16"></span></span>
+                <span class="sidebar-art-copy">
+                    <strong>Care in sync</strong>
+                    <span>Clinical workspace ready</span>
+                </span>
+            </div>
+            <div class="offline-note">
+                <span class="ico" data-icon="shield-check" data-icon-size="14"></span>
+                <span>Connected to the hospital server</span>
+            </div>
+        </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>
+
+    <main class="main-content">
+        <header class="topbar glass-nav">
+            <div class="topbar-left">
+                <button type="button" class="menu-toggle" id="menuToggle" aria-label="Show or hide the menu">
+                    <span class="ico" data-icon="menu" data-icon-size="20"></span>
+                </button>
+                <div class="topbar-heading">
+                    <span class="topbar-title" id="pageTitle">Dashboard</span>
+                    <span class="topbar-section" id="pageBreadcrumb">Overview</span>
+                </div>
+            </div>
+
+            <div class="topbar-right">
+                <div class="topbar-clock">
+                    <span class="ico" data-icon="clock" data-icon-size="15"></span>
+                    <span id="liveTime">--:--</span>
+                    <span class="clock-date" id="liveDate">—</span>
+                </div>
+
+                <span class="topbar-divider" aria-hidden="true"></span>
+
+                <button type="button" class="topbar-icon-btn" id="themeToggleBtn"
+                        title="Switch between light and dark" aria-label="Switch between light and dark">
+                    <span class="ico" id="themeToggleIcon" data-icon="moon" data-icon-size="18"></span>
+                </button>
+
+                <div class="notif-center-wrapper" id="notifCenterWrap">
+                    <button type="button" class="topbar-notif-btn" id="topbarNotifBtn" title="Alerts" aria-label="Show alerts">
+                        <span class="ico" data-icon="bell" data-icon-size="18"></span>
+                        <span class="notif-badge hidden" id="topbarNotifBadge">0</span>
+                    </button>
+
+                    <div class="notif-panel" id="topbarNotifPanel">
+                        <div class="notif-panel-header">
+                            <div class="notif-panel-title">
+                                <h4>Alerts</h4>
+                                <span class="notif-panel-count" id="notifPanelUnreadCount">Nothing new</span>
+                            </div>
+                            <div class="notif-panel-actions">
+                                <button type="button" class="notif-action-btn" id="markAllReadBtn">Mark as read</button>
+                                <button type="button" class="notif-action-btn" id="clearAllNotifsBtn">Clear</button>
+                            </div>
+                        </div>
+                        <div class="notif-filter-bar" id="notifFilterBar">
+                            <button type="button" class="notif-filter-chip active" data-notif-filter="all">All</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="critical">Urgent</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="results">Results</button>
+                            <button type="button" class="notif-filter-chip" data-notif-filter="unread">Unread</button>
+                        </div>
+                        <div class="notif-panel-list" id="notifPanelList"></div>
+                    </div>
+                </div>
+
+                <div class="topbar-profile-wrap" id="topbarProfileWrap">
+                    <button type="button" class="topbar-profile" id="topbarProfileBtn" aria-haspopup="true" aria-expanded="false">
+                        <span class="avatar" id="topbarAvatar">SC</span>
+                        <span class="profile-info">
+                            <span class="profile-name" id="topbarUserName">Dr. Sarah Chen</span>
+                            <span class="profile-role" id="topbarUserRole">Administrator</span>
+                        </span>
+                        <span class="profile-chevron"><span class="ico" data-icon="chevron-down" data-icon-size="14"></span></span>
+                    </button>
+                    
+                    <div class="profile-menu-panel" id="topbarProfilePanel">
+                        <div class="profile-menu-header">
+                            <span class="profile-menu-user" id="menuUserName">Dr. Sarah Chen</span>
+                            <span class="profile-menu-dept" id="menuUserDept">Administrator</span>
+                        </div>
+                        <button type="button" class="profile-menu-item" id="menuProfileLink" data-page="profile" data-target="pages/profile.html">
+                            <span class="ico" data-icon="user-circle" data-icon-size="15"></span>
+                            <span>My profile</span>
+                        </button>
+                        <button type="button" class="profile-menu-item" id="menuSettingsLink" data-page="settings" data-target="pages/settings.html">
+                            <span class="ico" data-icon="settings" data-icon-size="15"></span>
+                            <span>Settings</span>
+                        </button>
+                        <button type="button" class="profile-menu-item" id="menuStaffLink" data-page="staff" data-target="pages/staff.html">
+                            <span class="ico" data-icon="users" data-icon-size="15"></span>
+                            <span>Staff</span>
+                        </button>
+                        <div class="profile-menu-divider"></div>
+                        <button type="button" class="profile-menu-item logout-item" id="topbarLogoutBtn">
+                            <span class="ico" data-icon="logout" data-icon-size="15"></span>
+                            <span>Sign out</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <iframe id="content-frame" src="pages/default.html" class="content-frame" title="Page content"></iframe>
+    </main>
+
+    <script src="js/icons.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/common.js"></script>
+</body>
+</html>

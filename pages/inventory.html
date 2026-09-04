@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/inventory.css">
+</head>
+<body>
+<div class="page">
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Inventory</h1>
+            <p>Your saved messages, images and hospital files. Anything you save from a chat or upload here stays available to you from any workstation.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="search-field" style="min-width:200px">
+                <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+                <input type="text" id="invSearch" placeholder="Search files" aria-label="Search">
+                <button type="button" class="search-clear" id="invSearchClear" aria-label="Clear"><span class="ico" data-icon="close" data-icon-size="14"></span></button>
+            </div>
+            <button type="button" class="btn-primary" id="uploadBtn">
+                <span class="ico" data-icon="upload" data-icon-size="15"></span>
+                <span>Upload file</span>
+            </button>
+            <input type="file" id="invFileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" multiple hidden />
+        </div>
+    </header>
+
+    <div class="inv-filter-row" id="invFilters">
+        <button type="button" class="filter-chip active" data-inv-filter="all">All</button>
+        <button type="button" class="filter-chip" data-inv-filter="image">Images</button>
+        <button type="button" class="filter-chip" data-inv-filter="file">Documents</button>
+        <button type="button" class="filter-chip" data-inv-filter="message">From messages</button>
+    </div>
+
+    <!-- Per-account storage allowance -->
+    <div class="inv-usage" id="invUsage">
+        <div class="inv-usage-head">
+            <span class="inv-usage-label"><span class="ico" data-icon="storage" data-icon-size="14"></span><span>Your inventory storage</span></span>
+            <span class="inv-usage-figures"><strong id="invUsageText">—</strong><span id="invUsageSub"></span></span>
+        </div>
+        <div class="inv-usage-bar"><span id="invUsageFill" style="width:0%"></span></div>
+    </div>
+
+    <div class="inv-grid" id="invGrid"></div>
+    <div class="empty-state is-hidden" id="invEmpty">
+        <span class="empty-state-icon"><span class="ico" data-icon="archive" data-icon-size="24"></span></span>
+        <p>No files in inventory</p>
+        <span>Upload a file or save one from a message to see it here.</span>
+    </div>
+</div>
+
+<!-- Lightbox / print -->
+<div class="modal-overlay" id="invLightbox" aria-hidden="true">
+    <div class="modal-box" role="dialog" style="background:transparent;box-shadow:none;max-width:92vw;">
+        <img id="invLightboxSrc" alt="" style="max-width:92vw;max-height:84vh;border-radius:8px;" />
+    </div>
+</div>
+
+<!-- Edit name + description (one editor, opened from the single pencil) -->
+<div class="modal-overlay" id="invEditModal" aria-hidden="true">
+    <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="invEditTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-info"><span class="ico" data-icon="edit" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="invEditTitle">Edit details</h3>
+                <span>Change the name and the description together. The file itself is untouched.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="invEditName">Name</label>
+                <input type="text" id="invEditName" placeholder="Give it a clearer name" />
+            </div>
+            <div class="form-group">
+                <label for="invEditDesc">Description</label>
+                <textarea id="invEditDesc" rows="3" placeholder="What is this file for?"></textarea>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="invEditSave"><span class="ico" data-icon="check" data-icon-size="15"></span><span>Save changes</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Upload: name and describe every file before it is added -->
+<div class="modal-overlay" id="invUploadModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="invUploadTitle">
+        <div class="modal-head">
+            <span class="modal-head-icon tone-info"><span class="ico" data-icon="upload" data-icon-size="17"></span></span>
+            <div class="modal-head-text">
+                <h3 id="invUploadTitle">Add files to inventory</h3>
+                <span id="invUploadSub">Check the name and add a description for each file, then confirm.</span>
+            </div>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close"><span class="ico" data-icon="close" data-icon-size="16"></span></button>
+        </div>
+        <div class="modal-body">
+            <div id="invUploadList" class="inv-upload-list"></div>
+            <div class="inv-upload-warn is-hidden" id="invUploadWarn"></div>
+        </div>
+        <div class="modal-foot">
+            <span class="inv-upload-total" id="invUploadTotal"></span>
+            <span class="inv-foot-spacer"></span>
+            <button type="button" class="btn-secondary" id="invUploadCancel" data-modal-close>Cancel</button>
+            <button type="button" class="btn-primary" id="invUploadConfirm"><span class="ico" data-icon="check" data-icon-size="15"></span><span id="invUploadConfirmLabel">Add to inventory</span></button>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/inventory.js"></script>
+</body>
+</html>

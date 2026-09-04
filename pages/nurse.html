@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nurse Station · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/nurse.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Nurse Station</h1>
+            <p>Bedside orders, follow-up tracking for patients who need to be seen across the week, and observations recorded back into the patient record.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="clipboard" data-icon-size="15"></span>
+                <span>Open tasks <strong id="nurseActiveCount">0</strong></span>
+            </div>
+            <div class="meta-pill">
+                <span class="ico" data-icon="pulse" data-icon-size="15"></span>
+                <span>Tracked patients <strong id="nurseTrackingCount">0</strong></span>
+            </div>
+            <div class="meta-pill">
+                <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+                <span>Completed <strong id="nurseCompletedCount">0</strong></span>
+            </div>
+        </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Nursing workload">
+        <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-nursetab="panelTriage">
+            <span class="ico" data-icon="patients" data-icon-size="15"></span>
+            <span>New patient triage</span>
+            <span class="tab-count" id="tabTriageCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-nursetab="panelOrders">
+            <span class="ico" data-icon="clipboard" data-icon-size="15"></span>
+            <span>Care orders</span>
+            <span class="tab-count" id="tabOrdersCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-nursetab="panelTracking">
+            <span class="ico" data-icon="pulse" data-icon-size="15"></span>
+            <span>Patient tracking</span>
+            <span class="tab-count" id="tabTrackingCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-nursetab="panelCompleted">
+            <span class="ico" data-icon="check-circle" data-icon-size="15"></span>
+            <span>Completed</span>
+            <span class="tab-count" id="tabCompletedCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-nursetab="panelBeds">
+            <span class="ico" data-icon="bed" data-icon-size="15"></span>
+            <span>Beds</span>
+            <span class="tab-count" id="tabBedsCount">0</span>
+        </button>
+    </div>
+
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="nurseSearch" placeholder="Search patient, task or clinician" aria-label="Search nursing tasks">
+            <button type="button" class="search-clear" id="nurseSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group" id="orderTypeFilters">
+            <button type="button" class="filter-chip active" data-type-filter="">All types</button>
+            <button type="button" class="filter-chip" data-type-filter="bed">Bed</button>
+            <button type="button" class="filter-chip" data-type-filter="vitals">Vitals</button>
+            <button type="button" class="filter-chip" data-type-filter="other">Other</button>
+        </div>
+    </div>
+
+    <div class="tab-panel active" id="panelTriage" role="tabpanel">
+        <div class="card-grid" id="nurseTriageGrid"></div>
+    </div>
+
+    <div class="tab-panel" id="panelOrders" role="tabpanel">
+        <div class="card-grid" id="nurseOrdersGrid"></div>
+    </div>
+
+    <div class="tab-panel" id="panelTracking" role="tabpanel">
+        <div class="toolbar tracking-toolbar">
+            <p class="tracking-intro">Follow a patient who needs to come in for check-ups across several days. Log each visit so the whole team can see the progress.</p>
+            <button type="button" class="btn-primary btn-sm" id="startTrackingBtn">
+                <span class="ico" data-icon="plus" data-icon-size="14"></span>
+                <span>Track a patient</span>
+            </button>
+        </div>
+        <div class="card-grid" id="trackingGrid"></div>
+    </div>
+
+    <div class="tab-panel" id="panelCompleted" role="tabpanel">
+        <div class="card-grid" id="completedOrdersGrid"></div>
+    </div>
+
+    <div class="tab-panel" id="panelBeds" role="tabpanel">
+        <div class="toolbar tracking-toolbar">
+            <p class="tracking-intro" id="bedIntro">Ward bed board — doctors reserve beds from consultation; keep statuses accurate as patients move.</p>
+            <button type="button" class="btn-primary btn-sm" id="addBedBtn">
+                <span class="ico" data-icon="plus" data-icon-size="14"></span>
+                <span>Add bed</span>
+            </button>
+        </div>
+        <div id="bedBoard"></div>
+    </div>
+
+    <!-- ==================================================================
+         Start tracking a patient
+         ================================================================== -->
+    <div class="modal-overlay" id="startTrackingModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="startTrackingTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-warning"><span class="ico" data-icon="pulse" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="startTrackingTitle">Track a patient</h3>
+                    <span>Daily follow-up plan for a patient who must return for check-ups</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Patient <span class="req">*</span></label>
+                    <div class="custom-select" id="trackPatientWrapper">
+                        <button type="button" class="cs-toggle" data-value="">
+                            <span class="cs-text">Choose a patient</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu" id="trackPatientMenu"></ul>
+                    </div>
+                    <span class="field-hint">Every patient currently in the system is listed, with tracking ID and phone number.</span>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="trackPlanDays">Follow-up length (days) <span class="req">*</span></label>
+                        <input type="number" id="trackPlanDays" min="1" max="30" value="7">
+                    </div>
+                    <div class="form-group">
+                        <label for="trackReason">Reason / plan</label>
+                        <input type="text" id="trackReason" placeholder="e.g. Wound review, BP monitoring">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmStartTrackingBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Start tracking</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Log a follow-up visit
+         ================================================================== -->
+    <div class="modal-overlay" id="logVisitModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="logVisitTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-success"><span class="ico" data-icon="check-circle" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="logVisitTitle">Log follow-up visit</h3>
+                    <span id="logVisitSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="visitNote">What was done / observed today <span class="req">*</span></label>
+                    <textarea id="visitNote" rows="3" placeholder="Condition on arrival, treatment given, advice to the patient…" data-autofocus></textarea>
+                </div>
+
+                <section class="obs-section">
+                    <h4 class="obs-title">
+                        <span class="ico" data-icon="pulse" data-icon-size="14"></span>
+                        <span>Observations (optional)</span>
+                    </h4>
+                    <div class="obs-grid">
+                        <div class="form-group">
+                            <label for="visitSystolic">Systolic</label>
+                            <div class="input-suffix">
+                                <input type="number" id="visitSystolic" min="40" max="300" placeholder="—">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="visitDiastolic">Diastolic</label>
+                            <div class="input-suffix">
+                                <input type="number" id="visitDiastolic" min="20" max="200" placeholder="—">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="visitPulse">Heart rate</label>
+                            <div class="input-suffix">
+                                <input type="number" id="visitPulse" min="20" max="260" placeholder="—">
+                                <span class="unit">bpm</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="visitTemp">Temperature</label>
+                            <div class="input-suffix">
+                                <input type="number" id="visitTemp" step="0.1" min="30" max="45" placeholder="—">
+                                <span class="unit">&deg;C</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="visitReadout" class="obs-readout"></div>
+                </section>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmLogVisitBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Save visit</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Complete task: record what was actually observed
+         ================================================================== -->
+    <div class="modal-overlay" id="completeTaskModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="completeTaskTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-success"><span class="ico" data-icon="check-circle" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="completeTaskTitle">Complete nursing task</h3>
+                    <span id="completeTaskSub">—</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="notice notice-info">
+                    <span class="ico" data-icon="file-text" data-icon-size="15"></span>
+                    <div>
+                        <strong id="taskName">—</strong>
+                        <span id="taskInstruction">—</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskNurseName">Performed by (nurse name) <span class="req">*</span></label>
+                    <input type="text" id="taskNurseName" placeholder="Full name of the nurse who carried out the task">
+                    <span class="field-hint">Recorded on the patient record so it is always clear who gave the injection or took the action.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskOutcome">Outcome / observation <span class="req">*</span></label>
+                    <textarea id="taskOutcome" rows="3" placeholder="What was administered or observed, and how the patient responded." data-autofocus></textarea>
+                </div>
+
+                <section class="obs-section">
+                    <h4 class="obs-title">
+                        <span class="ico" data-icon="pulse" data-icon-size="14"></span>
+                        <span>Update observations (optional)</span>
+                    </h4>
+                    <p class="obs-hint">Values entered here replace the patient's recorded vitals and are re-checked against reference ranges. Abnormal readings alert the clinician.</p>
+                    <div class="obs-grid">
+                        <div class="form-group">
+                            <label for="obsSystolic">Systolic</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsSystolic" min="40" max="300" placeholder="—">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="obsDiastolic">Diastolic</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsDiastolic" min="20" max="200" placeholder="—">
+                                <span class="unit">mmHg</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="obsPulse">Heart rate</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsPulse" min="20" max="260" placeholder="—">
+                                <span class="unit">bpm</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="obsTemp">Temperature</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsTemp" step="0.1" min="30" max="45" placeholder="—">
+                                <span class="unit">&deg;C</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="obsSpo2">SpO&#8322;</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsSpo2" min="50" max="100" placeholder="—">
+                                <span class="unit">%</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="obsRespRate">Resp. rate</label>
+                            <div class="input-suffix">
+                                <input type="number" id="obsRespRate" min="4" max="80" placeholder="—">
+                                <span class="unit">/min</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="obsReadout" class="obs-readout"></div>
+                </section>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmCompleteTaskBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Mark complete</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================================
+         Add a bed
+         ================================================================== -->
+    <!-- Assign a bed to a patient -->
+    <div class="modal-overlay" id="assignBedModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="assignBedTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="bed" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="assignBedTitle">Assign bed</h3>
+                    <span id="bedAssignHead"></span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Patient</label>
+                    <div class="custom-select" id="bedAssignSelect">
+                        <button type="button" class="cs-toggle" data-value=""><span class="cs-text">Choose a patient</span><span class="ico" data-icon="chevron-down" data-icon-size="14"></span></button>
+                        <ul class="cs-menu" id="bedAssignMenu"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="bedAssignApply">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Assign</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="addBedModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="addBedTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="bed" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="addBedTitle">Add a bed</h3>
+                    <span>Ward and label make the bed addressable from consultation</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="bedWardInput">Ward <span class="req">*</span></label>
+                    <input type="text" id="bedWardInput" placeholder="e.g. Ward A — General" data-autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="bedLabelInput">Bed label <span class="req">*</span></label>
+                    <input type="text" id="bedLabelInput" placeholder="e.g. Bed 04">
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="confirmAddBedBtn">
+                    <span class="ico" data-icon="check" data-icon-size="15"></span>
+                    <span>Add bed</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/clinical.js"></script>
+<script src="../js/nurse.js"></script>
+</body>
+</html>

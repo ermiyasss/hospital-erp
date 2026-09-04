@@ -1,0 +1,355 @@
+/* ==========================================================================
+   MediTrack Hospital ERP - Notification Center & Toasts
+   Bell button, flyout panel, filter chips, and corner toast stack.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Bell button
+   -------------------------------------------------------------------------- */
+.notif-center-wrapper { position: relative; }
+
+.topbar-notif-btn {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--text-body);
+    background: transparent;
+    transition: background var(--t-fast), color var(--t-fast);
+}
+.topbar-notif-btn:hover { background: var(--surface-alt); color: var(--text-strong); }
+.notif-center-wrapper.active .topbar-notif-btn { background: var(--surface-sunken); color: var(--text-strong); }
+
+.topbar-notif-btn .ico svg,
+.topbar-notif-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+
+/* A critical unread alert tints the bell so it reads at a glance. */
+.topbar-notif-btn.has-critical { color: var(--danger); }
+
+/* A count sits on the bell's top-right corner, not across its face: small
+   enough that the whole bell shape stays readable, nudged outward so only
+   the very edge of the count touches the icon. */
+.notif-badge {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: var(--radius-pill);
+    background: var(--danger);
+    color: #FFFFFF;
+    font-size: 9px;
+    font-weight: var(--fw-bold);
+    line-height: 12px;
+    text-align: center;
+    border: 1.5px solid var(--white);
+    box-sizing: border-box;
+    font-variant-numeric: tabular-nums;
+    transform: translate(16%, -16%);
+    pointer-events: none;
+}
+.notif-badge.hidden { display: none; }
+.notif-badge.is-critical { background: var(--critical); }
+
+/* The bell must be readable while the shell is dimmed behind a modal. */
+.notif-empty-state .mt-icon { color: var(--border-strong); margin-bottom: 8px; }
+
+/* --------------------------------------------------------------------------
+   Flyout panel
+   -------------------------------------------------------------------------- */
+.notif-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 372px;
+    max-width: calc(100vw - 24px);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(var(--glass-blur-strong));
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong));
+    border: 1px solid var(--glass-border-strong);
+    box-shadow: var(--glass-shadow-strong);
+    border-radius: var(--radius-lg);
+    z-index: 1000;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition: opacity var(--t-base), transform var(--t-base), visibility var(--t-base);
+}
+.notif-center-wrapper.active .notif-panel { opacity: 1; visibility: visible; transform: translateY(0); }
+
+.notif-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--gray-border);
+    background: var(--surface-alt);
+}
+.notif-panel-title h4 {
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    color: var(--text-strong);
+    line-height: 1.2;
+}
+.notif-panel-count {
+    display: block;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+    margin-top: 2px;
+}
+.notif-panel-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.notif-action-btn {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--text-body);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-border);
+    background: var(--white);
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.notif-action-btn:hover { background: var(--surface-sunken); color: var(--text-strong); border-color: var(--border-strong); }
+
+/* Filter chips ---------------------------------------------------------- */
+.notif-filter-bar {
+    display: flex;
+    gap: 6px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--gray-border);
+    background: var(--white);
+}
+.notif-filter-chip {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--gray-muted);
+    padding: 4px 11px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-alt);
+    border: 1px solid transparent;
+    transition: all var(--t-fast);
+}
+.notif-filter-chip:hover { color: var(--text-strong); background: var(--surface-sunken); }
+/* Solid accent fill for the selected chip — see .msg-conv.active. */
+.notif-filter-chip.active {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    border-color: var(--primary);
+}
+
+/* List ------------------------------------------------------------------ */
+.notif-panel-list {
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 5px;
+}
+
+.notif-panel-item {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    position: relative;
+    text-align: left;
+    transition: background var(--t-fast);
+}
+.notif-panel-item:hover { background: var(--surface-alt); }
+.notif-panel-item + .notif-panel-item { border-top: 1px solid var(--gray-border); border-radius: 0; }
+
+.notif-panel-item-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--info-bg);
+    color: var(--info);
+}
+.notif-panel-item-icon svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+.notif-panel-item.type-success .notif-panel-item-icon { background: var(--success-bg); color: var(--success); }
+.notif-panel-item.type-warning .notif-panel-item-icon { background: var(--warning-bg); color: var(--warning); }
+.notif-panel-item.type-error   .notif-panel-item-icon { background: var(--danger-bg);  color: var(--danger); }
+
+.notif-panel-item-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.notif-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.notif-item-title {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.notif-item-time { font-size: 10.5px; color: var(--text-faint); flex-shrink: 0; }
+.notif-item-text {
+    display: block;
+    font-size: var(--fs-xs);
+    color: var(--text-body);
+    line-height: 1.45;
+    margin-top: 2px;
+}
+.notif-item-meta { margin-top: 5px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.notif-item-cat {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--gray-muted);
+    background: var(--surface-sunken);
+    border: 1px solid var(--gray-border);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+.notif-item-flag {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--danger);
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-border);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* Unread marker + critical emphasis */
+.notif-panel-item.unread { background: var(--info-bg); }
+.notif-panel-item.unread:hover { background: var(--surface-sunken); }
+.notif-panel-item.unread .notif-item-title::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--info);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.notif-panel-item.is-critical { background: var(--danger-bg); }
+.notif-panel-item.is-critical .notif-item-title { color: var(--danger); }
+.notif-panel-item.is-critical .notif-item-title::after { background: var(--danger); }
+
+/* Empty state ---------------------------------------------------------- */
+.notif-empty-state {
+    padding: 34px 22px;
+    text-align: center;
+    color: var(--text-faint);
+}
+.notif-empty-state svg {
+    width: 26px; height: 26px;
+    stroke: var(--border-strong); fill: none; stroke-width: 1.5;
+    margin-bottom: 8px;
+}
+.notif-empty-state p { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-body); }
+.notif-empty-state span { display: block; font-size: var(--fs-xs); margin-top: 4px; line-height: 1.5; }
+
+/* --------------------------------------------------------------------------
+   Toast stack
+   -------------------------------------------------------------------------- */
+.notification-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    width: 348px;
+    max-width: calc(100vw - 32px);
+    pointer-events: none;
+}
+
+.notification-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-left: 3px solid var(--info);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 11px 12px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(16px);
+    transition: opacity var(--t-base), transform var(--t-base);
+}
+.notification-toast.visible { opacity: 1; transform: translateX(0); }
+
+.notification-toast .notif-icon {
+    width: 26px; height: 26px; flex-shrink: 0;
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    background: var(--info-bg); color: var(--info);
+}
+.notification-toast .notif-icon svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+.notification-toast.type-success { border-left-color: var(--success); }
+.notification-toast.type-success .notif-icon { background: var(--success-bg); color: var(--success); }
+.notification-toast.type-warning { border-left-color: var(--warning); }
+.notification-toast.type-warning .notif-icon { background: var(--warning-bg); color: var(--warning); }
+.notification-toast.type-error { border-left-color: var(--danger); }
+.notification-toast.type-error .notif-icon { background: var(--danger-bg); color: var(--danger); }
+
+/* Critical toasts are sticky, so they get a stronger frame. */
+.notification-toast.is-critical {
+    border-color: var(--danger-border, var(--danger));
+    box-shadow: 0 0 0 3px var(--danger-bg), var(--shadow-lg);
+}
+
+.notification-toast .notif-body { flex: 1; min-width: 0; }
+.notification-toast .notif-head-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.notification-toast .notif-title {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-bold);
+    color: var(--text-strong);
+}
+.notification-toast .notif-cat {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--gray-muted);
+    flex-shrink: 0;
+}
+.notification-toast .notif-message {
+    display: block;
+    font-size: var(--fs-xs);
+    color: var(--text-body);
+    line-height: 1.45;
+    margin-top: 3px;
+}
+
+.notification-toast .notif-dismiss {
+    width: 22px; height: 22px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--gray-muted);
+    transition: background var(--t-fast), color var(--t-fast);
+}
+.notification-toast .notif-dismiss:hover { background: var(--surface-alt); color: var(--text-strong); }
+.notification-toast .notif-dismiss svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
+@media (max-width: 640px) {
+    .notification-container { top: 10px; right: 10px; left: 10px; width: auto; }
+    .notif-panel { width: calc(100vw - 20px); position: fixed; right: 10px; top: calc(var(--topbar-height) + 4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .notification-toast, .notif-panel { transition: none; }
+}

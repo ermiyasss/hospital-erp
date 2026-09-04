@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmacy · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/pharmacy.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Pharmacy</h1>
+            <p>Prescriptions sent from the consultation desk, ready to print as dispensing slips for the patient.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="pill" data-icon-size="15"></span>
+                <span>Prescriptions <strong id="pharmPendingCount">0</strong></span>
+            </div>
+        </div>
+    </header>
+
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="pharmSearch" placeholder="Search patient, tracking ID, medication or clinician" aria-label="Search prescriptions">
+            <button type="button" class="search-clear" id="pharmSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterRouteWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All routes</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All routes</li>
+                    <li class="cs-option" data-value="Oral" data-label="Oral">Oral (PO)</li>
+                    <li class="cs-option" data-value="IV" data-label="Intravenous">Intravenous (IV)</li>
+                    <li class="cs-option" data-value="IM" data-label="Intramuscular">Intramuscular (IM)</li>
+                    <li class="cs-option" data-value="Topical" data-label="Topical">Topical</li>
+                    <li class="cs-option" data-value="Inhalation" data-label="Inhalation">Inhalation</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetPharmFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="card-grid card-grid-wide" id="prescriptionsCardGrid"></div>
+
+    <!-- ==================================================================
+         Prescription slip
+         ================================================================== -->
+    <div class="modal-overlay" id="prescriptionModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="rxModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-rx"><span class="ico" data-icon="print" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="rxModalTitle">Prescription slip</h3>
+                    <span>Hand this to the patient with the medication</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <article class="rx-paper" id="rxPrintArea">
+                    <header class="rx-head">
+                        <div>
+                            <span class="rx-org">MediTrack Hospital</span>
+                            <span class="rx-dept">Dispensary</span>
+                        </div>
+                        <span class="rx-sigil" aria-hidden="true">Rx</span>
+                    </header>
+
+                    <dl class="rx-meta">
+                        <div><dt>Patient</dt><dd id="rxPatientName">—</dd></div>
+                        <div><dt>Tracking ID</dt><dd class="mono" id="rxTrackingId">—</dd></div>
+                        <div><dt>Prescribed by</dt><dd id="rxDoctorName">—</dd></div>
+                        <div><dt>Date</dt><dd id="rxDateTime">—</dd></div>
+                    </dl>
+
+                    <section class="rx-med">
+                        <h4 id="rxMedName">—</h4>
+                        <dl class="rx-regimen">
+                            <div><dt>Dose</dt><dd id="rxDosage">—</dd></div>
+                            <div><dt>Frequency</dt><dd id="rxFrequency">—</dd></div>
+                            <div><dt>Route</dt><dd id="rxRoute">—</dd></div>
+                            <div><dt>Duration</dt><dd id="rxDuration">—</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="rx-block">
+                        <h4>Instructions</h4>
+                        <p id="rxInstructions">—</p>
+                    </section>
+
+                    <section class="rx-block" id="rxDispenseWrap" hidden>
+                        <h4>Dispensing record</h4>
+                        <p id="rxDispenseInfo">—</p>
+                    </section>
+
+                    <footer class="rx-foot">
+                        <div class="rx-sign">
+                            <span class="sign-line" aria-hidden="true"></span>
+                            <span>Licensed pharmacist</span>
+                        </div>
+                        <span class="rx-ref mono" id="rxReference">—</span>
+                    </footer>
+                </article>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                <button type="button" class="btn-primary" id="printRxSlipBtn">
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print slip</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/pharmacy.js"></script>
+</body>
+</html>

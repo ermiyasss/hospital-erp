@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triage Queue · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/queue.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Triage Queue</h1>
+            <p>The calling order set here governs the consultation desk. Clinicians cannot reorder or hand-pick patients.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="queue" data-icon-size="15"></span>
+                <span>Waiting <strong id="queueTotalCount">0</strong></span>
+            </div>
+            <div class="meta-pill meta-pill-warn" id="queueEmergencyPill" hidden>
+                <span class="ico" data-icon="critical" data-icon-size="15"></span>
+                <span>Emergency <strong id="queueEmergencyCount">0</strong></span>
+            </div>
+            <div class="meta-pill">
+                <span class="ico" data-icon="stethoscope" data-icon-size="15"></span>
+                <span>In consultation <strong id="queueConsultingCount">0</strong></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Calling policy -------------------------------------------------- -->
+    <section class="policy-bar">
+        <div class="policy-text">
+            <span class="policy-label">Calling policy</span>
+            <strong id="policyName">Triage priority</strong>
+            <span id="policyExplain">Emergency, then Urgent, then Routine. Within the same priority, whoever arrived first is called first.</span>
+        </div>
+        <div class="policy-control">
+            <label class="field-label" for="queuePolicySelect">Change policy</label>
+            <div class="custom-select" id="queuePolicySelect">
+                <button type="button" class="cs-toggle" data-value="priority_first">
+                    <span class="cs-text">Triage priority</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="priority_first" data-label="Triage priority">Triage priority (clinical default)</li>
+                    <li class="cs-option" data-value="arrival_order" data-label="Arrival order">Arrival order (strict FIFO)</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Toolbar --------------------------------------------------------- -->
+    <div class="toolbar">
+        <div class="search-field">
+            <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+            <input type="text" id="queueSearch" placeholder="Search name, tracking ID or phone" aria-label="Search the queue">
+            <button type="button" class="search-clear" id="queueSearchClear" aria-label="Clear search">
+                <span class="ico" data-icon="close" data-icon-size="14"></span>
+            </button>
+        </div>
+        <div class="toolbar-group">
+            <div class="custom-select" id="filterDoctorWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All queues</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu" id="filterDoctorMenu">
+                    <li class="cs-option selected" data-value="">All queues</li>
+                    <li class="cs-option" data-value="general">General queue (no doctor chosen)</li>
+                </ul>
+            </div>
+            <div class="custom-select" id="filterUrgencyWrapper">
+                <button type="button" class="cs-toggle" data-value="">
+                    <span class="cs-text">All priorities</span>
+                    <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                </button>
+                <ul class="cs-menu">
+                    <li class="cs-option selected" data-value="">All priorities</li>
+                    <li class="cs-option" data-value="Emergency">Emergency</li>
+                    <li class="cs-option" data-value="Urgent">Urgent</li>
+                    <li class="cs-option" data-value="Routine">Routine</li>
+                </ul>
+            </div>
+            <button type="button" class="btn-icon" id="resetFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                <span class="ico" data-icon="reset" data-icon-size="15"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="notice notice-info">
+        <span class="ico" data-icon="info" data-icon-size="15"></span>
+        <div>
+            <strong>Search and filters are for lookup only</strong>
+            They never change the calling order. Position numbers always reflect the active policy across the whole queue.
+        </div>
+    </div>
+
+    <div class="card-grid" id="queueCardGrid"></div>
+
+    <!-- Ticket ---------------------------------------------------------- -->
+    <div class="modal-overlay" id="ticketModal" aria-hidden="true">
+        <div class="modal-box modal-sm" role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="print" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="ticketModalTitle">Queue ticket</h3>
+                    <span>Hand this slip to the patient</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="ticket" id="ticketPaper">
+                    <div class="ticket-head">
+                        <span class="ticket-org">MediTrack Hospital</span>
+                        <span class="ticket-dept">Outpatient Reception</span>
+                    </div>
+                    <div class="ticket-position">
+                        <span class="ticket-pos-label">Queue position</span>
+                        <span class="ticket-pos-value" id="ticketQueueNumber">01</span>
+                    </div>
+                    <div class="ticket-token">
+                        <span class="ticket-token-label">Tracking ID</span>
+                        <span class="ticket-token-value" id="ticketTrackingId">—</span>
+                    </div>
+                    <dl class="ticket-rows">
+                        <div><dt>Patient</dt><dd id="ticketPatientName">—</dd></div>
+                        <div><dt>Age</dt><dd id="ticketAge">—</dd></div>
+                        <div><dt>Priority</dt><dd id="ticketUrgency">—</dd></div>
+                        <div><dt>Registered</dt><dd id="ticketRegistered">—</dd></div>
+                    </dl>
+                    <p class="ticket-foot">Please keep this slip. You will be called by tracking ID. Priority cases are seen first.</p>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Close</button>
+                <button type="button" class="btn-primary" id="printTicketBtn">
+                    <span class="ico" data-icon="print" data-icon-size="15"></span>
+                    <span>Print slip</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/session.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/queue.js"></script>
+</body>
+</html>

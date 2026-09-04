@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Directory · MediTrack</title>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../css/variables.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/notifications.css">
+    <link rel="stylesheet" href="../css/staff.css">
+</head>
+<body>
+<div class="page">
+
+    <header class="page-head">
+        <div class="page-head-text">
+            <h1>Staff Directory</h1>
+            <p>Personnel records and the departments each member works in.</p>
+        </div>
+        <div class="page-head-meta">
+            <div class="meta-pill">
+                <span class="ico" data-icon="users" data-icon-size="15"></span>
+                <span>Members <strong id="statStaffTotal">0</strong></span>
+            </div>
+            <button type="button" class="btn-primary" id="btnAddMember">
+                <span class="ico" data-icon="plus" data-icon-size="15"></span>
+                <span>Add member</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Staff administration">
+        <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-stafftab="panelDirectory">
+            <span class="ico" data-icon="users" data-icon-size="15"></span>
+            <span>Directory</span>
+            <span class="tab-count" id="tabDirectoryCount">0</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-stafftab="panelRoles">
+            <span class="ico" data-icon="shield-check" data-icon-size="15"></span>
+            <span>Roles &amp; coverage</span>
+        </button>
+        <button type="button" class="tab-btn" role="tab" aria-selected="false" data-stafftab="panelRequests">
+            <span class="ico" data-icon="lock" data-icon-size="15"></span>
+            <span>Access requests</span>
+            <span class="tab-count" id="tabRequestsCount">0</span>
+        </button>
+    </div>
+
+    <!-- Directory -------------------------------------------------------- -->
+    <div class="tab-panel active" id="panelDirectory" role="tabpanel">
+        <div class="toolbar">
+            <div class="search-field">
+                <span class="search-icon ico" data-icon="search" data-icon-size="15"></span>
+                <input type="text" id="staffSearch" placeholder="Search name, username, email or department" aria-label="Search staff">
+                <button type="button" class="search-clear" id="staffSearchClear" aria-label="Clear search">
+                    <span class="ico" data-icon="close" data-icon-size="14"></span>
+                </button>
+            </div>
+            <div class="toolbar-group">
+                <div class="custom-select" id="filterRoleWrapper">
+                    <button type="button" class="cs-toggle" data-value="">
+                        <span class="cs-text">All roles</span>
+                        <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                    </button>
+                    <ul class="cs-menu">
+                        <li class="cs-option selected" data-value="">All roles</li>
+                        <li class="cs-option" data-value="Admin" data-label="Administrator">Administrator</li>
+                        <li class="cs-option" data-value="Doctor" data-label="Clinician">Clinician</li>
+                        <li class="cs-option" data-value="Nurse" data-label="Nurse">Nurse</li>
+                        <li class="cs-option" data-value="Lab" data-label="Lab Assistant">Lab Assistant</li>
+                        <li class="cs-option" data-value="Billing" data-label="Billing">Billing</li>
+                    </ul>
+                </div>
+                <button type="button" class="btn-icon" id="resetStaffFiltersBtn" title="Reset search and filters" aria-label="Reset search and filters">
+                    <span class="ico" data-icon="reset" data-icon-size="15"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="card-grid" id="staffCardGrid"></div>
+    </div>
+
+    <!-- Roles ------------------------------------------------------------ -->
+    <div class="tab-panel" id="panelRoles" role="tabpanel">
+        <div class="notice notice-info">
+            <span class="ico" data-icon="info" data-icon-size="15"></span>
+            <div>
+                <strong>Roles describe expected duties, and the server enforces access</strong>
+                The hospital server checks the signed-in account's role on every request, so what a member can open is never decided by the browser alone.
+            </div>
+        </div>
+        <div class="card-grid" id="roleCoverageGrid"></div>
+    </div>
+
+    <!-- Access requests -------------------------------------------------- -->
+    <div class="tab-panel" id="panelRequests" role="tabpanel">
+        <div class="requests-list" id="requestsList"></div>
+    </div>
+
+    <!-- ==================================================================
+         Add / edit member
+         ================================================================== -->
+    <div class="modal-overlay" id="memberModal" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="memberModalTitle">
+            <div class="modal-head">
+                <span class="modal-head-icon tone-info"><span class="ico" data-icon="user-check" data-icon-size="17"></span></span>
+                <div class="modal-head-text">
+                    <h3 id="memberModalTitle">Add staff member</h3>
+                    <span id="memberModalSub">Personnel record</span>
+                </div>
+                <button type="button" class="modal-close" data-modal-close aria-label="Close">
+                    <span class="ico" data-icon="close" data-icon-size="16"></span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputStaffName">Full name <span class="req">*</span></label>
+                        <input type="text" id="inputStaffName" placeholder="Title and full name" data-autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="inputStaffUsername">Username <span class="req">*</span></label>
+                        <input type="text" id="inputStaffUsername" placeholder="firstname.lastinitial">
+                        <span class="field-hint">Must be unique across the directory</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputStaffEmail">Email <span class="req">*</span></label>
+                        <input type="email" id="inputStaffEmail" placeholder="name@hospital.example">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputStaffPhone">Phone</label>
+                        <input type="tel" id="inputStaffPhone" placeholder="09XX XXX XXX">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Role <span class="req">*</span></label>
+                        <div class="custom-select" id="inputRoleWrapper">
+                            <button type="button" class="cs-toggle" data-value="Doctor">
+                                <span class="cs-text">Clinician</span>
+                                <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                            </button>
+                            <ul class="cs-menu">
+                                <li class="cs-option" data-value="Admin" data-label="Administrator">Administrator</li>
+                                <li class="cs-option selected" data-value="Doctor" data-label="Clinician">Clinician</li>
+                                <li class="cs-option" data-value="Nurse" data-label="Nurse">Nurse</li>
+                                <li class="cs-option" data-value="Lab" data-label="Lab Assistant">Lab Assistant</li>
+                                <li class="cs-option" data-value="Billing" data-label="Billing">Billing</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="inputStaffDept">Department</label>
+                        <input type="text" id="inputStaffDept" placeholder="e.g. Internal Medicine">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="inputStaffShift">Usual shift</label>
+                    <div class="custom-select" id="inputShiftWrapper">
+                        <button type="button" class="cs-toggle" data-value="Day">
+                            <span class="cs-text">Day</span>
+                            <span class="ico" data-icon="chevron-down" data-icon-size="14"></span>
+                        </button>
+                        <ul class="cs-menu">
+                            <li class="cs-option selected" data-value="Day">Day</li>
+                            <li class="cs-option" data-value="Evening">Evening</li>
+                            <li class="cs-option" data-value="Night">Night</li>
+                            <li class="cs-option" data-value="Rotating">Rotating</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputStaffPassword" id="labelStaffPassword">Sign-in password <span class="req">*</span></label>
+                        <input type="password" id="inputStaffPassword" autocomplete="new-password"
+                               placeholder="At least 6 characters">
+                        <span class="field-hint">Used to sign in. At least 6 characters.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+                <button type="button" class="btn-primary" id="saveMemberBtn">
+                    <span class="ico" data-icon="save" data-icon-size="15"></span>
+                    <span id="saveMemberLabel">Add member</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/icons.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/notifications.js"></script>
+<script src="../js/staff.js"></script>
+</body>
+</html>

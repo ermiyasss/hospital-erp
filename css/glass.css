@@ -1,0 +1,33 @@
+/* Reusable translucent chrome. Dense clinical surfaces intentionally do not
+   use these utilities; keep tables, forms, vitals and alerts opaque. */
+.glass-card,
+.glass-nav,
+.glass-modal {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+}
+
+.glass-card { border-radius: var(--radius-lg); }
+.glass-nav { border-radius: 0; }
+.glass-modal { border-radius: var(--radius-lg); }
+
+@media (prefers-reduced-motion: reduce) {
+    .glass-card,
+    .glass-nav,
+    .glass-modal {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+[data-motion="reduced"] .glass-card,
+[data-motion="reduced"] .glass-nav,
+[data-motion="reduced"] .glass-modal {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+}

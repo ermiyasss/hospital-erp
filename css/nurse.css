@@ -1,0 +1,220 @@
+/* ==========================================================================
+   MediTrack Hospital ERP - Nurse Station
+
+   Screen-specific only. Shared primitives come from css/components.css.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+    Nurse triage and task cards
+    -------------------------------------------------------------------------- */
+.nurse-triage-card { border-left-color: var(--info); }
+.nurse-triage-card .nc-task strong { font-weight: var(--fw-medium); }
+.triage-observations { display: flex; flex-direction: column; gap: 7px; }
+.triage-observation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.triage-observation { position: relative; min-width: 0; }
+.triage-observation > span { display: block; margin-bottom: 3px; font-size: 10px; font-weight: var(--fw-semibold); color: var(--gray-muted); }
+.triage-observation input { width: 100%; height: 32px; padding: 0 28px 0 8px; border: 1px solid var(--gray-border); border-radius: var(--radius-sm); background: var(--white); color: var(--text-strong); }
+.triage-observation input:focus { outline: none; border-color: var(--info); box-shadow: 0 0 0 3px var(--info-bg); }
+.triage-observation small { position: absolute; right: 7px; bottom: 8px; font-size: 9px; color: var(--text-faint); }
+.triage-assessment { font-size: var(--fs-xs); line-height: 1.45; color: var(--text-body); }
+
+/* --------------------------------------------------------------------------
+    Task cards
+    -------------------------------------------------------------------------- */
+.nurse-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--white);
+    border: 1px solid var(--gray-border);
+    border-left: 3px solid var(--accent-nurse);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+}
+.nurse-card.is-done { border-left-color: var(--success); }
+
+.nc-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.nc-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nc-name {
+    font-size: var(--fs-base);
+    font-weight: var(--fw-semibold);
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.nc-sub {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+
+.nc-task {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--accent-nurse-bg);
+    border: 1px solid var(--warning-border);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.nurse-card.is-done .nc-task { background: var(--surface-alt); border-color: var(--gray-border); }
+.nc-task-label {
+    font-size: 9.5px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--accent-nurse);
+}
+.nurse-card.is-done .nc-task-label { color: var(--text-faint); }
+.nc-task strong { font-size: var(--fs-base); color: var(--text-strong); line-height: 1.45; }
+
+.nc-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: var(--fs-xs);
+    color: var(--text-body);
+    line-height: 1.55;
+}
+.nc-note .ico { flex-shrink: 0; margin-top: 1px; color: var(--gray-muted); }
+.nc-note strong { color: var(--text-strong); }
+
+.nc-outcome {
+    padding: 9px 11px;
+    border-radius: var(--radius-md);
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.nc-outcome .nc-task-label { color: var(--success); }
+.nc-outcome > span:last-child { font-size: var(--fs-xs); color: var(--text-body); line-height: 1.55; }
+
+.nc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--gray-border);
+    flex-wrap: wrap;
+}
+.nc-meta,
+.nc-from {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+.nc-meta .ico { color: var(--gray-muted); }
+
+/* --------------------------------------------------------------------------
+   Patient tracking (follow-up plans)
+   -------------------------------------------------------------------------- */
+.tracking-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.tracking-intro {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-faint);
+    max-width: 70ch;
+}
+
+.track-card { border-left-color: var(--accent-triage); }
+
+.track-days {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.track-day {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--gray-border);
+    background: var(--surface-alt);
+    font-size: 10.5px;
+    font-weight: var(--fw-semibold);
+    color: var(--text-faint);
+}
+.track-day.is-today {
+    border-color: var(--accent-triage);
+    color: var(--accent-triage);
+    box-shadow: 0 0 0 2px var(--accent-triage-bg);
+}
+.track-day.is-done {
+    border-color: var(--success);
+    background: var(--success);
+    color: #FFFFFF;
+}
+
+.nc-actions { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+/* --------------------------------------------------------------------------
+   Completion form
+   -------------------------------------------------------------------------- */
+.obs-section {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-border);
+}
+.obs-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.obs-title .ico { color: var(--gray-muted); }
+.obs-hint {
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+    line-height: 1.55;
+    margin: 4px 0 var(--space-3);
+    max-width: 80ch;
+}
+
+.obs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-3);
+}
+.obs-grid .form-group { margin-bottom: 0; }
+.obs-grid input { text-align: right; font-variant-numeric: tabular-nums; }
+
+.obs-readout { margin-top: var(--space-3); }
+.obs-readout:empty { display: none; }
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+    .nc-foot { flex-direction: column; align-items: flex-start; }
+    .nc-foot .btn-primary { width: 100%; }
+    .tracking-toolbar { flex-direction: column; align-items: stretch; }
+}
+
+/* Bed board -------------------------------------------------------------- */
+.bed-card.is-free .nc-head .badge { background: transparent; }
+.bed-card.is-occupied { border-left: 3px solid var(--danger, #A31B22); }
+.bed-card.is-reserved { border-left: 3px solid var(--warning, #b45309); }
+.bed-card.is-cleaning { border-left: 3px solid var(--info, #0369a1); }
+.nc-foot-wrap { flex-wrap: wrap; gap: 6px; }
